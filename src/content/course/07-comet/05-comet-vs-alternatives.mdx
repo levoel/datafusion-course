@@ -17,7 +17,7 @@ Comet — не единственный проект, ускоряющий Spark
 
 <DiagramContainer title="Сравнение Spark-ускорителей" className="my-6">
   <Grid columns={3} className="gap-3 text-sm">
-    <DataBox label="Apache Comet" className="border-emerald-500/30">
+    <DataBox label="Apache Comet" className="border-emerald-500/30" tooltip="Rust/DataFusion-based ускоритель: SparkPlugin API, protobuf+JNI, Apache 2.0, Arrow columnar">
       <div className="text-xs"><b>Engine:</b> Apache DataFusion</div>
       <div className="text-xs mt-1"><b>Язык:</b> Rust</div>
       <div className="text-xs mt-1"><b>Лицензия:</b> Apache 2.0</div>
@@ -25,7 +25,7 @@ Comet — не единственный проект, ускоряющий Spark
       <div className="text-xs mt-1"><b>Сериализация:</b> Protobuf + JNI</div>
       <div className="text-xs mt-1"><b>Формат:</b> Arrow columnar</div>
     </DataBox>
-    <DataBox label="Gluten + Velox" className="border-blue-500/30">
+    <DataBox label="Gluten + Velox" className="border-blue-500/30" tooltip="C++/Velox-based ускоритель от Meta: Substrait сериализация, Velox vectors, требует сборку C++">
       <div className="text-xs"><b>Engine:</b> Meta Velox</div>
       <div className="text-xs mt-1"><b>Язык:</b> C++</div>
       <div className="text-xs mt-1"><b>Лицензия:</b> Apache 2.0</div>
@@ -33,7 +33,7 @@ Comet — не единственный проект, ускоряющий Spark
       <div className="text-xs mt-1"><b>Сериализация:</b> Substrait</div>
       <div className="text-xs mt-1"><b>Формат:</b> Velox vectors</div>
     </DataBox>
-    <DataBox label="Databricks Photon" className="border-purple-500/30">
+    <DataBox label="Databricks Photon" className="border-purple-500/30" tooltip="Проприетарный C++ engine Databricks — максимальная интеграция, доступен только в Databricks Runtime">
       <div className="text-xs"><b>Engine:</b> Проприетарный</div>
       <div className="text-xs mt-1"><b>Язык:</b> C++</div>
       <div className="text-xs mt-1"><b>Лицензия:</b> Проприетарная</div>

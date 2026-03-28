@@ -219,13 +219,13 @@ JOIN (SELECT * FROM t2 WHERE false) sub ON t1.id = sub.id;
 
 <DiagramContainer title="Каскад оптимизаций" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">WHERE a > 5 AND true AND b = b</FlowNode>
+    <FlowNode variant="input" tooltip="Исходный предикат с избыточными условиями — AND true и рефлексивное сравнение">WHERE a > 5 AND true AND b = b</FlowNode>
     <Arrow direction="down" label="SimplifyExpressions" />
-    <FlowNode variant="process">WHERE a > 5 AND true → WHERE a > 5</FlowNode>
+    <FlowNode variant="process" tooltip="SimplifyExpressions удаляет тавтологии (AND true) и рефлексивные сравнения (b = b)">WHERE a > 5 AND true → WHERE a > 5</FlowNode>
     <Arrow direction="down" label="PushDownFilter" />
-    <FlowNode variant="process">TableScan: t, filter=[a > 5]</FlowNode>
+    <FlowNode variant="process" tooltip="PushDownFilter перемещает упрощённый фильтр в TableScan для выполнения на уровне источника">TableScan: t, filter=[a > 5]</FlowNode>
     <Arrow direction="down" label="OptimizeProjections" />
-    <FlowNode variant="output">TableScan: t, projection=[a, b], filter=[a > 5]</FlowNode>
+    <FlowNode variant="output" tooltip="OptimizeProjections ограничивает проекцию только используемыми колонками">TableScan: t, projection=[a, b], filter=[a > 5]</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

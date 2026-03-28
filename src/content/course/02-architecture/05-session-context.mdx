@@ -17,18 +17,18 @@ topics: ["SessionContext", "SessionConfig", "RuntimeEnv", "MemoryPool", "ObjectS
 
 <DiagramContainer title="Структура SessionContext" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="SessionContext" className="border-blue-500/30 w-72 mx-auto">
+    <DataBox label="SessionContext" tooltip="Главная точка входа: координирует парсинг, планирование, оптимизацию и выполнение SQL" className="border-blue-500/30 w-72 mx-auto">
       <div className="text-xs font-mono">sql(), read_parquet(), register_table(), ...</div>
     </DataBox>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <DataBox label="SessionConfig" className="border-yellow-500/30 w-48">
+      <DataBox label="SessionConfig" tooltip="Настройки поведения: batch_size, target_partitions, правила оптимизатора" className="border-yellow-500/30 w-48">
         <div className="text-xs font-mono">batch_size, target_partitions, optimizer rules, ...</div>
       </DataBox>
-      <DataBox label="SessionState" className="border-emerald-500/30 w-48">
+      <DataBox label="SessionState" tooltip="Состояние сессии: каталог таблиц, реестр UDF, оптимизатор и планировщик" className="border-emerald-500/30 w-48">
         <div className="text-xs font-mono">catalog, UDF registry, optimizer, planner</div>
       </DataBox>
-      <DataBox label="RuntimeEnv" className="border-purple-500/30 w-48">
+      <DataBox label="RuntimeEnv" tooltip="Ресурсы выполнения: пул памяти, disk manager для spill, object store для S3/GCS" className="border-purple-500/30 w-48">
         <div className="text-xs font-mono">memory_pool, disk_manager, object_store_registry</div>
       </DataBox>
     </FlowRow>
@@ -85,15 +85,15 @@ let ctx = SessionContext::new_with_config(config);
 `RuntimeEnv` управляет ресурсами, которые разделяются между запросами:
 
 ```rust
-use datafusion::execution::runtime_env::{RuntimeEnv, RuntimeConfig};
+use datafusion::execution::runtime_env::RuntimeEnvBuilder;
 use datafusion::execution::memory_pool::FairSpillPool;
 
-let runtime_config = RuntimeConfig::new()
+let runtime_config = RuntimeEnvBuilder::new()
     .with_memory_pool(Arc::new(FairSpillPool::new(1024 * 1024 * 1024)))  // 1 GB
     .with_disk_manager(DiskManagerConfig::new_specified(vec!["/tmp/datafusion-spill"]))
     .with_temp_file_path("/tmp/datafusion");
 
-let runtime = Arc::new(RuntimeEnv::new(runtime_config)?);
+let runtime = Arc::new(runtime_config.build()?);
 let config = SessionConfig::new();
 let ctx = SessionContext::new_with_config_rt(config, runtime);
 ```
@@ -172,9 +172,11 @@ pub struct TaskContext {
 
 ```rust
 // Один RuntimeEnv с пулом памяти
-let runtime = Arc::new(RuntimeEnv::new(
-    RuntimeConfig::new().with_memory_pool(Arc::new(FairSpillPool::new(4_000_000_000)))
-)?);
+let runtime = Arc::new(
+    RuntimeEnvBuilder::new()
+        .with_memory_pool(Arc::new(FairSpillPool::new(4_000_000_000)))
+        .build()?
+);
 
 // Две сессии делят один пул памяти
 let ctx_analytics = SessionContext::new_with_config_rt(
@@ -235,3 +237,4 @@ ctx.sql("SELECT ...")
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> `FairSpillPool` ограничивает память и сбрасывает данные на диск при превышении
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> `TaskContext` — облегчённый контекст для выполнения партиций
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Запрос ленив до `collect()`/`show()` — планирование и выполнение разделены
+ение разделены

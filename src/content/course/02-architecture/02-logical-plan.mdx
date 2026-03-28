@@ -53,19 +53,19 @@ HAVING COUNT(o.id) > 5
 
 <DiagramContainer title="LogicalPlan Tree" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="output">Projection (name, order_count)</FlowNode>
+    <FlowNode variant="output" tooltip="Финальная проекция: выбирает колонки для результата запроса">Projection (name, order_count)</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">Filter (order_count &gt; 5)  <Tooltip text="HAVING становится Filter над Aggregate">HAVING</Tooltip></FlowNode>
+    <FlowNode variant="process" tooltip="HAVING становится Filter над Aggregate — унифицированная логическая операция">Filter (order_count &gt; 5)  HAVING</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">Aggregate (GROUP BY name, COUNT(o.id))</FlowNode>
+    <FlowNode variant="process" tooltip="Группирует по ключу и вычисляет COUNT — создаёт новую схему из group-by и агрегатов">Aggregate (GROUP BY name, COUNT(o.id))</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">Filter (u.active = true)</FlowNode>
+    <FlowNode variant="process" tooltip="Фильтрует строки до JOIN — оптимизатор может передвинуть ближе к источнику">Filter (u.active = true)</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">Join (INNER, ON u.id = o.user_id)</FlowNode>
+    <FlowNode variant="process" tooltip="Соединение двух таблиц по ключу: u.id = o.user_id (INNER JOIN)">Join (INNER, ON u.id = o.user_id)</FlowNode>
     <Arrow direction="down" />
     <FlowRow className="gap-8 justify-center">
-      <FlowNode variant="input">TableScan (users)</FlowNode>
-      <FlowNode variant="input">TableScan (orders)</FlowNode>
+      <FlowNode variant="input" tooltip="Сканирование таблицы пользователей — leaf-узел дерева">TableScan (users)</FlowNode>
+      <FlowNode variant="input" tooltip="Сканирование таблицы заказов — второй вход для JOIN">TableScan (orders)</FlowNode>
     </FlowRow>
   </FlowColumn>
 </DiagramContainer>
@@ -216,19 +216,19 @@ let plan = LogicalPlanBuilder::scan("orders", source, None)?
 
 <DiagramContainer title="Schema Propagation" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="Projection (region, total)" className="border-blue-500/30 w-72 mx-auto">
+    <DataBox label="Projection (region, total)" tooltip="Выходная схема сужена: только запрошенные колонки с переименованием" className="border-blue-500/30 w-72 mx-auto">
       <div className="text-xs font-mono">schema: (region: Utf8, total: Float64)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="Aggregate (GROUP BY region, SUM(amount))" className="border-yellow-500/30 w-72 mx-auto">
+    <DataBox label="Aggregate (GROUP BY region, SUM(amount))" tooltip="Новая схема: ключи группировки + результаты агрегатных функций" className="border-yellow-500/30 w-72 mx-auto">
       <div className="text-xs font-mono">schema: (region: Utf8, SUM(amount): Float64)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="Filter (status = 'completed')" className="border-slate-400/30 w-72 mx-auto">
+    <DataBox label="Filter (status = 'completed')" tooltip="Filter не меняет схему — фильтрует строки, сохраняя все колонки" className="border-slate-400/30 w-72 mx-auto">
       <div className="text-xs font-mono">schema: (id: Int64, region: Utf8, amount: Float64, status: Utf8)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="TableScan (orders)" className="border-emerald-500/30 w-72 mx-auto">
+    <DataBox label="TableScan (orders)" tooltip="Исходная схема из TableProvider — все колонки таблицы до оптимизации" className="border-emerald-500/30 w-72 mx-auto">
       <div className="text-xs font-mono">schema: (id: Int64, region: Utf8, amount: Float64, status: Utf8)</div>
     </DataBox>
   </FlowColumn>

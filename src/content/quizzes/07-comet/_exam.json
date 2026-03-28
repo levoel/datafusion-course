@@ -3,19 +3,33 @@
   "moduleId": "07-comet",
   "examTitle": "Экзамен: Apache Comet",
   "passThreshold": 70,
-  "_meta": { "idPrefix": "df-m07-exam" },
+  "_meta": {
+    "idPrefix": "df-m07-exam"
+  },
   "questions": [
     {
       "id": "df-m07-exam-q1",
       "type": "multiple-choice",
       "question": "Spark-приложение выполняет запрос SELECT dept, AVG(salary) FROM employees WHERE age > 30 GROUP BY dept. С Comet все операторы заменены нативными. На каком этапе pipeline достигается максимальный прирост по сравнению со стандартным Spark?",
       "options": [
-        { "id": "a", "text": "Scan + Filter: нативный Parquet reader читает данные сразу в Arrow columnar + SIMD-фильтрация age > 30 — устраняется Parquet→InternalRow конвертация и row-by-row фильтрация WSCG" },
-        { "id": "b", "text": "GROUP BY агрегация — нативный HashAggregate значительно быстрее Spark" },
-        { "id": "c", "text": "Возврат результата клиенту — нативный serialization быстрее" },
-        { "id": "d", "text": "Все этапы дают одинаковый прирост" }
+        {
+          "id": "a",
+          "text": "Все этапы дают одинаковый прирост"
+        },
+        {
+          "id": "b",
+          "text": "GROUP BY агрегация — нативный HashAggregate значительно быстрее Spark"
+        },
+        {
+          "id": "c",
+          "text": "Возврат результата клиенту — нативный serialization быстрее"
+        },
+        {
+          "id": "d",
+          "text": "Scan + Filter: нативный Parquet reader читает данные сразу в Arrow columnar + SIMD-фильтрация age > 30 — устраняется Parquet→InternalRow конвертация и row-by-row фильтрация WSCG"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Scan+Filter даёт максимальный прирост (3-4x по бенчмаркам TPC-H). Стандартный Spark декодирует Parquet в InternalRow (row-based), затем WSCG фильтрует row-by-row. Comet: нативный Parquet reader → Arrow RecordBatch + SIMD-фильтрация. Для агрегации прирост меньше (1.5-2x), так как join/agg алгоритмы в DataFusion и Spark WSCG сопоставимы.",
       "bloomLevel": "analytical",
       "studyHint": "Scan+Filter = макс. прирост (устранение row-based + SIMD). Aggregation = умеренный (алгоритмы сопоставимы). TPC-H: 3-4x vs 1.5-2x."
@@ -25,10 +39,22 @@
       "type": "multiple-choice",
       "question": "CometExecRule при bottom-up обходе обнаруживает, что один из операторов в середине stage не поддерживается. Что произойдёт с операторами, которые уже были заменены на Comet-версии в нижних узлах?",
       "options": [
-        { "id": "a", "text": "Все замены в этом stage откатываются — весь stage выполняется стандартным Spark. All-or-nothing: ColumnarToRow конвертация на границах дороже, чем выигрыш от частичной замены" },
-        { "id": "b", "text": "Нижние Comet-операторы остаются — исполнение смешанное (Comet + Spark)" },
-        { "id": "c", "text": "Ошибка компиляции — запрос не выполнится" },
-        { "id": "d", "text": "Неподдерживаемый оператор удаляется из плана" }
+        {
+          "id": "a",
+          "text": "Все замены в этом stage откатываются — весь stage выполняется стандартным Spark. All-or-nothing: ColumnarToRow конвертация на границах дороже, чем выигрыш от частичной замены"
+        },
+        {
+          "id": "b",
+          "text": "Нижние Comet-операторы остаются — исполнение смешанное (Comet + Spark)"
+        },
+        {
+          "id": "c",
+          "text": "Неподдерживаемый оператор удаляется из плана"
+        },
+        {
+          "id": "d",
+          "text": "Ошибка компиляции — запрос не выполнится"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "All-or-nothing fallback: если хотя бы один оператор/выражение в query stage не поддерживается, весь stage откатывается к Spark. Частичная замена потребовала бы ColumnarToRow/RowToColumnar конвертации на каждой границе нативного и JVM-исполнения. Overhead конвертации съедает выигрыш от нативных операторов.",
@@ -40,12 +66,24 @@
       "type": "multiple-choice",
       "question": "Компания тестирует Comet на production-кластере. EXPLAIN EXTENDED показывает, что 3 из 5 query stages имеют пометку [COMET], а 2 — нет. Причина fallback: unsupported expression: MyCustomUDF. Как решить проблему без отказа от UDF?",
       "options": [
-        { "id": "a", "text": "Реализовать CometExpressionSerde для MyCustomUDF: добавить protobuf-сообщение в expr.proto, Scala-сериализацию в CometExecRule, Rust-маппинг в PhysicalPlanner — и законтрибьютить или использовать форк" },
-        { "id": "b", "text": "Установить spark.comet.expression.allowIncompatible=true — UDF автоматически заработает" },
-        { "id": "c", "text": "Переместить UDF в отдельный stage через CACHE TABLE" },
-        { "id": "d", "text": "Невозможно — кастомные UDF не совместимы с Comet" }
+        {
+          "id": "a",
+          "text": "Невозможно — кастомные UDF не совместимы с Comet"
+        },
+        {
+          "id": "b",
+          "text": "Реализовать CometExpressionSerde для MyCustomUDF: добавить protobuf-сообщение в expr.proto, Scala-сериализацию в CometExecRule, Rust-маппинг в PhysicalPlanner — и законтрибьютить или использовать форк"
+        },
+        {
+          "id": "c",
+          "text": "Установить spark.comet.expression.allowIncompatible=true — UDF автоматически заработает"
+        },
+        {
+          "id": "d",
+          "text": "Переместить UDF в отдельный stage через CACHE TABLE"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Для поддержки кастомного UDF нужно реализовать полный путь: (1) protobuf-сообщение в expr.proto, (2) Scala-сериализация в CometExecRule, (3) Rust CometExpressionSerde::to_datafusion(). allowIncompatible не поможет для полностью неподдерживаемого выражения — он ослабляет проверки совместимости для частично поддерживаемых (cast, precision).",
       "bloomLevel": "analytical",
       "studyHint": "Три слоя для нового выражения: protobuf → Scala serde → Rust serde. allowIncompatible = для совместимости cast/precision, не для новых UDF."
@@ -55,12 +93,24 @@
       "type": "multiple-choice",
       "question": "Кластер с Comet показывает высокие spillBytes метрики. Off-heap memory = 4GB, данные — 100GB Parquet, запрос с GROUP BY на 50M уникальных ключей. Какое действие наиболее эффективно?",
       "options": [
-        { "id": "a", "text": "Увеличить spark.memory.offHeap.size — 50M уникальных ключей требуют значительного hash table в памяти для агрегации; spill на диск происходит из-за нехватки off-heap для состояния агрегации" },
-        { "id": "b", "text": "Уменьшить spark.comet.batchSize — меньшие batch снизят потребление памяти" },
-        { "id": "c", "text": "Переключить на native_datafusion scan — он использует меньше памяти" },
-        { "id": "d", "text": "Отключить Comet — spill означает, что Comet медленнее стандартного Spark" }
+        {
+          "id": "a",
+          "text": "Отключить Comet — spill означает, что Comet медленнее стандартного Spark"
+        },
+        {
+          "id": "b",
+          "text": "Уменьшить spark.comet.batchSize — меньшие batch снизят потребление памяти"
+        },
+        {
+          "id": "c",
+          "text": "Увеличить spark.memory.offHeap.size — 50M уникальных ключей требуют значительного hash table в памяти для агрегации; spill на диск происходит из-за нехватки off-heap для состояния агрегации"
+        },
+        {
+          "id": "d",
+          "text": "Переключить на native_datafusion scan — он использует меньше памяти"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "50M уникальных ключей GROUP BY создают большую hash table для агрегации. При 4GB off-heap буфер переполняется → DiskManager сбрасывает промежуточные данные в Arrow IPC на диск (spillBytes). Увеличение off-heap (например, до 8-12GB) позволит хранить hash table в памяти. batchSize влияет на scan, не на агрегацию.",
       "bloomLevel": "analytical",
       "studyHint": "Высокий spillBytes + много уникальных ключей GROUP BY → увеличить off-heap. Hash table агрегации = основной потребитель памяти."
@@ -70,10 +120,22 @@
       "type": "multiple-choice",
       "question": "Protobuf-сериализация плана в Comet передаёт «один blob на query stage». Почему не per-operator сериализация?",
       "options": [
-        { "id": "a", "text": "Единый blob содержит всё дерево операторов с дочерними связями — Rust-сторона строит полный ExecutionPlan за один вызов JNI, избегая множественных JNI-переходов и позволяя DataFusion оптимизировать план целиком" },
-        { "id": "b", "text": "Per-operator сериализация не поддерживается protobuf" },
-        { "id": "c", "text": "JNI API не позволяет вызовы чаще одного раза" },
-        { "id": "d", "text": "Единый blob нужен для шифрования плана" }
+        {
+          "id": "a",
+          "text": "Единый blob содержит всё дерево операторов с дочерними связями — Rust-сторона строит полный ExecutionPlan за один вызов JNI, избегая множественных JNI-переходов и позволяя DataFusion оптимизировать план целиком"
+        },
+        {
+          "id": "b",
+          "text": "JNI API не позволяет вызовы чаще одного раза"
+        },
+        {
+          "id": "c",
+          "text": "Per-operator сериализация не поддерживается protobuf"
+        },
+        {
+          "id": "d",
+          "text": "Единый blob нужен для шифрования плана"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Protobuf Operator содержит repeated Operator children — полное дерево в одном сообщении. Один JNI-вызов Native.createPlan(serializedPlan) передаёт весь план, Rust PhysicalPlanner рекурсивно строит DataFusion ExecutionPlan. Множественные JNI-переходы (per-operator) добавили бы overhead и не позволили бы DataFusion видеть план целиком для оптимизации.",
@@ -85,12 +147,24 @@
       "type": "multiple-choice",
       "question": "Команда включает Comet поэтапно: сначала scan, затем exec, затем shuffle. На втором этапе (scan + exec, без shuffle) — как перераспределяются данные между stage?",
       "options": [
-        { "id": "a", "text": "Shuffle использует стандартный Spark UnsafeRow — данные конвертируются из Arrow RecordBatch в row-based на границе shuffle и обратно в Arrow после. Это добавляет ColumnarToRow/RowToColumnar overhead на каждом exchange" },
-        { "id": "b", "text": "Shuffle не происходит вообще — без exec.shuffle.enabled запросы с GROUP BY невозможны" },
-        { "id": "c", "text": "Данные передаются через shared memory без конвертации" },
-        { "id": "d", "text": "DataFusion выполняет shuffle самостоятельно — exec.shuffle.enabled не влияет" }
+        {
+          "id": "a",
+          "text": "Shuffle не происходит вообще — без exec.shuffle.enabled запросы с GROUP BY невозможны"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion выполняет shuffle самостоятельно — exec.shuffle.enabled не влияет"
+        },
+        {
+          "id": "c",
+          "text": "Shuffle использует стандартный Spark UnsafeRow — данные конвертируются из Arrow RecordBatch в row-based на границе shuffle и обратно в Arrow после. Это добавляет ColumnarToRow/RowToColumnar overhead на каждом exchange"
+        },
+        {
+          "id": "d",
+          "text": "Данные передаются через shared memory без конвертации"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Без spark.comet.exec.shuffle.enabled=true используется стандартный Spark ShuffleExchangeExec. Данные из Arrow RecordBatch (нативного stage) конвертируются в UnsafeRow для shuffle, затем обратно в Arrow для следующего нативного stage. Это ColumnarToRow + RowToColumnar overhead на каждом exchange — третий шаг (включение columnar shuffle) устраняет его.",
       "bloomLevel": "applied",
       "studyHint": "Без shuffle.enabled: Arrow → UnsafeRow → сеть → UnsafeRow → Arrow на каждом exchange. Третий шаг устраняет overhead."
@@ -100,10 +174,22 @@
       "type": "multiple-choice",
       "question": "В Comet PhysicalPlanner на Rust-стороне каждый protobuf Operator маппится на стандартный DataFusion ExecutionPlan (FilterExec, ProjectionExec). Каково ключевое преимущество этого архитектурного решения?",
       "options": [
-        { "id": "a", "text": "При обновлении DataFusion Comet автоматически получает улучшения execution primitives (новые оптимизации, исправления багов, поддержка типов) без изменения собственного кода" },
-        { "id": "b", "text": "Стандартные nodes быстрее кастомных, потому что оптимизированы сообществом" },
-        { "id": "c", "text": "DataFusion не позволяет создавать кастомные ExecutionPlan" },
-        { "id": "d", "text": "Стандартные nodes проще отлаживать в gdb" }
+        {
+          "id": "a",
+          "text": "При обновлении DataFusion Comet автоматически получает улучшения execution primitives (новые оптимизации, исправления багов, поддержка типов) без изменения собственного кода"
+        },
+        {
+          "id": "b",
+          "text": "Стандартные nodes быстрее кастомных, потому что оптимизированы сообществом"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion не позволяет создавать кастомные ExecutionPlan"
+        },
+        {
+          "id": "d",
+          "text": "Стандартные nodes проще отлаживать в gdb"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "PhysicalPlanner использует стандартные DataFusion FilterExec, ProjectionExec, HashJoinExec вместо кастомных execution nodes. При каждом обновлении DataFusion (новые оптимизации, исправления, поддержка типов данных) Comet получает улучшения автоматически — через cargo update. Минимальный maintenance cost и синергия с DataFusion community.",
@@ -115,12 +201,24 @@
       "type": "multiple-choice",
       "question": "native_iceberg_compat (spark.comet.scan.impl) использует iceberg-rust для нативного чтения. Какие ограничения делают его непригодным для большинства production-сценариев?",
       "options": [
-        { "id": "a", "text": "Не поддерживаются time travel и complex partition transforms; требуется сборка с feature flag (-Piceberg); экспериментальный статус с 0.12.0" },
-        { "id": "b", "text": "Работает только с Parquet — не читает Avro и ORC" },
-        { "id": "c", "text": "Не совместим со Spark 3.5 — только Spark 4.0" },
-        { "id": "d", "text": "Ограничений нет — native_iceberg_compat production-ready" }
+        {
+          "id": "a",
+          "text": "Ограничений нет — native_iceberg_compat production-ready"
+        },
+        {
+          "id": "b",
+          "text": "Не поддерживаются time travel и complex partition transforms; требуется сборка с feature flag (-Piceberg); экспериментальный статус с 0.12.0"
+        },
+        {
+          "id": "c",
+          "text": "Работает только с Parquet — не читает Avro и ORC"
+        },
+        {
+          "id": "d",
+          "text": "Не совместим со Spark 3.5 — только Spark 4.0"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "native_iceberg_compat (с Comet 0.12.0): нативное чтение через iceberg-rust, но три ограничения: (1) не поддержаны time travel и complex partition transforms, (2) требуется специальная сборка с feature flag -Piceberg, (3) экспериментальный статус. Production рекомендация — стандартный Iceberg connector + native_comet scan.",
       "bloomLevel": "applied",
       "studyHint": "native_iceberg_compat: нет time travel, нет complex partitions, нужен -Piceberg. Production → стандартный connector + Comet."
@@ -130,12 +228,24 @@
       "type": "multiple-choice",
       "question": "Gluten+Velox использует Velox RowVector, Comet — Arrow RecordBatch. Команда хочет передавать промежуточные результаты Spark-запроса в pandas для дополнительного анализа через Arrow Flight. Какой ускоритель упростит эту задачу?",
       "options": [
-        { "id": "a", "text": "Comet — данные уже в Arrow RecordBatch, совместимом с PyArrow и Arrow Flight. Velox RowVector потребует дополнительной конвертации в Arrow перед передачей" },
-        { "id": "b", "text": "Gluten — Velox RowVector нативно совместим с pandas" },
-        { "id": "c", "text": "Оба одинаково совместимы — конвертация минимальна в обоих случаях" },
-        { "id": "d", "text": "Ни один — Arrow Flight не работает со Spark" }
+        {
+          "id": "a",
+          "text": "Ни один — Arrow Flight не работает со Spark"
+        },
+        {
+          "id": "b",
+          "text": "Оба одинаково совместимы — конвертация минимальна в обоих случаях"
+        },
+        {
+          "id": "c",
+          "text": "Comet — данные уже в Arrow RecordBatch, совместимом с PyArrow и Arrow Flight. Velox RowVector потребует дополнительной конвертации в Arrow перед передачей"
+        },
+        {
+          "id": "d",
+          "text": "Gluten — Velox RowVector нативно совместим с pandas"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Arrow — стандарт межпроцессного обмена, совместимый с PyArrow (pandas), Polars, DuckDB, Arrow Flight. Comet работает с Arrow RecordBatch на всех этапах — данные передаются в pandas без конвертации. Velox RowVector — внутренний формат Meta, не совместимый с Arrow нативно — потребуется дополнительная конвертация.",
       "bloomLevel": "analytical",
       "studyHint": "Comet (Arrow) → PyArrow/Flight без конвертации. Velox RowVector → нужна конвертация. Arrow = стандарт межпроцессного обмена."
@@ -145,12 +255,24 @@
       "type": "multiple-choice",
       "question": "CometShuffleExchangeExec поддерживает четыре типа партиционирования: HashPartitioning, RangePartitioning, SinglePartition, RoundRobinPartitioning. Какой тип используется для query с GROUP BY dept?",
       "options": [
-        { "id": "a", "text": "HashPartitioning по dept — данные перераспределяются так, чтобы все строки с одинаковым dept попали в одну партицию для финальной агрегации" },
-        { "id": "b", "text": "RangePartitioning — dept сортируется для ordered aggregation" },
-        { "id": "c", "text": "SinglePartition — все данные собираются на одном executor" },
-        { "id": "d", "text": "RoundRobinPartitioning — равномерное распределение для параллелизма" }
+        {
+          "id": "a",
+          "text": "RoundRobinPartitioning — равномерное распределение для параллелизма"
+        },
+        {
+          "id": "b",
+          "text": "SinglePartition — все данные собираются на одном executor"
+        },
+        {
+          "id": "c",
+          "text": "HashPartitioning по dept — данные перераспределяются так, чтобы все строки с одинаковым dept попали в одну партицию для финальной агрегации"
+        },
+        {
+          "id": "d",
+          "text": "RangePartitioning — dept сортируется для ordered aggregation"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "GROUP BY dept требует HashPartitioning(dept): Partial Aggregate на каждой партиции → CometShuffleExchangeExec с Hash(dept) → Final Aggregate. HashPartitioning гарантирует, что все строки с одинаковым dept попадут в одну партицию для корректного финального агрегирования. RangePartitioning используется для ORDER BY, SinglePartition — для final merge.",
       "bloomLevel": "applied",
       "studyHint": "GROUP BY → HashPartitioning. ORDER BY → RangePartitioning. Финальный merge → SinglePartition."
@@ -160,12 +282,24 @@
       "type": "multiple-choice",
       "question": "Comet публикует 8 релизов за 2025 год (0.6.0–0.13.0), каждый расширяя покрытие операторов. Как темп развития влияет на стратегию fallback в production?",
       "options": [
-        { "id": "a", "text": "С каждым релизом процент запросов с fallback снижается — запросы, которые сегодня выполняются на JVM из-за неподдерживаемого выражения, в следующих версиях могут стать полностью нативными. Стратегия: регулярно обновлять и перепроверять EXPLAIN" },
-        { "id": "b", "text": "Темп развития не влияет — fallback запросы всегда останутся на JVM" },
-        { "id": "c", "text": "Частые релизы создают нестабильность — лучше зафиксировать версию" },
-        { "id": "d", "text": "Новые релизы увеличивают количество fallback из-за более строгих проверок" }
+        {
+          "id": "a",
+          "text": "Новые релизы увеличивают количество fallback из-за более строгих проверок"
+        },
+        {
+          "id": "b",
+          "text": "С каждым релизом процент запросов с fallback снижается — запросы, которые сегодня выполняются на JVM из-за неподдерживаемого выражения, в следующих версиях могут стать полностью нативными. Стратегия: регулярно обновлять и перепроверять EXPLAIN"
+        },
+        {
+          "id": "c",
+          "text": "Частые релизы создают нестабильность — лучше зафиксировать версию"
+        },
+        {
+          "id": "d",
+          "text": "Темп развития не влияет — fallback запросы всегда останутся на JVM"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Каждый релиз добавляет 10-20 выражений и операторов. Запрос с fallback из-за unsupported expression X в 0.10.0 может стать полностью нативным в 0.13.0. Стратегия: обновлять Comet каждые 1-2 релиза, запускать EXPLAIN EXTENDED для critical queries и отслеживать процент [COMET] stages.",
       "bloomLevel": "analytical",
       "studyHint": "8 релизов/год, 10-20 выражений/релиз. Fallback → нативный со временем. Стратегия: регулярные обновления + EXPLAIN."
@@ -175,12 +309,24 @@
       "type": "multiple-choice",
       "question": "Comet использует паттерн DataFusion как embedded library (аналогично InfluxDB IOx, GreptimeDB). Какое общее архитектурное свойство объединяет эти проекты?",
       "options": [
-        { "id": "a", "text": "Все транслируют внешние планы или запросы в стандартные DataFusion ExecutionPlan, используя DataFusion как execution engine — Spark план, InfluxQL, PromQL маппятся на одни и те же FilterExec/ProjectionExec/HashJoinExec примитивы" },
-        { "id": "b", "text": "Все используют DataFusion как SQL-парсер, но имеют собственные execution engine" },
-        { "id": "c", "text": "Все заменяют Spark — DataFusion является альтернативой Spark" },
-        { "id": "d", "text": "Все работают только с Parquet-файлами" }
+        {
+          "id": "a",
+          "text": "Все заменяют Spark — DataFusion является альтернативой Spark"
+        },
+        {
+          "id": "b",
+          "text": "Все работают только с Parquet-файлами"
+        },
+        {
+          "id": "c",
+          "text": "Все транслируют внешние планы или запросы в стандартные DataFusion ExecutionPlan, используя DataFusion как execution engine — Spark план, InfluxQL, PromQL маппятся на одни и те же FilterExec/ProjectionExec/HashJoinExec примитивы"
+        },
+        {
+          "id": "d",
+          "text": "Все используют DataFusion как SQL-парсер, но имеют собственные execution engine"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Паттерн «DataFusion как библиотека»: внешний запрос (Spark plan, InfluxQL, PromQL) транслируется в стандартные DataFusion ExecutionPlan примитивы. Comet: Spark PhysicalPlan → protobuf → DataFusion. InfluxDB IOx: InfluxQL → DataFusion. GreptimeDB: PromQL → DataFusion. Все используют одни и те же FilterExec, ProjectionExec, HashJoinExec.",
       "bloomLevel": "analytical",
       "studyHint": "Embedded library pattern: внешний запрос → трансляция → DataFusion ExecutionPlan. Общие примитивы для разных frontend."

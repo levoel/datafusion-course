@@ -14,22 +14,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Копирование происходит на каждом шаге --- filter, aggregate и to_pandas создают новые копии"
+          "text": "Никогда --- весь pipeline включая to_pandas() работает zero-copy"
         },
         {
           "id": "b",
-          "text": "Только при to_pandas() --- весь Arrow-pipeline работает без копирования, но Pandas требует конвертации в NumPy-формат"
-        },
-        {
-          "id": "c",
           "text": "Копирование происходит при read_csv() (файл → память) и при aggregate() (перегруппировка данных)"
         },
         {
+          "id": "c",
+          "text": "Копирование происходит на каждом шаге --- filter, aggregate и to_pandas создают новые копии"
+        },
+        {
           "id": "d",
-          "text": "Никогда --- весь pipeline включая to_pandas() работает zero-copy"
+          "text": "Только при to_pandas() --- весь Arrow-pipeline работает без копирования, но Pandas требует конвертации в NumPy-формат"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "DataFrame-операции (filter, aggregate) строят план и при выполнении работают в Arrow-формате без лишних копий. Единственная точка копирования --- to_pandas(), так как Pandas использует NumPy-backed формат, несовместимый с Arrow. Для избежания копирования используйте to_arrow_table().",
       "bloomLevel": "analytical",
       "studyHint": "Arrow → Arrow = zero-copy. Arrow → Pandas = copy. Запомните эту границу."
@@ -45,11 +45,11 @@
         },
         {
           "id": "b",
-          "text": "Определить Python-функцию --- она автоматически доступна в обоих API"
+          "text": "Создать две отдельные реализации: UDF для DataFrame и SQL CREATE FUNCTION для SQL"
         },
         {
           "id": "c",
-          "text": "Создать две отдельные реализации: UDF для DataFrame и SQL CREATE FUNCTION для SQL"
+          "text": "Определить Python-функцию --- она автоматически доступна в обоих API"
         },
         {
           "id": "d",
@@ -68,22 +68,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Python GIL ограничивает параллелизм, а вызовы из Rust в Python через FFI добавляют накладные расходы --- для pushdown и партиционирования нужна Rust-реализация"
-        },
-        {
-          "id": "b",
           "text": "Python TableProvider не поддерживает SQL --- только DataFrame API"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "Python TableProvider работает только с данными в памяти, не с файлами"
+        },
+        {
+          "id": "c",
+          "text": "Python GIL ограничивает параллелизм, а вызовы из Rust в Python через FFI добавляют накладные расходы --- для pushdown и партиционирования нужна Rust-реализация"
         },
         {
           "id": "d",
           "text": "Ограничений нет --- Python TableProvider полностью production-ready"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Python TableProvider --- упрощённая версия Rust TableProvider. Вызовы из Rust в Python через FFI добавляют overhead, а Python GIL ограничивает параллельное выполнение. Для production-нагрузок с pushdown предикатов и партиционированием рекомендуется Rust-реализация.",
       "bloomLevel": "analytical",
       "studyHint": "Python TableProvider = прототип. Rust TableProvider = production. Причина: GIL + FFI overhead."
@@ -95,11 +95,11 @@
       "options": [
         {
           "id": "a",
-          "text": "RuntimeEnvBuilder для ограничения памяти, SessionConfig с with_target_partitions(16) --- оба передаются в SessionContext"
+          "text": "ctx.set_memory_limit(\"2GB\") и ctx.set_partitions(16) после создания контекста"
         },
         {
           "id": "b",
-          "text": "ctx.set_memory_limit(\"2GB\") и ctx.set_partitions(16) после создания контекста"
+          "text": "Настроить переменные окружения DATAFUSION_MEMORY_LIMIT и DATAFUSION_PARTITIONS"
         },
         {
           "id": "c",
@@ -107,10 +107,10 @@
         },
         {
           "id": "d",
-          "text": "Настроить переменные окружения DATAFUSION_MEMORY_LIMIT и DATAFUSION_PARTITIONS"
+          "text": "RuntimeEnvBuilder для ограничения памяти, SessionConfig с with_target_partitions(16) --- оба передаются в SessionContext"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Для ограничения памяти используется RuntimeEnvBuilder, для партиционирования --- SessionConfig().with_target_partitions(16). Оба объекта передаются при создании SessionContext. Это раздельная конфигурация: RuntimeEnvBuilder управляет ресурсами (память, диск), SessionConfig --- поведением запросов.",
       "bloomLevel": "applied",
       "studyHint": "RuntimeEnvBuilder = ресурсы. SessionConfig = поведение. Оба нужны для production."
@@ -122,22 +122,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Функция будет работать корректно, но медленнее из-за отсутствия оптимизации"
+          "text": "Проблем не будет --- merge() опционален для Python-реализаций"
         },
         {
           "id": "b",
-          "text": "Параллельное выполнение агрегации невозможно --- merge() объединяет частичные состояния от разных партиций"
-        },
-        {
-          "id": "c",
           "text": "Функция не скомпилируется --- merge() вызывается при каждом update()"
         },
         {
+          "id": "c",
+          "text": "Параллельное выполнение агрегации невозможно --- merge() объединяет частичные состояния от разных партиций"
+        },
+        {
           "id": "d",
-          "text": "Проблем не будет --- merge() опционален для Python-реализаций"
+          "text": "Функция будет работать корректно, но медленнее из-за отсутствия оптимизации"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Метод merge() объединяет частичные состояния аккумуляторов из разных партиций. Без merge() DataFusion не может распараллелить агрегацию: каждая партиция вычисляет своё состояние (update), а merge() объединяет их в финальный результат (evaluate).",
       "bloomLevel": "analytical",
       "studyHint": "merge() = ключ к параллелизму UDAF. Без него: только последовательное выполнение."
@@ -149,22 +149,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Polars → to_arrow() → register_record_batches → SQL → to_arrow_table() → pl.from_arrow()"
-        },
-        {
-          "id": "b",
           "text": "Polars → to_pandas() → from_pydict() → SQL → to_pandas() → pl.from_pandas()"
         },
         {
+          "id": "b",
+          "text": "Polars → to_json() → read_json() → SQL → collect() → Polars"
+        },
+        {
           "id": "c",
-          "text": "Polars → to_csv() → register_csv() → SQL → to_pandas() → pl.from_pandas()"
+          "text": "Polars → to_arrow() → register_record_batches → SQL → to_arrow_table() → pl.from_arrow()"
         },
         {
           "id": "d",
-          "text": "Polars → to_json() → read_json() → SQL → collect() → Polars"
+          "text": "Polars → to_csv() → register_csv() → SQL → to_pandas() → pl.from_pandas()"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Путь через Arrow максимизирует zero-copy: Polars → to_arrow() (zero-copy, Polars хранит Arrow внутри) → register_record_batches → SQL/DataFrame → to_arrow_table() (zero-copy) → pl.from_arrow() (zero-copy). Путь через Pandas добавляет копирование на каждом шаге.",
       "bloomLevel": "analytical",
       "studyHint": "Arrow --- мост между DataFusion, Polars и PyArrow. Обходите Pandas для zero-copy."
@@ -176,22 +176,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Выполнить ctx.sql(\"SELECT table_name FROM information_schema.tables\") для просмотра зарегистрированных таблиц"
-        },
-        {
-          "id": "b",
-          "text": "Проверить файловую систему на наличие файла orders.csv"
-        },
-        {
-          "id": "c",
           "text": "Перезапустить Python-интерпретатор и попробовать снова"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Использовать ctx.debug() для вывода внутреннего состояния"
+        },
+        {
+          "id": "c",
+          "text": "Проверить файловую систему на наличие файла orders.csv"
+        },
+        {
+          "id": "d",
+          "text": "Выполнить ctx.sql(\"SELECT table_name FROM information_schema.tables\") для просмотра зарегистрированных таблиц"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "INFORMATION_SCHEMA показывает все зарегистрированные таблицы. Если orders отсутствует --- таблица не была зарегистрирована через register_csv()/register_parquet(). Это стандартный SQL-механизм метаданных для диагностики.",
       "bloomLevel": "applied",
       "studyHint": "INFORMATION_SCHEMA --- первый инструмент диагностики. Какие таблицы зарегистрированы?"
@@ -203,11 +203,11 @@
       "options": [
         {
           "id": "a",
-          "text": "ctx.read_csv() работает с явно созданным SessionContext; глобальная read_csv() использует неявный глобальный контекст для быстрого старта"
+          "text": "Глобальная read_csv() быстрее, так как не создаёт SessionContext"
         },
         {
           "id": "b",
-          "text": "Глобальная read_csv() быстрее, так как не создаёт SessionContext"
+          "text": "ctx.read_csv() работает с явно созданным SessionContext; глобальная read_csv() использует неявный глобальный контекст для быстрого старта"
         },
         {
           "id": "c",
@@ -218,7 +218,7 @@
           "text": "Глобальная read_csv() поддерживает только CSV, а ctx.read_csv() --- любые форматы"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Глобальные функции (read_csv, col, lit) появились в версии 46.0 для быстрого старта без явного создания SessionContext. Они используют неявный глобальный контекст. Для production-кода рекомендуется явный SessionContext для контроля конфигурации.",
       "bloomLevel": "analytical",
       "studyHint": "Глобальные функции = удобство для Jupyter. Production = явный SessionContext."
@@ -230,22 +230,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Экспорт SQL-текста через df.to_sql() и выполнение в другом движке"
+          "text": "Прямая передача невозможна --- каждый движок использует свой формат планов"
         },
         {
           "id": "b",
-          "text": "Substrait --- сериализация LogicalPlan в стандартный бинарный формат, понятный любому совместимому движку"
+          "text": "Экспорт SQL-текста через df.to_sql() и выполнение в другом движке"
         },
         {
           "id": "c",
-          "text": "Arrow Flight --- протокол для передачи данных между движками"
+          "text": "Substrait --- сериализация LogicalPlan в стандартный бинарный формат, понятный любому совместимому движку"
         },
         {
           "id": "d",
-          "text": "Прямая передача невозможна --- каждый движок использует свой формат планов"
+          "text": "Arrow Flight --- протокол для передачи данных между движками"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Substrait --- открытый стандарт для сериализации планов запросов. DataFusion конвертирует LogicalPlan в Substrait (бинарный формат), который может быть десериализован другим совместимым движком. Arrow Flight передаёт данные, а Substrait --- планы.",
       "bloomLevel": "analytical",
       "studyHint": "Substrait = планы. Arrow Flight = данные. Не путайте: это дополняющие стандарты."
@@ -257,11 +257,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Функция будет работать корректно, но оптимизатор не сможет кешировать результаты и применить constant folding --- потеря производительности"
+          "text": "Функция вернёт неправильные результаты из-за несовпадения volatility"
         },
         {
           "id": "b",
-          "text": "Функция вернёт неправильные результаты из-за несовпадения volatility"
+          "text": "Функция будет работать корректно, но оптимизатор не сможет кешировать результаты и применить constant folding --- потеря производительности"
         },
         {
           "id": "c",
@@ -272,7 +272,7 @@
           "text": "Последствий нет --- volatility не влияет на производительность"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Завышенная volatility (volatile вместо immutable) не вызывает ошибок, но блокирует оптимизации. Оптимизатор не может кешировать результаты, выносить вычисления из циклов и применять constant folding. Для детерминистических функций всегда указывайте \"immutable\".",
       "bloomLevel": "analytical",
       "studyHint": "Неправильная volatility = упущенные оптимизации. immutable > stable > volatile по возможностям оптимизатора."
@@ -284,22 +284,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Object Store → register_parquet() → ctx.sql() → to_arrow_table() → pl.from_arrow() --- всё через Arrow, минимум копирования"
+          "text": "S3 API → JSON → from_pydict() → SQL → to_pandas() → Polars"
         },
         {
           "id": "b",
-          "text": "boto3.download() → read_csv() → ctx.sql() → to_pandas() → Polars"
+          "text": "Object Store → register_parquet() → ctx.sql() → to_arrow_table() → pl.from_arrow() --- всё через Arrow, минимум копирования"
         },
         {
           "id": "c",
-          "text": "S3 API → JSON → from_pydict() → SQL → to_pandas() → Polars"
+          "text": "boto3.download() → read_csv() → ctx.sql() → to_pandas() → Polars"
         },
         {
           "id": "d",
           "text": "Скачать файлы локально → обработать Pandas → загрузить обратно"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Оптимальный pipeline: Object Store для прямого чтения с S3 (без скачивания), register_parquet() для SQL-доступа, ctx.sql() для аналитики, to_arrow_table() → pl.from_arrow() для передачи в Polars через Arrow (zero-copy). RuntimeEnvBuilder для ограничения памяти.",
       "bloomLevel": "analytical",
       "studyHint": "S3 → Object Store → SQL → Arrow → Polars. Каждый компонент оптимален для своего этапа."
@@ -311,22 +311,22 @@
       "options": [
         {
           "id": "a",
-          "text": "update() --- обработка новых данных, merge() --- объединение частичных состояний, evaluate() --- финальный результат"
+          "text": "map() --- трансформация, reduce() --- свёртка, output() --- вывод"
         },
         {
           "id": "b",
-          "text": "init() --- инициализация, process() --- обработка, result() --- возврат"
+          "text": "update() --- обработка новых данных, merge() --- объединение частичных состояний, evaluate() --- финальный результат"
         },
         {
           "id": "c",
-          "text": "accumulate() --- накопление, combine() --- комбинирование, finalize() --- завершение"
+          "text": "init() --- инициализация, process() --- обработка, result() --- возврат"
         },
         {
           "id": "d",
-          "text": "map() --- трансформация, reduce() --- свёртка, output() --- вывод"
+          "text": "accumulate() --- накопление, combine() --- комбинирование, finalize() --- завершение"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Accumulator требует три метода: update() обрабатывает новые данные (вызывается для каждой партиции), merge() объединяет частичные состояния от разных партиций (ключ к параллелизму), evaluate() возвращает финальный результат агрегации.",
       "bloomLevel": "applied",
       "studyHint": "update → merge → evaluate. Параллелизм: каждая партиция делает update(), merge() объединяет."

@@ -51,17 +51,17 @@ let ctx = SessionContext::new_with_config(config);
 
 <DiagramContainer title="Стратегии RepartitionExec" className="my-6">
   <Grid columns={3} className="gap-3 text-sm">
-    <DataBox label="RoundRobin" className="border-blue-500/30">
+    <DataBox label="RoundRobin" className="border-blue-500/30" tooltip="Циклическое распределение строк по партициям — для равномерной нагрузки без привязки к ключу">
       <div className="text-xs"><b>Назначение:</b> равномерная загрузка</div>
       <div className="text-xs mt-1">Строки распределяются по партициям циклически</div>
       <div className="text-xs mt-1 font-mono">RoundRobinBatch(n)</div>
     </DataBox>
-    <DataBox label="Hash" className="border-emerald-500/30">
+    <DataBox label="Hash" className="border-emerald-500/30" tooltip="Hash-партиционирование по ключу — гарантирует co-location строк с одинаковым ключом для join/group by">
       <div className="text-xs"><b>Назначение:</b> co-location для join/group by</div>
       <div className="text-xs mt-1">Строки с одинаковым ключом попадают в одну партицию</div>
       <div className="text-xs mt-1 font-mono">Hash([col], n)</div>
     </DataBox>
-    <DataBox label="UnknownPartitioning" className="border-amber-500/30">
+    <DataBox label="UnknownPartitioning" className="border-amber-500/30" tooltip="Формальная обёртка — количество партиций известно, но распределение данных по ним произвольное">
       <div className="text-xs"><b>Назначение:</b> формальная обёртка</div>
       <div className="text-xs mt-1">Количество партиций известно, распределение — нет</div>
       <div className="text-xs mt-1 font-mono">UnknownPartitioning(n)</div>
@@ -93,26 +93,26 @@ HashJoinExec: join_expr=customer_id
 
 <DiagramContainer title="Однопроцессное vs распределённое перераспределение" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="Один процесс (DataFusion)" className="border-blue-500/30">
+    <DataBox label="Один процесс (DataFusion)" className="border-blue-500/30" tooltip="Однопроцессное перераспределение — потоки обмениваются RecordBatch через каналы в памяти">
       <FlowColumn className="gap-1 p-2">
-        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 1 (партиция 0)</FlowNode>
-        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 2 (партиция 1)</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-1" tooltip="Первый поток обрабатывает партицию 0 локально">Поток 1 (партиция 0)</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-1" tooltip="Второй поток обрабатывает партицию 1 локально">Поток 2 (партиция 1)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode className="bg-blue-700/40 text-xs p-1 border border-blue-400/30">RepartitionExec (crossbeam channels)</FlowNode>
+        <FlowNode className="bg-blue-700/40 text-xs p-1 border border-blue-400/30" tooltip="Crossbeam-каналы перенаправляют RecordBatch между потоками — данные остаются в памяти процесса">RepartitionExec (crossbeam channels)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 3 (партиция 0')</FlowNode>
-        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 4 (партиция 1')</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-1" tooltip="Новая партиция 0' после перераспределения по hash-ключу">Поток 3 (партиция 0')</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-1" tooltip="Новая партиция 1' после перераспределения по hash-ключу">Поток 4 (партиция 1')</FlowNode>
       </FlowColumn>
     </DataBox>
-    <DataBox label="Распределённая система" className="border-emerald-500/30">
+    <DataBox label="Распределённая система" className="border-emerald-500/30" tooltip="Распределённый shuffle — данные сериализуются в Arrow IPC и передаются по сети между executor-ами">
       <FlowColumn className="gap-1 p-2">
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor A (партиция 0)</FlowNode>
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor B (партиция 1)</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Executor A обрабатывает свой фрагмент данных локально">Executor A (партиция 0)</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Executor B обрабатывает свой фрагмент данных локально">Executor B (партиция 1)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode className="bg-emerald-700/40 text-xs p-1 border border-emerald-400/30">Shuffle (Arrow IPC по сети)</FlowNode>
+        <FlowNode className="bg-emerald-700/40 text-xs p-1 border border-emerald-400/30" tooltip="Сетевой shuffle — сериализация в Arrow IPC, передача по gRPC/TCP, десериализация на принимающей стороне">Shuffle (Arrow IPC по сети)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor C (партиция 0')</FlowNode>
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor D (партиция 1')</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Целевой executor C получает данные по hash-ключу от всех исходных executor-ов">Executor C (партиция 0')</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Целевой executor D получает данные по hash-ключу от всех исходных executor-ов">Executor D (партиция 1')</FlowNode>
       </FlowColumn>
     </DataBox>
   </Grid>
@@ -136,15 +136,15 @@ HashJoinExec: join_expr=customer_id
 
 <DiagramContainer title="Компоненты распределённого выполнения" className="my-6">
   <FlowRow className="gap-4 text-sm items-start">
-    <DataBox label="Координация" className="border-blue-500/30 flex-1">
+    <DataBox label="Координация" className="border-blue-500/30 flex-1" tooltip="Планировщик разбивает план на query stages, назначает задачи executor-ам и отслеживает прогресс">
       <div className="text-xs"><b>Однопроцессное:</b> SessionContext</div>
       <div className="text-xs mt-1"><b>Распределённое:</b> Scheduler (Ballista) / Driver (Ray)</div>
     </DataBox>
-    <DataBox label="Shuffle" className="border-emerald-500/30 flex-1">
+    <DataBox label="Shuffle" className="border-emerald-500/30 flex-1" tooltip="Перераспределение данных между узлами — главный bottleneck распределённых систем">
       <div className="text-xs"><b>Однопроцессное:</b> crossbeam channels</div>
       <div className="text-xs mt-1"><b>Распределённое:</b> Arrow IPC / Flight / файлы</div>
     </DataBox>
-    <DataBox label="Отказоустойчивость" className="border-amber-500/30 flex-1">
+    <DataBox label="Отказоустойчивость" className="border-amber-500/30 flex-1" tooltip="Обработка падения executor-ов: retry задач, перепланирование, checkpoint промежуточных результатов">
       <div className="text-xs"><b>Однопроцессное:</b> весь процесс или ничего</div>
       <div className="text-xs mt-1"><b>Распределённое:</b> retry, reschedule, checkpoint</div>
     </DataBox>

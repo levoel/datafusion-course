@@ -16,7 +16,7 @@
         },
         {
           "id": "b",
-          "text": "Через JSON-сериализацию --- данные конвертируются в текст и обратно"
+          "text": "Через shared memory (mmap) --- файл отображается в память обоих процессов"
         },
         {
           "id": "c",
@@ -24,7 +24,7 @@
         },
         {
           "id": "d",
-          "text": "Через shared memory (mmap) --- файл отображается в память обоих процессов"
+          "text": "Через JSON-сериализацию --- данные конвертируются в текст и обратно"
         }
       ],
       "correctAnswer": "a",
@@ -39,22 +39,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Pandas использует собственный формат хранения (NumPy-backed), несовместимый с Arrow --- данные копируются при конвертации"
-        },
-        {
-          "id": "b",
           "text": "Pandas требует данные в формате JSON, а Arrow хранит бинарные данные"
         },
         {
+          "id": "b",
+          "text": "Pandas использует собственный формат хранения (NumPy-backed), несовместимый с Arrow --- данные копируются при конвертации"
+        },
+        {
           "id": "c",
-          "text": "Pandas работает только с данными в оперативной памяти, а Arrow --- на диске"
+          "text": "to_pandas() всегда создаёт копию для безопасности --- это настройка по умолчанию, которую можно отключить"
         },
         {
           "id": "d",
-          "text": "to_pandas() всегда создаёт копию для безопасности --- это настройка по умолчанию, которую можно отключить"
+          "text": "Pandas работает только с данными в оперативной памяти, а Arrow --- на диске"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Pandas использует NumPy-backed формат хранения, который отличается от Arrow columnar format. При вызове to_pandas() данные копируются из Arrow-буферов в NumPy-массивы. Для больших данных предпочтительнее оставаться в Arrow-формате (to_arrow_table()).",
       "bloomLevel": "analytical",
       "studyHint": "Arrow → PyArrow = zero-copy. Arrow → Pandas = copy. Причина: разные форматы хранения в памяти."
@@ -66,11 +66,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Pandas DataFrame"
+          "text": "Список Python-словарей"
         },
         {
           "id": "b",
-          "text": "List[pa.RecordBatch] --- список PyArrow RecordBatch"
+          "text": "Pandas DataFrame"
         },
         {
           "id": "c",
@@ -78,10 +78,10 @@
         },
         {
           "id": "d",
-          "text": "Список Python-словарей"
+          "text": "List[pa.RecordBatch] --- список PyArrow RecordBatch"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "collect() возвращает List[pa.RecordBatch] --- это нативный формат результата DataFusion. RecordBatch --- это набор колонок в Arrow-формате. Для получения единой Table используйте to_arrow_table(), для Pandas --- to_pandas().",
       "bloomLevel": "conceptual",
       "studyHint": "collect() = List[RecordBatch]. Это базовый формат, из которого получаются все остальные."
@@ -93,22 +93,22 @@
       "options": [
         {
           "id": "a",
-          "text": "ctx.register_polars(\"name\", polars_df) --- прямая регистрация Polars DataFrame"
-        },
-        {
-          "id": "b",
           "text": "Конвертировать в Arrow Table (polars_df.to_arrow()) и зарегистрировать через register_record_batches()"
         },
         {
+          "id": "b",
+          "text": "ctx.register_polars(\"name\", polars_df) --- прямая регистрация Polars DataFrame"
+        },
+        {
           "id": "c",
-          "text": "Сохранить в CSV и прочитать через register_csv()"
+          "text": "Polars и DataFusion несовместимы --- нужно использовать Pandas как промежуточный формат"
         },
         {
           "id": "d",
-          "text": "Polars и DataFusion несовместимы --- нужно использовать Pandas как промежуточный формат"
+          "text": "Сохранить в CSV и прочитать через register_csv()"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Polars поддерживает Apache Arrow как формат хранения. Данные конвертируются через polars_df.to_arrow(), затем регистрируются в DataFusion через register_record_batches(). Обратный путь: DataFusion → to_arrow_table() → pl.from_arrow().",
       "bloomLevel": "applied",
       "studyHint": "Arrow --- lingua franca. Polars → to_arrow() → DataFusion. DataFusion → to_arrow_table() → pl.from_arrow()."
@@ -120,7 +120,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Всегда --- DataFusion быстрее любых альтернатив"
+          "text": "Только для обработки данных размером более 100 ГБ"
         },
         {
           "id": "b",
@@ -128,11 +128,11 @@
         },
         {
           "id": "c",
-          "text": "Только для чтения Parquet-файлов --- в остальном Pandas лучше"
+          "text": "Всегда --- DataFusion быстрее любых альтернатив"
         },
         {
           "id": "d",
-          "text": "Только для обработки данных размером более 100 ГБ"
+          "text": "Только для чтения Parquet-файлов --- в остальном Pandas лучше"
         }
       ],
       "correctAnswer": "b",

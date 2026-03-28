@@ -1,19 +1,33 @@
 {
   "lessonSlug": "07-comet/01-comet-overview",
   "moduleId": "07-comet",
-  "_meta": { "idPrefix": "df-m07-01" },
+  "_meta": {
+    "idPrefix": "df-m07-01"
+  },
   "questions": [
     {
       "id": "df-m07-01-q1",
       "type": "multiple-choice",
       "question": "Какую проблему JVM решает Apache Comet при выполнении аналитических запросов в Spark?",
       "options": [
-        { "id": "a", "text": "GC-паузы от миллионов промежуточных объектов, row-based промежуточное представление в WSCG и ограниченная SIMD-векторизация JIT-компилятором" },
-        { "id": "b", "text": "Отсутствие поддержки SQL в Spark — Comet добавляет SQL-парсер" },
-        { "id": "c", "text": "Невозможность чтения Parquet в стандартном Spark" },
-        { "id": "d", "text": "Ограничение Spark до одного ядра CPU — Comet добавляет параллелизм" }
+        {
+          "id": "a",
+          "text": "Ограничение Spark до одного ядра CPU — Comet добавляет параллелизм"
+        },
+        {
+          "id": "b",
+          "text": "GC-паузы от миллионов промежуточных объектов, row-based промежуточное представление в WSCG и ограниченная SIMD-векторизация JIT-компилятором"
+        },
+        {
+          "id": "c",
+          "text": "Невозможность чтения Parquet в стандартном Spark"
+        },
+        {
+          "id": "d",
+          "text": "Отсутствие поддержки SQL в Spark — Comet добавляет SQL-парсер"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Spark Whole-Stage CodeGen работает с row-based представлением (InternalRow), создаёт миллионы промежуточных объектов (GC pressure), а JVM JIT не гарантирует SIMD-векторизацию hot loops. Comet заменяет JVM-исполнение на нативное через DataFusion, где данные остаются в Arrow columnar формате и обрабатываются векторизированно.",
       "bloomLevel": "conceptual",
       "studyHint": "Три узких места JVM в Spark: GC, row-based InternalRow, отсутствие гарантированной SIMD-векторизации. Comet устраняет все три."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "CometPlugin регистрирует два правила в Spark. Что делает каждое из них?",
       "options": [
-        { "id": "a", "text": "CometScanRule заменяет Parquet scan на нативный (CometScanExec), CometExecRule заменяет операторы физического плана (Filter, Project, Aggregate, Join) на Comet-обёртки" },
-        { "id": "b", "text": "CometScanRule читает метаданные таблиц, CometExecRule оптимизирует логический план Catalyst" },
-        { "id": "c", "text": "CometScanRule заменяет SQL-парсер, CometExecRule заменяет Catalyst Optimizer" },
-        { "id": "d", "text": "Оба правила делают одно и то же — заменяют все операторы одновременно" }
+        {
+          "id": "a",
+          "text": "CometScanRule читает метаданные таблиц, CometExecRule оптимизирует логический план Catalyst"
+        },
+        {
+          "id": "b",
+          "text": "CometScanRule заменяет SQL-парсер, CometExecRule заменяет Catalyst Optimizer"
+        },
+        {
+          "id": "c",
+          "text": "CometScanRule заменяет Parquet scan на нативный (CometScanExec), CometExecRule заменяет операторы физического плана (Filter, Project, Aggregate, Join) на Comet-обёртки"
+        },
+        {
+          "id": "d",
+          "text": "Оба правила делают одно и то же — заменяют все операторы одновременно"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "CometPlugin через CometSparkSessionExtensions добавляет два правила через injectColumnarRule: CometScanRule заменяет FileSourceScanExec на CometScanExec (нативный Parquet reader), CometExecRule заменяет физические операторы (Filter, Project, Aggregate, Sort, Join) на Comet-обёртки, которые делегируют исполнение DataFusion.",
       "bloomLevel": "conceptual",
       "studyHint": "Два правила: CometScanRule → нативный scan. CometExecRule → нативные операторы. Оба через injectColumnarRule."
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "Почему Comet использует injectColumnarRule, а не injectOptimizerRule для внедрения своих правил?",
       "options": [
-        { "id": "a", "text": "Comet работает на уровне физического плана (замена SparkPlan-операторов), а не логического — injectColumnarRule предназначен именно для замены физических операторов" },
-        { "id": "b", "text": "injectOptimizerRule не поддерживается в Spark 3.5" },
-        { "id": "c", "text": "injectColumnarRule быстрее в runtime" },
-        { "id": "d", "text": "Comet работает на уровне логического плана, но использует columnar rule из-за бага в Spark" }
+        {
+          "id": "a",
+          "text": "injectOptimizerRule не поддерживается в Spark 3.5"
+        },
+        {
+          "id": "b",
+          "text": "injectColumnarRule быстрее в runtime"
+        },
+        {
+          "id": "c",
+          "text": "Comet работает на уровне логического плана, но использует columnar rule из-за бага в Spark"
+        },
+        {
+          "id": "d",
+          "text": "Comet работает на уровне физического плана (замена SparkPlan-операторов), а не логического — injectColumnarRule предназначен именно для замены физических операторов"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "injectColumnarRule — точка расширения Spark для замены физических операторов на columnar-реализации. Comet заменяет SparkPlan-узлы (FilterExec → CometFilterExec), что является физической трансформацией. injectOptimizerRule работает с логическим планом — Comet не трансформирует логику запроса.",
       "bloomLevel": "applied",
       "studyHint": "injectColumnarRule = физический план. injectOptimizerRule = логический план. Comet заменяет физические операторы → columnarRule."
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "В бенчмарках TPC-H SF100 Comet показывает неравномерный прирост: 3-4x на Scan+Filter+Project, но только 1.5-2x на Complex Join+Aggregation. Чем объясняется разница?",
       "options": [
-        { "id": "a", "text": "Scan+Filter+Project максимально выигрывают от нативного Parquet-ридера и SIMD-фильтрации, а join-алгоритмы DataFusion сопоставимы по эффективности с Spark WSCG" },
-        { "id": "b", "text": "Complex Join всегда выполняется через fallback на JVM" },
-        { "id": "c", "text": "Comet не поддерживает join-операторы — прирост 1.5x только от scan" },
-        { "id": "d", "text": "Разница случайна и зависит от конфигурации оборудования" }
+        {
+          "id": "a",
+          "text": "Complex Join всегда выполняется через fallback на JVM"
+        },
+        {
+          "id": "b",
+          "text": "Comet не поддерживает join-операторы — прирост 1.5x только от scan"
+        },
+        {
+          "id": "c",
+          "text": "Разница случайна и зависит от конфигурации оборудования"
+        },
+        {
+          "id": "d",
+          "text": "Scan+Filter+Project максимально выигрывают от нативного Parquet-ридера и SIMD-фильтрации, а join-алгоритмы DataFusion сопоставимы по эффективности с Spark WSCG"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Для Scan+Filter+Project основной выигрыш — нативный Parquet reader, Arrow columnar формат и SIMD-фильтрация. Для Complex Join+Aggregation алгоритмы join (HashJoin, SortMergeJoin) в DataFusion и Spark WSCG сопоставимы по эффективности — выигрыш приходит в основном от отсутствия row-to-columnar конвертации.",
       "bloomLevel": "analytical",
       "studyHint": "Scan/Filter/Project → макс. прирост (нативный Parquet + SIMD). Join/Agg → умеренный (алгоритмы сопоставимы, выигрыш от columnar формата)."
@@ -68,10 +118,22 @@
       "type": "multiple-choice",
       "question": "Comet обеспечивает zero code changes для приложений Spark. Что это означает на практике?",
       "options": [
-        { "id": "a", "text": "Существующие Spark-приложения (SQL, DataFrame API) работают без модификации кода — достаточно добавить JAR и установить spark.plugins=org.apache.comet.CometPlugin" },
-        { "id": "b", "text": "Comet не требует установки Java — работает без JVM" },
-        { "id": "c", "text": "Spark-приложения автоматически переписываются на Rust при компиляции" },
-        { "id": "d", "text": "Comet заменяет Spark целиком — приложения запускаются напрямую на DataFusion" }
+        {
+          "id": "a",
+          "text": "Существующие Spark-приложения (SQL, DataFrame API) работают без модификации кода — достаточно добавить JAR и установить spark.plugins=org.apache.comet.CometPlugin"
+        },
+        {
+          "id": "b",
+          "text": "Comet не требует установки Java — работает без JVM"
+        },
+        {
+          "id": "c",
+          "text": "Spark-приложения автоматически переписываются на Rust при компиляции"
+        },
+        {
+          "id": "d",
+          "text": "Comet заменяет Spark целиком — приложения запускаются напрямую на DataFusion"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Zero code changes означает: подключение Comet через --packages и spark.plugins — никаких изменений в SQL-запросах, DataFrame API или бизнес-логике. CometPlugin перехватывает физический план через стандартный SparkPlugin API и заменяет операторы прозрачно. 97% тестов Spark SQL проходят без изменений.",

@@ -1,17 +1,31 @@
 {
   "lessonSlug": "07-comet/03-native-scan-and-shuffle",
   "moduleId": "07-comet",
-  "_meta": { "idPrefix": "df-m07-03" },
+  "_meta": {
+    "idPrefix": "df-m07-03"
+  },
   "questions": [
     {
       "id": "df-m07-03-q1",
       "type": "multiple-choice",
       "question": "Comet предоставляет три реализации scan (native_comet, native_datafusion, native_iceberg_compat). Какая используется по умолчанию и почему?",
       "options": [
-        { "id": "a", "text": "native_comet — собственный Parquet-ридер с максимальной совместимостью со Spark (decimal precision, timestamp rebase, int96 calendar)" },
-        { "id": "b", "text": "native_datafusion — стандартный DataFusion ParquetExec, так как DataFusion является основным engine" },
-        { "id": "c", "text": "native_iceberg_compat — нативный Iceberg reader, так как Iceberg стал стандартом" },
-        { "id": "d", "text": "Автоматический выбор на основе формата файла" }
+        {
+          "id": "a",
+          "text": "native_comet — собственный Parquet-ридер с максимальной совместимостью со Spark (decimal precision, timestamp rebase, int96 calendar)"
+        },
+        {
+          "id": "b",
+          "text": "Автоматический выбор на основе формата файла"
+        },
+        {
+          "id": "c",
+          "text": "native_iceberg_compat — нативный Iceberg reader, так как Iceberg стал стандартом"
+        },
+        {
+          "id": "d",
+          "text": "native_datafusion — стандартный DataFusion ParquetExec, так как DataFusion является основным engine"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "native_comet используется по умолчанию, потому что поддерживает все Spark-специфичные правила чтения Parquet: decimal precision, timestamp rebase, int96 calendar. native_datafusion лучше для сложных типов (Map, Array), но не воспроизводит все Spark quirks. native_iceberg_compat — экспериментальный (с 0.12.0).",
@@ -23,10 +37,22 @@
       "type": "multiple-choice",
       "question": "CometScanExec оборачивает FileSourceScanExec (V1), а CometBatchScanExec оборачивает BatchScanExec (V2). Как определяется, какую обёртку использовать?",
       "options": [
-        { "id": "a", "text": "Автоматически по типу источника данных — V1 (стандартный Parquet) → CometScanExec, V2 (Iceberg, Delta Lake) → CometBatchScanExec" },
-        { "id": "b", "text": "Пользователь указывает в конфигурации spark.comet.scan.version" },
-        { "id": "c", "text": "Всегда используется CometScanExec, V2 не поддерживается" },
-        { "id": "d", "text": "CometBatchScanExec используется только для CSV-файлов" }
+        {
+          "id": "a",
+          "text": "Автоматически по типу источника данных — V1 (стандартный Parquet) → CometScanExec, V2 (Iceberg, Delta Lake) → CometBatchScanExec"
+        },
+        {
+          "id": "b",
+          "text": "CometBatchScanExec используется только для CSV-файлов"
+        },
+        {
+          "id": "c",
+          "text": "Пользователь указывает в конфигурации spark.comet.scan.version"
+        },
+        {
+          "id": "d",
+          "text": "Всегда используется CometScanExec, V2 не поддерживается"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "CometScanRule в transform-блоке проверяет тип Spark-оператора: FileSourceScanExec (V1 API, стандартный Parquet) → CometScanExec, BatchScanExec (V2 API, Iceberg/Delta) → CometBatchScanExec. Выбор определяется конфигурацией источника данных (catalog), а не пользователем.",
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "Нативный columnar shuffle в Comet использует Arrow IPC вместо стандартного UnsafeRow. Какие три преимущества это даёт?",
       "options": [
-        { "id": "a", "text": "Нет ColumnarToRow/RowToColumnar конвертации, лучшая компрессия columnar данных, нативная поддержка сложных типов (Array, Struct, Map) через Arrow IPC" },
-        { "id": "b", "text": "Меньший размер сообщений, шифрование данных, автоматическая дедупликация" },
-        { "id": "c", "text": "Поддержка HTTP/2 протокола, сжатие Zstd, кеширование на диске" },
-        { "id": "d", "text": "Только отсутствие ColumnarToRow конвертации — остальные преимущества незначительны" }
+        {
+          "id": "a",
+          "text": "Поддержка HTTP/2 протокола, сжатие Zstd, кеширование на диске"
+        },
+        {
+          "id": "b",
+          "text": "Только отсутствие ColumnarToRow конвертации — остальные преимущества незначительны"
+        },
+        {
+          "id": "c",
+          "text": "Нет ColumnarToRow/RowToColumnar конвертации, лучшая компрессия columnar данных, нативная поддержка сложных типов (Array, Struct, Map) через Arrow IPC"
+        },
+        {
+          "id": "d",
+          "text": "Меньший размер сообщений, шифрование данных, автоматическая дедупликация"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Три преимущества columnar shuffle: (1) нет ColumnarToRow/RowToColumnar — данные остаются в Arrow формате; (2) columnar формат сжимается эффективнее row-based UnsafeRow; (3) Arrow IPC нативно передаёт сложные типы (Array, Struct, Map, LargeUtf8) без специальной обработки.",
       "bloomLevel": "conceptual",
       "studyHint": "Columnar shuffle: нет конвертации + лучшая компрессия + нативные сложные типы. Всё через Arrow IPC."
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "DiskManager в Comet сбрасывает данные на диск при превышении off-heap лимита. В каком формате сохраняются данные и почему?",
       "options": [
-        { "id": "a", "text": "Arrow IPC — данные уже в Arrow-формате, поэтому spill и восстановление не требуют конвертации, а на NVMe-дисках overhead минимален" },
-        { "id": "b", "text": "Parquet — для максимальной компрессии на диске" },
-        { "id": "c", "text": "JSON — для человекочитаемой диагностики" },
-        { "id": "d", "text": "Protobuf — тот же формат, что используется для JNI" }
+        {
+          "id": "a",
+          "text": "Protobuf — тот же формат, что используется для JNI"
+        },
+        {
+          "id": "b",
+          "text": "Arrow IPC — данные уже в Arrow-формате, поэтому spill и восстановление не требуют конвертации, а на NVMe-дисках overhead минимален"
+        },
+        {
+          "id": "c",
+          "text": "JSON — для человекочитаемой диагностики"
+        },
+        {
+          "id": "d",
+          "text": "Parquet — для максимальной компрессии на диске"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "DiskManager сохраняет данные в формате Arrow IPC. Это оптимально: данные уже находятся в Arrow RecordBatch — spill не требует конвертации (нулевой overhead сериализации). При чтении — merge из in-memory и on-disk буферов. На NVMe-дисках bottleneck — сериализация, а не I/O.",
       "bloomLevel": "applied",
       "studyHint": "Spill в Arrow IPC: нулевая конвертация (данные уже Arrow), быстрый merge, NVMe bottleneck = сериализация, не I/O."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "CometScanRule работает только с Parquet-файлами. Запрос читает CSV-таблицу и join'ит с Parquet-таблицей. Как Comet обработает этот запрос?",
       "options": [
-        { "id": "a", "text": "Parquet-сторона будет прочитана нативно (CometScanExec), CSV-сторона — стандартным Spark scan. Но CometExecRule может не заменить join stage из-за all-or-nothing fallback, если CSV-ветка не полностью нативная" },
-        { "id": "b", "text": "Comet конвертирует CSV в Parquet на лету и обработает оба source нативно" },
-        { "id": "c", "text": "Весь запрос выполнится в JVM — Comet отключается при наличии любого не-Parquet source" },
-        { "id": "d", "text": "CSV-сторона игнорируется, join выполняется только по Parquet-данным" }
+        {
+          "id": "a",
+          "text": "CSV-сторона игнорируется, join выполняется только по Parquet-данным"
+        },
+        {
+          "id": "b",
+          "text": "Comet конвертирует CSV в Parquet на лету и обработает оба source нативно"
+        },
+        {
+          "id": "c",
+          "text": "Весь запрос выполнится в JVM — Comet отключается при наличии любого не-Parquet source"
+        },
+        {
+          "id": "d",
+          "text": "Parquet-сторона будет прочитана нативно (CometScanExec), CSV-сторона — стандартным Spark scan. Но CometExecRule может не заменить join stage из-за all-or-nothing fallback, если CSV-ветка не полностью нативная"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "CometScanRule заменяет только Parquet-scan на CometScanExec. CSV scan остаётся стандартным Spark-оператором. CometExecRule оценивает каждый query stage: если stage содержит только Comet-операторы — нативное исполнение. Если stage включает не-Comet scan (CSV) — all-or-nothing fallback на этот stage.",
       "bloomLevel": "analytical",
       "studyHint": "Parquet → CometScanExec. CSV → Spark scan. CometExecRule оценивает stage целиком: если есть не-Comet узлы → fallback."

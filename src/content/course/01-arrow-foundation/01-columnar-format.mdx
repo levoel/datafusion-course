@@ -19,14 +19,14 @@ topics: ["Columnar Format", "Row Format", "OLAP", "Apache Arrow", "Zero-Copy"]
 
 <DiagramContainer title="Row Storage vs Column Storage" className="my-6">
   <FlowRow className="gap-6 justify-center flex-wrap">
-    <DataBox label="Row Storage (OLTP)" className="border-red-500/30 w-56">
+    <DataBox label="Row Storage (OLTP)" tooltip="Строчное хранение: все поля записи рядом в памяти, оптимально для INSERT/UPDATE/DELETE" className="border-red-500/30 w-56">
       <div className="text-xs space-y-1 font-mono">
         <div>[id=1, name="Иван", salary=80000]</div>
         <div>[id=2, name="Мария", salary=95000]</div>
         <div>[id=3, name="Пётр", salary=72000]</div>
       </div>
     </DataBox>
-    <DataBox label="Column Storage (OLAP)" className="border-emerald-500/30 w-56">
+    <DataBox label="Column Storage (OLAP)" tooltip="Колоночное хранение: значения одной колонки непрерывно, оптимально для аналитики" className="border-emerald-500/30 w-56">
       <div className="text-xs space-y-1 font-mono">
         <div>id:     [1, 2, 3]</div>
         <div>name:   ["Иван", "Мария", "Пётр"]</div>
@@ -75,21 +75,19 @@ Zero-copy означает, что данные **не копируются** п
 <DiagramContainer title="Zero-Copy в действии" className="my-6">
   <FlowColumn className="p-4 gap-2">
     <FlowRow className="gap-3 justify-center flex-wrap">
-      <FlowNode variant="input">Python (PyArrow)</FlowNode>
-      <FlowNode variant="input">Rust (arrow-rs)</FlowNode>
-      <FlowNode variant="input">Java (Arrow Java)</FlowNode>
+      <FlowNode variant="input" tooltip="Python-реализация Arrow через C++ backend. Интеграция с Pandas, Polars, DuckDB">Python (PyArrow)</FlowNode>
+      <FlowNode variant="input" tooltip="Чистая Rust-реализация Arrow. Основная зависимость DataFusion">Rust (arrow-rs)</FlowNode>
+      <FlowNode variant="input" tooltip="Java-реализация Arrow с off-heap памятью для Spark и Flink">Java (Arrow Java)</FlowNode>
     </FlowRow>
     <Arrow direction="down" />
-    <Tooltip content="Все реализации работают с одним byte layout. Shared memory pointer вместо сериализации.">
-      <DataBox label="Arrow Memory (один byte layout)" className="border-blue-500/30 w-72 mx-auto">
+      <DataBox label="Arrow Memory (один byte layout)" tooltip="Все реализации работают с одним byte layout. Shared memory pointer вместо сериализации" className="border-blue-500/30 w-72 mx-auto">
         <div className="text-xs space-y-1">
           <div>Validity Bitmap + Data Buffer</div>
           <div>Идентичные байты во всех языках</div>
         </div>
       </DataBox>
-    </Tooltip>
     <Arrow direction="down" />
-    <FlowNode variant="output">Обработка без десериализации</FlowNode>
+    <FlowNode variant="output" tooltip="Данные уже в нужном формате — нет overhead конвертации между языками">Обработка без десериализации</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 
@@ -135,3 +133,7 @@ DataFusion обрабатывает данные потоково: каждый 
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Apache Arrow -- единая спецификация колоночного in-memory формата
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Zero-copy: данные передаются указателем, не копированием
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> RecordBatch -- основная единица данных, поток RecordBatch -- модель обработки DataFusion
+"text-emerald-400" size="1.2em" /> RecordBatch -- основная единица данных, поток RecordBatch -- модель обработки DataFusion
+�м
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> RecordBatch -- основная единица данных, поток RecordBatch -- модель обработки DataFusion
+ь обработки DataFusion

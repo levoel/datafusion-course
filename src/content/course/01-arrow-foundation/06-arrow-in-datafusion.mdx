@@ -21,21 +21,21 @@ topics: ["DataFusion Arrow Integration", "RecordBatch", "ArrayRef", "Compute Ker
 
 <DiagramContainer title="RecordBatch Pipeline в DataFusion" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">TableScan (Parquet/CSV/Memory)</FlowNode>
+    <FlowNode variant="input" tooltip="Leaf-оператор: читает данные из Parquet, CSV или MemTable и создаёт начальный поток RecordBatch">TableScan (Parquet/CSV/Memory)</FlowNode>
     <Arrow direction="down" />
-    <DataBox label="RecordBatch Stream" className="border-blue-500/30 w-56 mx-auto">
+    <DataBox label="RecordBatch Stream" tooltip="Асинхронный поток данных: каждый batch содержит до 8192 строк для баланса SIMD и cache" className="border-blue-500/30 w-56 mx-auto">
       <div className="text-xs font-mono">batch_size: 8192 rows</div>
     </DataBox>
     <Arrow direction="down" />
-    <FlowNode variant="process">FilterExec (WHERE clause)</FlowNode>
+    <FlowNode variant="process" tooltip="Применяет предикат WHERE к каждому RecordBatch через arrow compute kernels">FilterExec (WHERE clause)</FlowNode>
     <Arrow direction="down" />
-    <DataBox label="RecordBatch Stream (filtered)" className="border-blue-500/30 w-56 mx-auto">
+    <DataBox label="RecordBatch Stream (filtered)" tooltip="Поток после фильтрации: количество строк ≤ исходного batch_size" className="border-blue-500/30 w-56 mx-auto">
       <div className="text-xs font-mono">rows &le; 8192</div>
     </DataBox>
     <Arrow direction="down" />
-    <FlowNode variant="process">ProjectionExec (SELECT columns)</FlowNode>
+    <FlowNode variant="process" tooltip="Вычисляет выражения SELECT: выбирает колонки, применяет функции, создаёт новые колонки">ProjectionExec (SELECT columns)</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="output">Результат: поток RecordBatch</FlowNode>
+    <FlowNode variant="output" tooltip="Финальный поток RecordBatch, готовый для потребления клиентом">Результат: поток RecordBatch</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 
@@ -175,19 +175,19 @@ let output_schema: SchemaRef = plan.schema();
 
 <DiagramContainer title="Schema Propagation через план" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="TableScan" className="border-slate-400/30 w-64 mx-auto">
+    <DataBox label="TableScan" tooltip="Схема определяется из TableProvider: все колонки таблицы доступны" className="border-slate-400/30 w-64 mx-auto">
       <div className="text-xs font-mono">schema: (id: Int64, name: Utf8, salary: Float64)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="FilterExec (salary > 50000)" className="border-yellow-500/30 w-64 mx-auto">
+    <DataBox label="FilterExec (salary > 50000)" tooltip="Filter сохраняет схему — фильтрует строки, не колонки" className="border-yellow-500/30 w-64 mx-auto">
       <div className="text-xs font-mono">schema: (id: Int64, name: Utf8, salary: Float64)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="ProjectionExec (SELECT name, salary)" className="border-blue-500/30 w-64 mx-auto">
+    <DataBox label="ProjectionExec (SELECT name, salary)" tooltip="Projection сужает схему: из 3 колонок выбираются 2" className="border-blue-500/30 w-64 mx-auto">
       <div className="text-xs font-mono">schema: (name: Utf8, salary: Float64)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="Результат" className="border-emerald-500/30 w-64 mx-auto">
+    <DataBox label="Результат" tooltip="Финальный RecordBatch содержит только запрошенные колонки" className="border-emerald-500/30 w-64 mx-auto">
       <div className="text-xs font-mono">RecordBatch с 2 колонками</div>
     </DataBox>
   </FlowColumn>

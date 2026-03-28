@@ -16,43 +16,43 @@ topics: ["review", "learning path", "Rust", "Comet", "Python", "community", "car
 <DiagramContainer title="Модули курса: M00--M10" className="my-6">
   <FlowColumn className="gap-2 text-sm">
     <FlowRow className="gap-3 justify-center flex-wrap">
-      <DataBox label="M00" className="border-gray-500/30 w-40">
+      <DataBox label="M00" tooltip="Введение — структура курса, предварительные требования, среда разработки" className="border-gray-500/30 w-40">
         <div className="text-xs">Введение в курс</div>
       </DataBox>
-      <DataBox label="M01" className="border-blue-500/30 w-40">
+      <DataBox label="M01" tooltip="Apache Arrow — columnar формат, типы данных, RecordBatch, Parquet, IPC" className="border-blue-500/30 w-40">
         <div className="text-xs">Arrow Foundation</div>
       </DataBox>
-      <DataBox label="M02" className="border-emerald-500/30 w-40">
+      <DataBox label="M02" tooltip="Архитектура DataFusion — LogicalPlan, PhysicalPlan, каталог, оптимизация" className="border-emerald-500/30 w-40">
         <div className="text-xs">Архитектура</div>
       </DataBox>
     </FlowRow>
     <FlowRow className="gap-3 justify-center flex-wrap">
-      <DataBox label="M03" className="border-amber-500/30 w-40">
+      <DataBox label="M03" tooltip="SQL и DataFrame API — синтаксис, оконные функции, подзапросы, CTEs, EXPLAIN" className="border-amber-500/30 w-40">
         <div className="text-xs">SQL и DataFrame</div>
       </DataBox>
-      <DataBox label="M04" className="border-purple-500/30 w-40">
+      <DataBox label="M04" tooltip="DataFusion Python — SessionContext, UDF/UDAF, интеграция с PyArrow/Pandas" className="border-purple-500/30 w-40">
         <div className="text-xs">DataFusion Python</div>
       </DataBox>
-      <DataBox label="M05" className="border-pink-500/30 w-40">
+      <DataBox label="M05" tooltip="Расширяемость — TableProvider, CatalogProvider, OptimizerRule, кастомные функции" className="border-pink-500/30 w-40">
         <div className="text-xs">Расширяемость</div>
       </DataBox>
     </FlowRow>
     <FlowRow className="gap-3 justify-center flex-wrap">
-      <DataBox label="M06" className="border-cyan-500/30 w-40">
+      <DataBox label="M06" tooltip="Оптимизация запросов — rule-based, cost-based, predicate pushdown, join reordering" className="border-cyan-500/30 w-40">
         <div className="text-xs">Оптимизация</div>
       </DataBox>
-      <DataBox label="M07" className="border-orange-500/30 w-40">
+      <DataBox label="M07" tooltip="Apache Comet — DataFusion как ускоритель Spark, Native Shuffle, Parquet write" className="border-orange-500/30 w-40">
         <div className="text-xs">Comet</div>
       </DataBox>
-      <DataBox label="M08" className="border-red-500/30 w-40">
+      <DataBox label="M08" tooltip="Распределённое выполнение — Ballista, DataFusion Ray, кластерные стратегии" className="border-red-500/30 w-40">
         <div className="text-xs">Распределённое</div>
       </DataBox>
     </FlowRow>
     <FlowRow className="gap-3 justify-center flex-wrap">
-      <DataBox label="M09" className="border-teal-500/30 w-40">
+      <DataBox label="M09" tooltip="Экосистема — FDAP-стек, Arroyo, OpenObserve, Cube, сообщество и будущее" className="border-teal-500/30 w-40">
         <div className="text-xs">Экосистема</div>
       </DataBox>
-      <DataBox label="M10" className="border-yellow-500/30 w-40">
+      <DataBox label="M10" tooltip="Capstone Project — проектирование и реализация аналитического движка" className="border-yellow-500/30 w-40">
         <div className="text-xs">Capstone Project</div>
       </DataBox>
     </FlowRow>
@@ -89,7 +89,7 @@ topics: ["review", "learning path", "Rust", "Comet", "Python", "community", "car
 
 <DiagramContainer title="Траектории после курса" className="my-6">
   <FlowRow className="gap-6 justify-center flex-wrap">
-    <DataBox label="Rust: ядро DataFusion" className="border-orange-500/30 w-64">
+    <DataBox label="Rust: ядро DataFusion" tooltip="Контрибьюция в ядро и создание кастомных движков — фундамент из M02, M05, M06" className="border-orange-500/30 w-64">
       <div className="text-xs space-y-1">
         <div>Контрибьюция в apache/datafusion</div>
         <div>Кастомные движки на DataFusion</div>
@@ -97,7 +97,7 @@ topics: ["review", "learning path", "Rust", "Comet", "Python", "community", "car
         <div>M02 + M05 + M06 --- ваша база</div>
       </div>
     </DataBox>
-    <DataBox label="Comet: Spark-экосистема" className="border-blue-500/30 w-64">
+    <DataBox label="Comet: Spark-экосистема" tooltip="Ускорение Spark через Comet и миграция на нативное выполнение — фундамент из M07, M08" className="border-blue-500/30 w-64">
       <div className="text-xs space-y-1">
         <div>Ускорение существующих Spark-пайплайнов</div>
         <div>Миграция с Spark на нативное выполнение</div>
@@ -105,7 +105,7 @@ topics: ["review", "learning path", "Rust", "Comet", "Python", "community", "car
         <div>M07 + M08 --- ваша база</div>
       </div>
     </DataBox>
-    <DataBox label="Python: data science" className="border-emerald-500/30 w-64">
+    <DataBox label="Python: data science" tooltip="DataFusion Python для ETL и аналитики — замена Pandas/Spark для Parquet-данных" className="border-emerald-500/30 w-64">
       <div className="text-xs space-y-1">
         <div>DataFusion Python для ETL/аналитики</div>
         <div>Замена Pandas/Spark для Parquet-данных</div>

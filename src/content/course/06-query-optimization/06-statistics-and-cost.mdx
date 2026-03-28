@@ -250,19 +250,19 @@ WHERE name LIKE '%partitions%'
 
 <DiagramContainer title="Диагностика по метрикам EXPLAIN ANALYZE" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="row_groups_pruned = 0" className="border-red-500/30">
+    <DataBox label="row_groups_pruned = 0" className="border-red-500/30" tooltip="Нулевой pruning означает, что min/max статистика row groups не помогает — данные не отсортированы по фильтруемой колонке">
       <div className="text-xs">Данные не отсортированы по колонке фильтрации</div>
       <div className="text-xs mt-1 text-emerald-400">Решение: пересортировать Parquet по ключу фильтрации</div>
     </DataBox>
-    <DataBox label="spill_count > 0" className="border-red-500/30">
+    <DataBox label="spill_count > 0" className="border-red-500/30" tooltip="Spill на диск означает, что оператору не хватает памяти — увеличьте memory pool или уменьшите объём данных">
       <div className="text-xs">Нехватка памяти для sort/aggregate</div>
       <div className="text-xs mt-1 text-emerald-400">Решение: увеличить memory pool или оптимизировать запрос</div>
     </DataBox>
-    <DataBox label="bytes_scanned высок" className="border-yellow-500/30">
+    <DataBox label="bytes_scanned высок" className="border-yellow-500/30" tooltip="Большой объём чтения указывает на отсутствие projection или predicate pushdown — читаются лишние колонки/строки">
       <div className="text-xs">Нет projection pushdown или predicate pushdown</div>
       <div className="text-xs mt-1 text-emerald-400">Решение: проверить, что SELECT не использует ненужные колонки</div>
     </DataBox>
-    <DataBox label="NestedLoopJoin на больших таблицах" className="border-yellow-500/30">
+    <DataBox label="NestedLoopJoin на больших таблицах" className="border-yellow-500/30" tooltip="NestedLoopJoin O(N*M) на больших данных — признак отсутствия equi-предиката или неверного типа join">
       <div className="text-xs">Нет equi-предиката или неверный тип join</div>
       <div className="text-xs mt-1 text-emerald-400">Решение: добавить equi-join condition или переписать запрос</div>
     </DataBox>

@@ -17,13 +17,13 @@ topics: ["TableProvider", "ExecutionPlan", "MemoryStream", "filter pushdown", "p
 
 <DiagramContainer title="TableProvider → ExecutionPlan Pipeline" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">SQL: SELECT a, b FROM my_source WHERE a &gt; 10</FlowNode>
+    <FlowNode variant="input" tooltip="SQL-запрос с проекцией и фильтром запускает pipeline через TableProvider">SQL: SELECT a, b FROM my_source WHERE a &gt; 10</FlowNode>
     <Arrow direction="down" label="Планировщик" />
-    <FlowNode variant="process">TableProvider::scan(projection=[0,1], filters=[a &gt; 10], limit=None)</FlowNode>
+    <FlowNode variant="process" tooltip="Планировщик вызывает scan() с проекцией колонок и фильтрами — TableProvider решает, какие применить">TableProvider::scan(projection=[0,1], filters=[a &gt; 10], limit=None)</FlowNode>
     <Arrow direction="down" label="Физический план" />
-    <FlowNode variant="process">ExecutionPlan::execute(partition) → RecordBatchStream</FlowNode>
+    <FlowNode variant="process" tooltip="ExecutionPlan исполняет физический оператор, возвращая асинхронный поток RecordBatch">ExecutionPlan::execute(partition) → RecordBatchStream</FlowNode>
     <Arrow direction="down" label="Потоковое чтение" />
-    <FlowNode variant="output">RecordBatch → RecordBatch → ... → конец потока</FlowNode>
+    <FlowNode variant="output" tooltip="Результат — последовательность RecordBatch, потребляемых следующим оператором в конвейере">RecordBatch → RecordBatch → ... → конец потока</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

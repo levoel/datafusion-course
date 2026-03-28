@@ -316,23 +316,23 @@ LOCATION 's3://bucket/telemetry/';
 
 <DiagramContainer title="Точки расширения DataFusion" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="Данные" className="border-blue-500/30">
+    <DataBox label="Данные" className="border-blue-500/30" tooltip="Точки расширения для подключения произвольных источников данных и форматов файлов">
       <div className="text-xs"><b>TableProvider</b> — читать из любого источника</div>
       <div className="text-xs"><b>CatalogProvider</b> — организовать namespace</div>
       <div className="text-xs"><b>FileFormatFactory</b> — новые файловые форматы</div>
     </DataBox>
-    <DataBox label="Вычисления" className="border-emerald-500/30">
+    <DataBox label="Вычисления" className="border-emerald-500/30" tooltip="Расширение вычислительных возможностей: скалярные, агрегатные, оконные и табличные функции">
       <div className="text-xs"><b>ScalarUDFImpl</b> — скалярные функции</div>
       <div className="text-xs"><b>AggregateUDFImpl</b> — агрегации</div>
       <div className="text-xs"><b>WindowUDFImpl</b> — оконные функции</div>
       <div className="text-xs"><b>TableFunctionImpl</b> — табличные функции (UDTF)</div>
     </DataBox>
-    <DataBox label="Планирование" className="border-yellow-500/30">
+    <DataBox label="Планирование" className="border-yellow-500/30" tooltip="Расширение планировщика: собственные логические операторы и их физическая реализация">
       <div className="text-xs"><b>UserDefinedLogicalNodeCore</b> — кастомные операторы</div>
       <div className="text-xs"><b>ExtensionPlanner</b> — логика → физика</div>
       <div className="text-xs"><b>ExprPlanner</b> — расширение SQL-выражений</div>
     </DataBox>
-    <DataBox label="SQL-синтаксис" className="border-purple-500/30">
+    <DataBox label="SQL-синтаксис" className="border-purple-500/30" tooltip="Расширение SQL-синтаксиса: динамическое создание функций и таблиц через DDL-команды">
       <div className="text-xs"><b>FunctionFactory</b> — CREATE FUNCTION</div>
       <div className="text-xs"><b>TableProviderFactory</b> — CREATE EXTERNAL TABLE</div>
     </DataBox>

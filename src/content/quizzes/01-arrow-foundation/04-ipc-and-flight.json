@@ -20,11 +20,11 @@
         },
         {
           "id": "c",
-          "text": "Stream format работает только в памяти, File format — только на диске"
+          "text": "File format хранит данные по строкам, Stream format — по колонкам"
         },
         {
           "id": "d",
-          "text": "File format хранит данные по строкам, Stream format — по колонкам"
+          "text": "Stream format работает только в памяти, File format — только на диске"
         }
       ],
       "correctAnswer": "b",
@@ -43,18 +43,18 @@
         },
         {
           "id": "b",
-          "text": "Body IPC-сообщения содержит Arrow-буферы в нативном формате — десериализация сводится к чтению metadata и установке указателей, данные не копируются"
-        },
-        {
-          "id": "c",
           "text": "Каждое значение конвертируется из текста в бинарный формат при чтении"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Данные кешируются в RAM после первого чтения"
+        },
+        {
+          "id": "d",
+          "text": "Body IPC-сообщения содержит Arrow-буферы в нативном формате — десериализация сводится к чтению metadata и установке указателей, данные не копируются"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Arrow IPC body содержит буферы в нативном Arrow формате. Десериализация — это только чтение Flatbuffers metadata и установка указателей на буферы. Сами данные не копируются и не конвертируются. Для сравнения: CSV требует парсинга каждого значения из текста — 10 миллионов конвертаций для 1M строк x 10 колонок. Arrow IPC — ноль конвертаций.",
       "bloomLevel": "conceptual",
       "studyHint": "Сравните: CSV = O(n) парсинг per value. Arrow IPC = O(1) — только metadata + указатели."
@@ -66,22 +66,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Flight поддерживает больше языков программирования"
+          "text": "gRPC с Protobuf требует сериализации в wire format и обратно. Flight передаёт Arrow IPC буферы напрямую через gRPC streams, минуя Protobuf-сериализацию данных"
         },
         {
           "id": "b",
-          "text": "Flight использует HTTP вместо gRPC, что проще для интеграции"
+          "text": "Flight поддерживает больше языков программирования"
         },
         {
           "id": "c",
-          "text": "gRPC с Protobuf требует сериализации в wire format и обратно. Flight передаёт Arrow IPC буферы напрямую через gRPC streams, минуя Protobuf-сериализацию данных"
+          "text": "Flight использует HTTP вместо gRPC, что проще для интеграции"
         },
         {
           "id": "d",
           "text": "Flight работает быстрее, потому что не использует TCP/IP"
         }
       ],
-      "correctAnswer": "c",
+      "correctAnswer": "a",
       "explanation": "gRPC + Protobuf сериализует данные в Protobuf wire format на каждой границе. Для аналитических нагрузок (миллионы строк) overhead сериализации доминирует. Arrow Flight передаёт нативные Arrow IPC буферы через gRPC streams, минуя Protobuf-сериализацию данных. Flight работает поверх gRPC, а не вместо него.",
       "bloomLevel": "applied",
       "studyHint": "Flight = gRPC transport + Arrow IPC payload. Protobuf используется только для metadata, не для данных."
@@ -93,11 +93,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Отказоустойчивость — если один сервер упадёт, данные доступны на другом"
+          "text": "Версионирование — разные endpoints хранят разные версии данных"
         },
         {
           "id": "b",
-          "text": "Параллельное чтение — клиент отправляет DoGet на каждый endpoint параллельно и объединяет потоки RecordBatch"
+          "text": "Отказоустойчивость — если один сервер упадёт, данные доступны на другом"
         },
         {
           "id": "c",
@@ -105,10 +105,10 @@
         },
         {
           "id": "d",
-          "text": "Версионирование — разные endpoints хранят разные версии данных"
+          "text": "Параллельное чтение — клиент отправляет DoGet на каждый endpoint параллельно и объединяет потоки RecordBatch"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Endpoints позволяют параллельное чтение: каждый endpoint содержит часть данных (partition), клиент отправляет DoGet на каждый параллельно и объединяет потоки. Ballista (распределённый DataFusion) использует этот механизм для обмена данными между executor-ами.",
       "bloomLevel": "applied",
       "studyHint": "Endpoints = partitions на разных серверах. Параллелизм чтения — аналог partition scan."
@@ -124,18 +124,18 @@
         },
         {
           "id": "b",
-          "text": "Flight SQL добавляет SQL-семантику поверх Flight transport. Результаты возвращаются как Arrow RecordBatch, а не как JDBC ResultSet или ODBC буферы, исключая промежуточную конвертацию"
+          "text": "Flight SQL работает только с DataFusion, JDBC/ODBC — универсальны"
         },
         {
           "id": "c",
-          "text": "Flight SQL и JDBC/ODBC идентичны по производительности"
+          "text": "Flight SQL добавляет SQL-семантику поверх Flight transport. Результаты возвращаются как Arrow RecordBatch, а не как JDBC ResultSet или ODBC буферы, исключая промежуточную конвертацию"
         },
         {
           "id": "d",
-          "text": "Flight SQL работает только с DataFusion, JDBC/ODBC — универсальны"
+          "text": "Flight SQL и JDBC/ODBC идентичны по производительности"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Flight SQL — расширение Flight для SQL-интерфейса. Добавляет SQL-семантику (CommandStatementQuery, prepared statements, metadata API) поверх Flight transport. Результаты — Arrow RecordBatch напрямую, без конвертации в JDBC ResultSet (Java objects) или ODBC буферы (C-структуры).",
       "bloomLevel": "conceptual",
       "studyHint": "Flight SQL = SQL-интерфейс + Arrow-нативная передача. JDBC/ODBC = SQL-интерфейс + промежуточная конвертация."

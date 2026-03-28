@@ -12,22 +12,22 @@
       "options": [
         {
           "id": "a",
-          "text": "col() --- ссылка на колонку, lit() --- литеральное значение"
-        },
-        {
-          "id": "b",
           "text": "field() --- ссылка на поле, value() --- константное значение"
         },
         {
+          "id": "b",
+          "text": "ref() --- ссылка на данные, val() --- значение для сравнения"
+        },
+        {
           "id": "c",
-          "text": "column() --- имя колонки, constant() --- фиксированное значение"
+          "text": "col() --- ссылка на колонку, lit() --- литеральное значение"
         },
         {
           "id": "d",
-          "text": "ref() --- ссылка на данные, val() --- значение для сравнения"
+          "text": "column() --- имя колонки, constant() --- фиксированное значение"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Функции col() и lit() из модуля datafusion --- основа DataFrame API. col(\"amount\") создаёт ссылку на колонку, lit(100) --- литеральное значение. Комбинируя их, строятся выражения: col(\"amount\") > lit(100).",
       "bloomLevel": "conceptual",
       "studyHint": "col = Column, lit = Literal. Любое выражение строится из этих двух примитивов."
@@ -43,18 +43,18 @@
         },
         {
           "id": "b",
-          "text": "select() --- принимает выражения col() и вычисляемые поля с alias()"
+          "text": "project() --- проекция колонок по именам"
         },
         {
           "id": "c",
-          "text": "project() --- проекция колонок по именам"
+          "text": "select() --- принимает выражения col() и вычисляемые поля с alias()"
         },
         {
           "id": "d",
           "text": "columns() --- возвращает список колонок для обработки"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Метод select() принимает выражения на основе col() и позволяет создавать вычисляемые поля: df.select(col(\"region\"), (col(\"amount\") * lit(0.2)).alias(\"tax\")). alias() задаёт имя новой колонке.",
       "bloomLevel": "applied",
       "studyHint": "select() + alias() --- ваш инструмент для проекции и трансформации колонок."
@@ -66,7 +66,7 @@
       "options": [
         {
           "id": "a",
-          "text": "collect() возвращает List[RecordBatch] --- список батчей; to_arrow_table() объединяет все батчи в единую PyArrow Table"
+          "text": "collect() сохраняет Arrow-формат; to_arrow_table() конвертирует в Python-объекты"
         },
         {
           "id": "b",
@@ -74,14 +74,14 @@
         },
         {
           "id": "c",
-          "text": "collect() выполняет запрос синхронно; to_arrow_table() --- асинхронно"
+          "text": "collect() возвращает List[RecordBatch] --- список батчей; to_arrow_table() объединяет все батчи в единую PyArrow Table"
         },
         {
           "id": "d",
-          "text": "collect() сохраняет Arrow-формат; to_arrow_table() конвертирует в Python-объекты"
+          "text": "collect() выполняет запрос синхронно; to_arrow_table() --- асинхронно"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "collect() возвращает List[pa.RecordBatch] --- это нативный формат выполнения DataFusion. to_arrow_table() вызывает collect() внутри и объединяет все батчи в одну pa.Table, что удобнее для дальнейшей обработки в PyArrow.",
       "bloomLevel": "analytical",
       "studyHint": "collect() = список батчей (низкоуровневый). to_arrow_table() = единая Table (высокоуровневый)."
@@ -93,22 +93,22 @@
       "options": [
         {
           "id": "a",
-          "text": "df.group_by(\"region\").sum(\"amount\") --- метод group_by с цепочкой агрегатов"
-        },
-        {
-          "id": "b",
           "text": "df.aggregate([col(\"region\")], [f.sum(col(\"amount\")).alias(\"total\")]) --- первый аргумент GROUP BY, второй --- агрегатные выражения"
         },
         {
+          "id": "b",
+          "text": "df.reduce(\"region\", sum=\"amount\") --- декларативная агрегация"
+        },
+        {
           "id": "c",
-          "text": "df.select(col(\"region\"), f.sum(\"amount\")) --- агрегация через select"
+          "text": "df.group_by(\"region\").sum(\"amount\") --- метод group_by с цепочкой агрегатов"
         },
         {
           "id": "d",
-          "text": "df.reduce(\"region\", sum=\"amount\") --- декларативная агрегация"
+          "text": "df.select(col(\"region\"), f.sum(\"amount\")) --- агрегация через select"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Метод aggregate() принимает два списка: группировочные выражения (аналог GROUP BY) и агрегатные функции из модуля datafusion.functions. Пример: df.aggregate([col(\"region\")], [f.sum(col(\"amount\")).alias(\"total\")]).",
       "bloomLevel": "applied",
       "studyHint": "aggregate(GROUP_BY, AGGREGATES) --- два списка. Не путайте с Pandas-стилем group_by()."
@@ -120,22 +120,22 @@
       "options": [
         {
           "id": "a",
-          "text": "На каждом шаге --- filter(), aggregate() и sort() выполняют вычисления немедленно"
-        },
-        {
-          "id": "b",
-          "text": "Только при вызове terminal-операции (collect(), show(), to_pandas()) --- весь pipeline выполняется целиком"
-        },
-        {
-          "id": "c",
           "text": "При вызове aggregate() --- агрегация требует полного прохода по данным"
         },
         {
-          "id": "d",
+          "id": "b",
+          "text": "На каждом шаге --- filter(), aggregate() и sort() выполняют вычисления немедленно"
+        },
+        {
+          "id": "c",
           "text": "При вызове sort() --- сортировка требует загрузки всех данных"
+        },
+        {
+          "id": "d",
+          "text": "Только при вызове terminal-операции (collect(), show(), to_pandas()) --- весь pipeline выполняется целиком"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "DataFrame в DataFusion ленивый. Методы filter(), select(), aggregate(), sort(), limit() строят план выполнения, но не запускают вычисления. Реальная обработка происходит только при вызове terminal-операции: collect(), show(), to_pandas(), to_arrow_table().",
       "bloomLevel": "analytical",
       "studyHint": "Ленивость --- ключевое свойство DataFrame. Это позволяет оптимизатору улучшить план до выполнения."

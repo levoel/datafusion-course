@@ -171,7 +171,7 @@ let result = ctx.sql("SELECT region, COUNT(*) FROM completed_orders GROUP BY reg
 
 <DiagramContainer title="SQL vs DataFrame API" className="my-6">
   <Grid columns={3}>
-    <DataBox label="Аспект" className="border-slate-500/30 font-bold">
+    <DataBox label="Аспект" className="border-slate-500/30 font-bold" tooltip="Критерии сравнения SQL и DataFrame API по удобству и возможностям">
       <div className="text-xs space-y-2">
         <div>Ad-hoc запросы</div>
         <div>Оконные функции</div>
@@ -183,7 +183,7 @@ let result = ctx.sql("SELECT region, COUNT(*) FROM completed_orders GROUP BY reg
         <div>Пользовательский ввод</div>
       </div>
     </DataBox>
-    <DataBox label="SQL" className="border-blue-500/30">
+    <DataBox label="SQL" className="border-blue-500/30" tooltip="SQL-интерфейс — декларативный, удобен для ad-hoc аналитики и сложных выражений">
       <div className="text-xs space-y-2">
         <div className="text-emerald-400">Удобнее</div>
         <div className="text-emerald-400">Компактнее</div>
@@ -195,7 +195,7 @@ let result = ctx.sql("SELECT region, COUNT(*) FROM completed_orders GROUP BY reg
         <div className="text-emerald-400">Параметризация</div>
       </div>
     </DataBox>
-    <DataBox label="DataFrame" className="border-purple-500/30">
+    <DataBox label="DataFrame" className="border-purple-500/30" tooltip="DataFrame API — программный, с проверкой типов на этапе компиляции и переиспользованием Expr">
       <div className="text-xs space-y-2">
         <div className="text-yellow-400">Verbose</div>
         <div className="text-yellow-400">Verbose</div>
@@ -280,3 +280,5 @@ DataFrame API проще для unit-тестов: создаёте fixture че
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> ctx.sql() возвращает DataFrame — можно комбинировать оба подхода
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFrame как временная таблица: register_table() позволяет использовать в SQL
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Для тестов DataFrame API + register_batch() — простые, изолированные, быстрые тесты
+олированные, быстрые тесты
+�рые тесты

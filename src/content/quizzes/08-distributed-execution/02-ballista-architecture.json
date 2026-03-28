@@ -1,19 +1,33 @@
 {
   "lessonSlug": "08-distributed-execution/02-ballista-architecture",
   "moduleId": "08-distributed-execution",
-  "_meta": { "idPrefix": "df-m08-02" },
+  "_meta": {
+    "idPrefix": "df-m08-02"
+  },
   "questions": [
     {
       "id": "df-m08-02-q1",
       "type": "multiple-choice",
       "question": "Ballista строит Execution Graph из физического плана. Как определяются границы query stages?",
       "options": [
-        { "id": "a", "text": "Граница stage проходит по каждому RepartitionExec (pipeline breaker) — план разрезается на фрагменты между точками перераспределения, образуя DAG зависимостей" },
-        { "id": "b", "text": "Каждый отдельный оператор (Filter, Scan, Join) — это отдельный stage" },
-        { "id": "c", "text": "Stage определяются по количеству executor-ов — один stage на каждый executor" },
-        { "id": "d", "text": "Scheduler произвольно делит план на равные части" }
+        {
+          "id": "a",
+          "text": "Stage определяются по количеству executor-ов — один stage на каждый executor"
+        },
+        {
+          "id": "b",
+          "text": "Каждый отдельный оператор (Filter, Scan, Join) — это отдельный stage"
+        },
+        {
+          "id": "c",
+          "text": "Scheduler произвольно делит план на равные части"
+        },
+        {
+          "id": "d",
+          "text": "Граница stage проходит по каждому RepartitionExec (pipeline breaker) — план разрезается на фрагменты между точками перераспределения, образуя DAG зависимостей"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Scheduler разрезает физический план по RepartitionExec (pipeline breakers), создавая DAG query stages. Каждый RepartitionExec заменяется парой ShuffleWriterExec / ShuffleReaderExec. Stage 1 и Stage 2 (scan + shuffle write) не зависят друг от друга и выполняются параллельно. Stage 3 (shuffle read + join) ждёт завершения обоих.",
       "bloomLevel": "conceptual",
       "studyHint": "Границы stage = RepartitionExec. Ballista заменяет каждый RepartitionExec на ShuffleWriterExec + ShuffleReaderExec."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "Scheduler отправляет задачу executor-у через gRPC. Что содержит TaskDefinition?",
       "options": [
-        { "id": "a", "text": "task_id, job_id, stage_id, partition_id, сериализованный protobuf физического плана (PhysicalPlanNode) и SessionConfig" },
-        { "id": "b", "text": "Только SQL-текст запроса — executor сам строит план" },
-        { "id": "c", "text": "Бинарный Arrow RecordBatch с данными для обработки" },
-        { "id": "d", "text": "Логический план в формате JSON — executor оптимизирует его сам" }
+        {
+          "id": "a",
+          "text": "Только SQL-текст запроса — executor сам строит план"
+        },
+        {
+          "id": "b",
+          "text": "Бинарный Arrow RecordBatch с данными для обработки"
+        },
+        {
+          "id": "c",
+          "text": "Логический план в формате JSON — executor оптимизирует его сам"
+        },
+        {
+          "id": "d",
+          "text": "task_id, job_id, stage_id, partition_id, сериализованный protobuf физического плана (PhysicalPlanNode) и SessionConfig"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "TaskDefinition содержит: task_id, job_id, stage_id, partition_id для идентификации, protobuf-сериализованный физический план stage (PhysicalPlanNode) и SessionConfig. Executor десериализует protobuf в DataFusion ExecutionPlan и выполняет его. Планирование и оптимизация происходят на scheduler — executor только выполняет.",
       "bloomLevel": "conceptual",
       "studyHint": "TaskDefinition = ID + protobuf физ. план + SessionConfig. Executor десериализует → выполняет. Планирование на scheduler."
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "Ballista использует Arrow IPC для shuffle между stage. Почему этот формат минимизирует overhead?",
       "options": [
-        { "id": "a", "text": "Arrow IPC сохраняет columnar layout буферов — десериализация сводится к маппингу буферов без построчного декодирования, что является zero-copy по сути" },
-        { "id": "b", "text": "Arrow IPC использует gzip-сжатие, уменьшая объём данных по сети" },
-        { "id": "c", "text": "Arrow IPC быстрее, потому что использует текстовый формат JSON" },
-        { "id": "d", "text": "Arrow IPC не передаёт данные по сети — только метаданные" }
+        {
+          "id": "a",
+          "text": "Arrow IPC быстрее, потому что использует текстовый формат JSON"
+        },
+        {
+          "id": "b",
+          "text": "Arrow IPC не передаёт данные по сети — только метаданные"
+        },
+        {
+          "id": "c",
+          "text": "Arrow IPC использует gzip-сжатие, уменьшая объём данных по сети"
+        },
+        {
+          "id": "d",
+          "text": "Arrow IPC сохраняет columnar layout буферов — десериализация сводится к маппингу буферов без построчного декодирования, что является zero-copy по сути"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Arrow IPC — бинарный формат, сохраняющий columnar layout. Данные записываются как буферы с фиксированной длиной, идентичные in-memory представлению Arrow. При чтении — маппинг буферов, без построчной десериализации (в отличие от Spark UnsafeRow, где нужна row→column конвертация). Это минимизирует CPU overhead на shuffle.",
       "bloomLevel": "applied",
       "studyHint": "Arrow IPC = бинарный columnar, десериализация = маппинг буферов. Без row-by-row декодирования."
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "Ballista поддерживает три клиентских интерфейса. Какой из них позволяет подключить BI-инструменты (Tableau, Superset) к кластеру без специализированных драйверов?",
       "options": [
-        { "id": "a", "text": "Flight SQL / JDBC — scheduler реализует Flight SQL протокол, любой совместимый клиент включая JDBC-драйвер Arrow Flight SQL может подключиться" },
-        { "id": "b", "text": "Rust SessionContext — стандартный DataFusion API для программного доступа" },
-        { "id": "c", "text": "PyBallista — Python-клиент для интерактивных запросов" },
-        { "id": "d", "text": "REST API — HTTP-интерфейс для SQL-запросов" }
+        {
+          "id": "a",
+          "text": "Rust SessionContext — стандартный DataFusion API для программного доступа"
+        },
+        {
+          "id": "b",
+          "text": "REST API — HTTP-интерфейс для SQL-запросов"
+        },
+        {
+          "id": "c",
+          "text": "PyBallista — Python-клиент для интерактивных запросов"
+        },
+        {
+          "id": "d",
+          "text": "Flight SQL / JDBC — scheduler реализует Flight SQL протокол, любой совместимый клиент включая JDBC-драйвер Arrow Flight SQL может подключиться"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Ballista scheduler реализует Flight SQL протокол. BI-инструменты (Tableau, Superset) подключаются через JDBC-драйвер Arrow Flight SQL (jdbc:arrow-flight-sql://scheduler:50050) без специализированных драйверов. Rust SessionContext и PyBallista — программные интерфейсы, не предназначенные для BI-инструментов.",
       "bloomLevel": "applied",
       "studyHint": "Flight SQL = стандартный протокол для BI. JDBC connection string: jdbc:arrow-flight-sql://host:port."
@@ -68,10 +118,22 @@
       "type": "multiple-choice",
       "question": "Ballista 43.0.0 выровняла нумерацию с DataFusion, но это не означает полную совместимость. В чём заключается разрыв?",
       "options": [
-        { "id": "a", "text": "Ballista 43.0.0 базируется на DataFusion ~43.x, тогда как текущая DataFusion — версия 52.x, поэтому не все API DataFusion 52.x доступны в Ballista" },
-        { "id": "b", "text": "Ballista 43.0.0 не поддерживает SQL — только DataFrame API" },
-        { "id": "c", "text": "Ballista 43.0.0 работает только на Linux — не поддерживает macOS" },
-        { "id": "d", "text": "Разрыва нет — версии полностью совместимы" }
+        {
+          "id": "a",
+          "text": "Ballista 43.0.0 базируется на DataFusion ~43.x, тогда как текущая DataFusion — версия 52.x, поэтому не все API DataFusion 52.x доступны в Ballista"
+        },
+        {
+          "id": "b",
+          "text": "Ballista 43.0.0 не поддерживает SQL — только DataFrame API"
+        },
+        {
+          "id": "c",
+          "text": "Разрыва нет — версии полностью совместимы"
+        },
+        {
+          "id": "d",
+          "text": "Ballista 43.0.0 работает только на Linux — не поддерживает macOS"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Синхронизация нумерации (Ballista 43.0.0) не означает совместимости API. Ballista 43.0.0 базируется на DataFusion ~43.x, текущая DataFusion — 52.x. Сообщество работает над сокращением разрыва, но для production нужно проверять совместимость конкретной версии Ballista с нужными возможностями DataFusion.",

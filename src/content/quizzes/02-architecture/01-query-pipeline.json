@@ -12,22 +12,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Парсинг → AST → LogicalPlan → Оптимизация → PhysicalPlan → SendableRecordBatchStream"
+          "text": "Парсинг → Валидация → Кеширование → Индексация → Поиск → Вывод"
         },
         {
           "id": "b",
-          "text": "Лексинг → Компиляция → Линковка → Загрузка → Выполнение → Результат"
+          "text": "Парсинг → AST → LogicalPlan → Оптимизация → PhysicalPlan → SendableRecordBatchStream"
         },
         {
           "id": "c",
-          "text": "Парсинг → Валидация → Кеширование → Индексация → Поиск → Вывод"
+          "text": "Лексинг → Компиляция → Линковка → Загрузка → Выполнение → Результат"
         },
         {
           "id": "d",
           "text": "SQL → JIT-компиляция → Machine Code → Выполнение → Сериализация → Ответ"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "SQL-запрос проходит: 1) Парсинг (sqlparser-rs → AST), 2) SqlToRel (AST → LogicalPlan), 3) Оптимизация (правила: pushdown, folding), 4) PhysicalPlanner (LogicalPlan → ExecutionPlan), 5) execute() → SendableRecordBatchStream. Каждая стадия трансформирует представление запроса в более конкретное.",
       "bloomLevel": "conceptual",
       "studyHint": "Перечитайте раздел «Шесть стадий pipeline» — запомните последовательность трансформаций."
@@ -66,11 +66,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Результаты кешируются для повторного использования"
+          "text": "TableScan будет читать только колонки region, amount и status вместо всех колонок таблицы"
         },
         {
           "id": "b",
-          "text": "TableScan будет читать только колонки region, amount и status вместо всех колонок таблицы"
+          "text": "Результаты кешируются для повторного использования"
         },
         {
           "id": "c",
@@ -81,7 +81,7 @@
           "text": "GROUP BY вычисляется до WHERE для ускорения фильтрации"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Projection pushdown анализирует, какие колонки реально нужны выше по дереву плана, и сообщает это в TableScan. Вместо чтения всех колонок таблицы orders, сканируются только region, amount и status — остальные колонки не загружаются из файла (Parquet) или памяти.",
       "bloomLevel": "applied",
       "studyHint": "Projection pushdown — одна из самых эффективных оптимизаций. Подумайте, как она взаимодействует с column pruning из Arrow."
@@ -101,11 +101,11 @@
         },
         {
           "id": "c",
-          "text": "Push-модель невозможна с Arrow RecordBatch"
+          "text": "Pull-модель быстрее push-модели во всех случаях"
         },
         {
           "id": "d",
-          "text": "Pull-модель быстрее push-модели во всех случаях"
+          "text": "Push-модель невозможна с Arrow RecordBatch"
         }
       ],
       "correctAnswer": "a",
@@ -120,22 +120,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Все 6 стадий пройдены, DataFrame содержит результаты"
-        },
-        {
-          "id": "b",
           "text": "Пройдены стадии 1–4 (парсинг, логический план, оптимизация, физический план). Стадия 5 (выполнение) запускается при вызове collect() или show()"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "Выполнен только парсинг, остальное при collect()"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Ни одна стадия не пройдена — всё откладывается до collect()"
+        },
+        {
+          "id": "d",
+          "text": "Все 6 стадий пройдены, DataFrame содержит результаты"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "sql() выполняет парсинг → логический план → оптимизацию → физический план и возвращает ленивый DataFrame. Выполнение (стадия 5) запускается только при terminal-операции: collect(), show() или write_parquet(). Это разделение позволяет инспектировать план до выполнения через EXPLAIN.",
       "bloomLevel": "applied",
       "studyHint": "Запомните: sql() = планирование, collect() = выполнение. DataFrame — ленивая обёртка над планом."

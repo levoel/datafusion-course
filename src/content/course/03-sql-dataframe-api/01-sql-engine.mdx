@@ -17,13 +17,13 @@ DataFusion принимает стандартный SQL и превращает
 
 <DiagramContainer title="SQL → LogicalPlan Pipeline" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">SQL Text</FlowNode>
+    <FlowNode variant="input" tooltip="Входной SQL-запрос от пользователя — текстовая строка">SQL Text</FlowNode>
     <Arrow direction="down" label="sqlparser-rs (парсинг)" />
-    <FlowNode variant="process">AST (Statement)</FlowNode>
+    <FlowNode variant="process" tooltip="Абстрактное синтаксическое дерево — структурное представление SQL без проверки схемы">AST (Statement)</FlowNode>
     <Arrow direction="down" label="SqlToRel (семантический анализ)" />
-    <FlowNode variant="process">Unoptimized LogicalPlan</FlowNode>
+    <FlowNode variant="process" tooltip="Логический план до оптимизации — привязан к каталогу таблиц и типов">Unoptimized LogicalPlan</FlowNode>
     <Arrow direction="down" label="Optimizer (цепочка правил)" />
-    <FlowNode variant="output">Optimized LogicalPlan</FlowNode>
+    <FlowNode variant="output" tooltip="Оптимизированный план — pushdown фильтров, elimination колонок, constant folding">Optimized LogicalPlan</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

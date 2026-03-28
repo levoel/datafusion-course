@@ -41,7 +41,7 @@ Capstone-проект не требует знания Rust. Все упражн
 
 <DiagramContainer title="Схема данных" className="my-6">
   <FlowRow className="gap-6 justify-center flex-wrap">
-    <DataBox label="sales_events.parquet" className="border-blue-500/30 w-72">
+    <DataBox label="sales_events.parquet" tooltip="10 000 записей о продажах — event_id, timestamp, category, region, channel, amount, quantity" className="border-blue-500/30 w-72">
       <div className="text-xs font-mono space-y-0.5">
         <div>event_id: INT64 --- идентификатор</div>
         <div>timestamp: STRING --- время события</div>
@@ -53,7 +53,7 @@ Capstone-проект не требует знания Rust. Все упражн
         <div>user_id: INT64 --- пользователь</div>
       </div>
     </DataBox>
-    <DataBox label="products.parquet" className="border-emerald-500/30 w-72">
+    <DataBox label="products.parquet" tooltip="200 продуктов в 5 категориях — product_id, name, category, base_price, weight_kg" className="border-emerald-500/30 w-72">
       <div className="text-xs font-mono space-y-0.5">
         <div>product_id: INT64 --- идентификатор</div>
         <div>name: STRING --- название</div>
@@ -83,32 +83,32 @@ Capstone-проект не требует знания Rust. Все упражн
 <DiagramContainer title="Архитектура мини аналитического движка" className="my-6">
   <FlowColumn className="gap-3 text-sm">
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <FlowNode variant="input">Parquet-файлы</FlowNode>
-      <FlowNode variant="input">CSV / JSON (опционально)</FlowNode>
+      <FlowNode tooltip="Входные Parquet-файлы с данными продаж и продуктов" variant="input">Parquet-файлы</FlowNode>
+      <FlowNode tooltip="Опциональные источники — CSV и JSON файлы" variant="input">CSV / JSON (опционально)</FlowNode>
     </FlowRow>
     <Arrow direction="down" />
-    <DataBox label="DataLoader" className="border-blue-500/30 mx-auto w-80">
+    <DataBox label="DataLoader" tooltip="Автоматическая регистрация файлов как таблиц в SessionContext — аналог каталога" className="border-blue-500/30 mx-auto w-80">
       <div className="text-xs">Автоматическая регистрация источников данных</div>
       <div className="text-xs">register_parquet / register_csv</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="SessionContext + UDF Registry" className="border-emerald-500/30 mx-auto w-80">
+    <DataBox label="SessionContext + UDF Registry" tooltip="Ядро движка — SQL и DataFrame API + зарегистрированные пользовательские функции" className="border-emerald-500/30 mx-auto w-80">
       <div className="text-xs">Ядро движка: SQL, DataFrame, пользовательские функции</div>
       <div className="text-xs">classify_amount, revenue_tier, weighted_avg</div>
     </DataBox>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <DataBox label="SQL-запросы" className="border-amber-500/30 w-56">
+      <DataBox label="SQL-запросы" tooltip="SQL-интерфейс — GROUP BY, JOIN, ORDER BY для аналитических сводок" className="border-amber-500/30 w-56">
         <div className="text-xs">GROUP BY, JOIN, ORDER BY</div>
         <div className="text-xs">Сводки, топы, аналитика</div>
       </DataBox>
-      <DataBox label="DataFrame API" className="border-purple-500/30 w-56">
+      <DataBox label="DataFrame API" tooltip="Программный интерфейс — filter, aggregate, select для обработки данных" className="border-purple-500/30 w-56">
         <div className="text-xs">filter, aggregate, select</div>
         <div className="text-xs">Программная обработка</div>
       </DataBox>
     </FlowRow>
     <Arrow direction="down" />
-    <FlowNode variant="output">Parquet-отчёты (data/reports/)</FlowNode>
+    <FlowNode tooltip="Финальные Parquet-отчёты сохраняются в директорию data/reports/" variant="output">Parquet-отчёты (data/reports/)</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

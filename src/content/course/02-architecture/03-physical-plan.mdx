@@ -57,27 +57,27 @@ pub enum Partitioning {
 
 <DiagramContainer title="Партиционирование и параллелизм" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="process">CoalescePartitionsExec</FlowNode>
+    <FlowNode variant="process" tooltip="Сводит N партиций в одну для глобальных операций (ORDER BY, финальный LIMIT)">CoalescePartitionsExec</FlowNode>
     <Arrow direction="down" label="1 партиция" />
-    <FlowNode variant="process">SortExec (ORDER BY total DESC)</FlowNode>
+    <FlowNode variant="process" tooltip="Глобальная сортировка по ключу — требует единственной входной партиции">SortExec (ORDER BY total DESC)</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">AggregateExec (final merge)</FlowNode>
+    <FlowNode variant="process" tooltip="Финальное объединение промежуточных аккумуляторов из всех партиций">AggregateExec (final merge)</FlowNode>
     <Arrow direction="down" label="N партиций" />
     <FlowRow className="gap-4 justify-center flex-wrap">
       <FlowColumn className="gap-1 items-center">
-        <FlowNode variant="process">AggregateExec (partial)</FlowNode>
+        <FlowNode variant="process" tooltip="Частичная агрегация: вычисляет промежуточные аккумуляторы в своей партиции">AggregateExec (partial)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="input">ParquetExec (part 0)</FlowNode>
+        <FlowNode variant="input" tooltip="Чтение одного файла или row group Parquet — отдельная партиция данных">ParquetExec (part 0)</FlowNode>
       </FlowColumn>
       <FlowColumn className="gap-1 items-center">
-        <FlowNode variant="process">AggregateExec (partial)</FlowNode>
+        <FlowNode variant="process" tooltip="Частичная агрегация: вычисляет промежуточные аккумуляторы в своей партиции">AggregateExec (partial)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="input">ParquetExec (part 1)</FlowNode>
+        <FlowNode variant="input" tooltip="Чтение второго файла Parquet параллельно с другими партициями">ParquetExec (part 1)</FlowNode>
       </FlowColumn>
       <FlowColumn className="gap-1 items-center">
-        <FlowNode variant="process">AggregateExec (partial)</FlowNode>
+        <FlowNode variant="process" tooltip="Частичная агрегация: вычисляет промежуточные аккумуляторы в своей партиции">AggregateExec (partial)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="input">ParquetExec (part 2)</FlowNode>
+        <FlowNode variant="input" tooltip="Чтение третьего файла Parquet — все партиции исполняются параллельно через tokio">ParquetExec (part 2)</FlowNode>
       </FlowColumn>
     </FlowRow>
   </FlowColumn>

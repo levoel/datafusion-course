@@ -30,23 +30,23 @@ Arrow IPC (Inter-Process Communication) определяет два формат
 
 <DiagramContainer title="Arrow IPC Stream Format" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="Schema Message" className="border-slate-400/30 w-64 mx-auto">
+    <DataBox label="Schema Message" tooltip="Первое сообщение потока: содержит имена полей, типы данных и метаданные" className="border-slate-400/30 w-64 mx-auto">
       <div className="text-xs">Схема (Field names, DataTypes, metadata)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="RecordBatch Message #1" className="border-blue-500/30 w-64 mx-auto">
+    <DataBox label="RecordBatch Message #1" tooltip="Сообщение с данными: Flatbuffers metadata описывает layout буферов в body" className="border-blue-500/30 w-64 mx-auto">
       <div className="text-xs">Metadata + Body (буферы колонок)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="RecordBatch Message #2" className="border-blue-500/30 w-64 mx-auto">
+    <DataBox label="RecordBatch Message #2" tooltip="Каждое сообщение содержит буферы колонок в нативном Arrow формате — zero-copy десериализация" className="border-blue-500/30 w-64 mx-auto">
       <div className="text-xs">Metadata + Body (буферы колонок)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="..." className="border-blue-400/20 w-64 mx-auto">
+    <DataBox label="..." tooltip="Произвольное количество RecordBatch в потоке" className="border-blue-400/20 w-64 mx-auto">
       <div className="text-xs">Ещё RecordBatch сообщения</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="EOS (End of Stream)" className="border-red-500/30 w-64 mx-auto">
+    <DataBox label="EOS (End of Stream)" tooltip="Маркер завершения: сигнализирует клиенту, что данных больше нет" className="border-red-500/30 w-64 mx-auto">
       <div className="text-xs">Маркер конца потока</div>
     </DataBox>
   </FlowColumn>
@@ -62,22 +62,22 @@ Arrow IPC (Inter-Process Communication) определяет два формат
 
 <DiagramContainer title="Arrow IPC File Format" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="Magic: ARROW1" className="border-slate-400/30 w-64 mx-auto">
+    <DataBox label="Magic: ARROW1" tooltip="6-байтовый magic number для идентификации формата Arrow IPC file" className="border-slate-400/30 w-64 mx-auto">
       <div className="text-xs">6 байт magic number</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="RecordBatch блоки" className="border-blue-500/30 w-64 mx-auto">
+    <DataBox label="RecordBatch блоки" tooltip="Последовательность Schema + RecordBatch сообщений, как в stream формате" className="border-blue-500/30 w-64 mx-auto">
       <div className="text-xs">Schema + RecordBatch messages (как в stream)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="Footer" className="border-emerald-500/30 w-64 mx-auto">
+    <DataBox label="Footer" tooltip="Индекс с offset и размером каждого RecordBatch — позволяет произвольный доступ без сканирования" className="border-emerald-500/30 w-64 mx-auto">
       <div className="text-xs space-y-1">
         <div>Schema (дубликат)</div>
         <div>Block index: offset + size каждого RecordBatch</div>
       </div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="Magic: ARROW1" className="border-slate-400/30 w-64 mx-auto">
+    <DataBox label="Magic: ARROW1" tooltip="Завершающий magic number для валидации целостности файла" className="border-slate-400/30 w-64 mx-auto">
       <div className="text-xs">6 байт magic number (конец)</div>
     </DataBox>
   </FlowColumn>
@@ -117,11 +117,11 @@ gRPC с Protobuf требует сериализации данных в Protobu
 <DiagramContainer title="Arrow Flight: клиент-серверное взаимодействие" className="my-6">
   <FlowColumn className="p-4 gap-2">
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <FlowNode variant="input">Flight Client</FlowNode>
-      <FlowNode variant="output">Flight Server</FlowNode>
+      <FlowNode variant="input" tooltip="Приложение, запрашивающее данные через Flight gRPC протокол">Flight Client</FlowNode>
+      <FlowNode variant="output" tooltip="Сервер, предоставляющий данные в Arrow формате через gRPC streams">Flight Server</FlowNode>
     </FlowRow>
     <Arrow direction="down" />
-    <DataBox label="Flight Protocol (gRPC)" className="border-blue-500/30 w-72 mx-auto">
+    <DataBox label="Flight Protocol (gRPC)" tooltip="gRPC-протокол для передачи Arrow-данных: 4 основных метода для обмена RecordBatch" className="border-blue-500/30 w-72 mx-auto">
       <div className="text-xs space-y-1">
         <div>GetFlightInfo — метаданные о доступных данных</div>
         <div>DoGet — получить поток RecordBatch</div>
@@ -130,7 +130,7 @@ gRPC с Protobuf требует сериализации данных в Protobu
       </div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="Данные: Arrow IPC RecordBatch" className="border-emerald-500/30 w-72 mx-auto">
+    <DataBox label="Данные: Arrow IPC RecordBatch" tooltip="Нативные Arrow буферы передаются напрямую через gRPC — без сериализации Protobuf" className="border-emerald-500/30 w-72 mx-auto">
       <div className="text-xs">Нет сериализации Protobuf — нативные Arrow буферы</div>
     </DataBox>
   </FlowColumn>

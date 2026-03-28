@@ -1,19 +1,33 @@
 {
   "lessonSlug": "03-sql-dataframe-api/01-sql-engine",
   "moduleId": "03-sql-dataframe-api",
-  "_meta": { "idPrefix": "df-m03-01" },
+  "_meta": {
+    "idPrefix": "df-m03-01"
+  },
   "questions": [
     {
       "id": "df-m03-01-q1",
       "type": "multiple-choice",
       "question": "Какую роль выполняет sqlparser-rs в SQL-pipeline DataFusion?",
       "options": [
-        { "id": "a", "text": "Превращает SQL-текст в AST (дерево синтаксиса), не проверяя существование таблиц и колонок" },
-        { "id": "b", "text": "Проверяет существование таблиц в каталоге и разрешает типы данных" },
-        { "id": "c", "text": "Оптимизирует LogicalPlan, применяя pushdown-правила" },
-        { "id": "d", "text": "Генерирует PhysicalPlan для выполнения на Arrow RecordBatch" }
+        {
+          "id": "a",
+          "text": "Проверяет существование таблиц в каталоге и разрешает типы данных"
+        },
+        {
+          "id": "b",
+          "text": "Превращает SQL-текст в AST (дерево синтаксиса), не проверяя существование таблиц и колонок"
+        },
+        {
+          "id": "c",
+          "text": "Генерирует PhysicalPlan для выполнения на Arrow RecordBatch"
+        },
+        {
+          "id": "d",
+          "text": "Оптимизирует LogicalPlan, применяя pushdown-правила"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "sqlparser-rs выполняет чисто синтаксический парсинг: принимает SQL-текст и возвращает Vec<Statement> (AST). Он не знает о таблицах, колонках или типах — это задача следующей стадии SqlToRel.",
       "bloomLevel": "conceptual",
       "studyHint": "Запомните разделение: sqlparser-rs отвечает за синтаксис, SqlToRel — за семантику."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "На какой стадии pipeline обнаружится ошибка, если запрос ссылается на несуществующую колонку?",
       "options": [
-        { "id": "a", "text": "Парсинг (sqlparser-rs)" },
-        { "id": "b", "text": "Семантический анализ (SqlToRel)" },
-        { "id": "c", "text": "Оптимизация (Optimizer)" },
-        { "id": "d", "text": "Выполнение (execute)" }
+        {
+          "id": "a",
+          "text": "Оптимизация (Optimizer)"
+        },
+        {
+          "id": "b",
+          "text": "Парсинг (sqlparser-rs)"
+        },
+        {
+          "id": "c",
+          "text": "Выполнение (execute)"
+        },
+        {
+          "id": "d",
+          "text": "Семантический анализ (SqlToRel)"
+        }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "SqlToRel привязывает AST к реальным данным каталога: проверяет существование таблиц, разрешает колонки по схеме, проверяет типы. Парсер работает только с синтаксисом и не знает о метаданных.",
       "bloomLevel": "applied",
       "studyHint": "Различайте синтаксические ошибки (парсер) и семантические (SqlToRel): SELECT от → парсер, SELECT unknown_col → SqlToRel."
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "Какие SQL-конструкции DataFusion поддерживает нативно?",
       "options": [
-        { "id": "a", "text": "SELECT, JOIN, GROUP BY, оконные функции, CTE, CREATE TABLE, CREATE VIEW" },
-        { "id": "b", "text": "Только SELECT и простые JOIN — подзапросы и оконные функции не поддерживаются" },
-        { "id": "c", "text": "Полный набор PostgreSQL, включая хранимые процедуры и триггеры" },
-        { "id": "d", "text": "Только DDL-операции: CREATE TABLE, DROP TABLE, ALTER TABLE" }
+        {
+          "id": "a",
+          "text": "SELECT, JOIN, GROUP BY, оконные функции, CTE, CREATE TABLE, CREATE VIEW"
+        },
+        {
+          "id": "b",
+          "text": "Только DDL-операции: CREATE TABLE, DROP TABLE, ALTER TABLE"
+        },
+        {
+          "id": "c",
+          "text": "Только SELECT и простые JOIN — подзапросы и оконные функции не поддерживаются"
+        },
+        {
+          "id": "d",
+          "text": "Полный набор PostgreSQL, включая хранимые процедуры и триггеры"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "DataFusion поддерживает широкий набор SQL: DQL (SELECT, JOIN, подзапросы, CTE, оконные функции, UNION/INTERSECT/EXCEPT), DDL (CREATE TABLE, VIEW, SCHEMA) и DML (INSERT, COPY). Но хранимые процедуры и триггеры — за пределами аналитического движка.",
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "Чем диалект SQL в DataFusion отличается от PostgreSQL при работе со строками?",
       "options": [
-        { "id": "a", "text": "DataFusion использует только одинарные кавычки для строк и двойные для идентификаторов, как стандартный SQL" },
-        { "id": "b", "text": "DataFusion использует обратные кавычки для строк, как MySQL" },
-        { "id": "c", "text": "Нет различий — DataFusion полностью совместим с PostgreSQL" },
-        { "id": "d", "text": "DataFusion не поддерживает строковые литералы" }
+        {
+          "id": "a",
+          "text": "DataFusion использует обратные кавычки для строк, как MySQL"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion не поддерживает строковые литералы"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion использует только одинарные кавычки для строк и двойные для идентификаторов, как стандартный SQL"
+        },
+        {
+          "id": "d",
+          "text": "Нет различий — DataFusion полностью совместим с PostgreSQL"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "DataFusion следует стандарту SQL: одинарные кавычки для строковых литералов ('hello'), двойные — для идентификаторов (\"Column Name\"). PostgreSQL допускает дополнительные расширения (dollar-quoting, E'...'), которых в DataFusion нет.",
       "bloomLevel": "applied",
       "studyHint": "Сравните поведение кавычек: 'строка' vs \"идентификатор\" — это стандарт SQL, которому следует DataFusion."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Какой тип данных DataFusion использует для хранения точных десятичных чисел, и каковы его ограничения?",
       "options": [
-        { "id": "a", "text": "Float64 — с точностью до 15 значащих цифр" },
-        { "id": "b", "text": "Decimal128 — точность до 38 цифр, масштаб задаётся при создании колонки" },
-        { "id": "c", "text": "BigInt — целые числа произвольной длины" },
-        { "id": "d", "text": "Numeric — произвольная точность без ограничений" }
+        {
+          "id": "a",
+          "text": "Float64 — с точностью до 15 значащих цифр"
+        },
+        {
+          "id": "b",
+          "text": "BigInt — целые числа произвольной длины"
+        },
+        {
+          "id": "c",
+          "text": "Numeric — произвольная точность без ограничений"
+        },
+        {
+          "id": "d",
+          "text": "Decimal128 — точность до 38 цифр, масштаб задаётся при создании колонки"
+        }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "DataFusion использует Arrow Decimal128 для точных десятичных вычислений: до 38 значащих цифр с фиксированным масштабом. Это соответствует типу DECIMAL(precision, scale) в стандартном SQL. Float64 используется для приблизительных чисел.",
       "bloomLevel": "conceptual",
       "studyHint": "Помните: Decimal128 = точность, Float64 = скорость. Для финансовых данных всегда Decimal128."

@@ -220,21 +220,21 @@ EnforceSorting также оптимизирует существующие со
 
 <DiagramContainer title="Выбор алгоритма JOIN" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">JOIN predicate</FlowNode>
+    <FlowNode variant="input" tooltip="Физический оптимизатор анализирует предикат JOIN для выбора алгоритма">JOIN predicate</FlowNode>
     <Arrow direction="down" label="Есть equi-предикат?" />
     <FlowRow className="gap-4 justify-center">
       <FlowColumn className="gap-2 items-center">
-        <FlowNode variant="process">Да: одна сторона мала?</FlowNode>
+        <FlowNode variant="process" tooltip="При наличии equi-предиката (ON a.id = b.id) проверяется размер сторон для выбора между режимами">Да: одна сторона мала?</FlowNode>
         <Arrow direction="down" />
         <FlowRow className="gap-4 justify-center">
-          <FlowNode variant="output">Да: HashJoin CollectLeft</FlowNode>
-          <FlowNode variant="output">Нет: HashJoin Partitioned</FlowNode>
+          <FlowNode variant="output" tooltip="CollectLeft: малая сторона собирается в одну партицию — быстрее при асимметрии размеров">Да: HashJoin CollectLeft</FlowNode>
+          <FlowNode variant="output" tooltip="Partitioned: обе стороны перераспределяются по хешу ключа — масштабируется на большие данные">Нет: HashJoin Partitioned</FlowNode>
         </FlowRow>
       </FlowColumn>
       <FlowColumn className="gap-2 items-center">
-        <FlowNode variant="warning">Нет equi-предиката</FlowNode>
+        <FlowNode variant="warning" tooltip="Без equi-предиката (BETWEEN, <, >) невозможен Hash или SortMerge — только полный перебор">Нет equi-предиката</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="output">NestedLoopJoin</FlowNode>
+        <FlowNode variant="output" tooltip="NestedLoopJoin — O(N*M), избегайте на больших таблицах">NestedLoopJoin</FlowNode>
       </FlowColumn>
     </FlowRow>
   </FlowColumn>

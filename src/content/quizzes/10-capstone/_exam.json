@@ -3,19 +3,33 @@
   "moduleId": "10-capstone",
   "examTitle": "Экзамен: Capstone — итоговый",
   "passThreshold": 70,
-  "_meta": { "idPrefix": "df-m10-exam" },
+  "_meta": {
+    "idPrefix": "df-m10-exam"
+  },
   "questions": [
     {
       "id": "df-m10-exam-q1",
       "type": "multiple-choice",
       "question": "В capstone-проекте SQL-запрос GROUP BY category, region выполняется через DataFusion Python. На каких этапах pipeline проявляются знания из модулей M01, M02 и M06?",
       "options": [
-        { "id": "a", "text": "M01 (Arrow): данные читаются из Parquet в RecordBatch (columnar). M02 (архитектура): SQL → LogicalPlan (Aggregate) → PhysicalPlan (HashAggregateExec). M06 (оптимизация): predicate pushdown фильтрует row groups по min/max, projection pushdown читает только нужные столбцы" },
-        { "id": "b", "text": "M01 (Arrow): данные конвертируются в CSV. M02: запрос выполняется напрямую без плана. M06: оптимизация не применяется к Python API" },
-        { "id": "c", "text": "Только M02 — остальные модули не участвуют в выполнении SQL" },
-        { "id": "d", "text": "M01, M02, M06 применяются только при Rust API — Python-версия не оптимизирует" }
+        {
+          "id": "a",
+          "text": "M01, M02, M06 применяются только при Rust API — Python-версия не оптимизирует"
+        },
+        {
+          "id": "b",
+          "text": "M01 (Arrow): данные читаются из Parquet в RecordBatch (columnar). M02 (архитектура): SQL → LogicalPlan (Aggregate) → PhysicalPlan (HashAggregateExec). M06 (оптимизация): predicate pushdown фильтрует row groups по min/max, projection pushdown читает только нужные столбцы"
+        },
+        {
+          "id": "c",
+          "text": "M01 (Arrow): данные конвертируются в CSV. M02: запрос выполняется напрямую без плана. M06: оптимизация не применяется к Python API"
+        },
+        {
+          "id": "d",
+          "text": "Только M02 — остальные модули не участвуют в выполнении SQL"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Весь pipeline задействован: M01 — Parquet reader декодирует columnar данные в Arrow RecordBatch, статистика в footer позволяет pushdown. M02 — SQL-парсер строит LogicalPlan с Aggregate, PhysicalPlanner выбирает HashAggregateExec с Partial→Final. M06 — оптимизатор применяет pushdown (projection: только category, region, amount; predicate: если есть WHERE). Python API вызывает тот же Rust pipeline через PyO3.",
       "bloomLevel": "analytical",
       "studyHint": "Один запрос — три модуля: M01 (формат данных), M02 (планирование), M06 (оптимизация). Python = тот же Rust pipeline."
@@ -25,12 +39,24 @@
       "type": "multiple-choice",
       "question": "Capstone использует register_parquet для регистрации таблиц. В Comet (M07) данные Spark передаются через protobuf. В InfluxDB (M05, M09) данные хранятся в кастомном формате. Какой общий паттерн DataFusion объединяет эти три сценария?",
       "options": [
-        { "id": "a", "text": "TableProvider trait: каждый сценарий реализует TableProvider по-своему — ParquetTableProvider для файлов, CometScanExec для Spark-данных через protobuf, кастомный TableProvider для InfluxDB storage — но все возвращают Arrow RecordBatch, с которыми работает единый executor" },
-        { "id": "b", "text": "Все три используют Parquet — это единственный формат, совместимый с DataFusion" },
-        { "id": "c", "text": "SessionContext автоматически адаптируется к формату данных без TableProvider" },
-        { "id": "d", "text": "Общего паттерна нет — каждый проект использует DataFusion по-разному" }
+        {
+          "id": "a",
+          "text": "SessionContext автоматически адаптируется к формату данных без TableProvider"
+        },
+        {
+          "id": "b",
+          "text": "Все три используют Parquet — это единственный формат, совместимый с DataFusion"
+        },
+        {
+          "id": "c",
+          "text": "Общего паттерна нет — каждый проект использует DataFusion по-разному"
+        },
+        {
+          "id": "d",
+          "text": "TableProvider trait: каждый сценарий реализует TableProvider по-своему — ParquetTableProvider для файлов, CometScanExec для Spark-данных через protobuf, кастомный TableProvider для InfluxDB storage — но все возвращают Arrow RecordBatch, с которыми работает единый executor"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "TableProvider (модуль 5) — ключевая абстракция. Capstone: ParquetTableProvider (register_parquet). Comet: CometScanExec читает данные из Spark через protobuf → Arrow. InfluxDB: кастомный TableProvider читает из собственного columnar storage. Общий контракт: trait TableProvider возвращает SendableRecordBatchStream (Arrow RecordBatch). DataFusion executor работает одинаково с любым источником.",
       "bloomLevel": "analytical",
       "studyHint": "TableProvider = общий trait для всех источников данных. Parquet, Spark, кастомное хранилище → Arrow RecordBatch → единый executor."
@@ -40,12 +66,24 @@
       "type": "multiple-choice",
       "question": "В лабораторной реализуется UDAF weighted_avg (M04). В модуле 6 изучались правила оптимизации. Может ли оптимизатор DataFusion применить predicate pushdown ниже UDAF в плане?",
       "options": [
-        { "id": "a", "text": "Да, если WHERE-условие не зависит от результата UDAF: фильтр WHERE region = 'Moscow' может быть протолкнут ниже агрегации, так как region — входной столбец, а не результат UDAF. Но WHERE weighted_avg > 5000 не может — это post-aggregation фильтр (HAVING)" },
-        { "id": "b", "text": "Нет — DataFusion не оптимизирует планы с пользовательскими UDAF" },
-        { "id": "c", "text": "Да — любой фильтр автоматически проталкивается ниже UDAF" },
-        { "id": "d", "text": "Только если UDAF помечен как immutable" }
+        {
+          "id": "a",
+          "text": "Нет — DataFusion не оптимизирует планы с пользовательскими UDAF"
+        },
+        {
+          "id": "b",
+          "text": "Да — любой фильтр автоматически проталкивается ниже UDAF"
+        },
+        {
+          "id": "c",
+          "text": "Да, если WHERE-условие не зависит от результата UDAF: фильтр WHERE region = 'Moscow' может быть протолкнут ниже агрегации, так как region — входной столбец, а не результат UDAF. Но WHERE weighted_avg > 5000 не может — это post-aggregation фильтр (HAVING)"
+        },
+        {
+          "id": "d",
+          "text": "Только если UDAF помечен как immutable"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Predicate pushdown (модуль 6) работает по зависимостям столбцов. WHERE region = 'Moscow' зависит от входного столбца region → можно протолкнуть ниже Aggregate (фильтрация до агрегации, меньше данных обрабатывается). WHERE weighted_avg > 5000 зависит от результата UDAF → это HAVING, выполняется после агрегации. Оптимизатор анализирует зависимости выражений, не тип функции.",
       "bloomLevel": "analytical",
       "studyHint": "Predicate pushdown ниже Aggregate: по зависимости от столбцов. WHERE на входных → pushdown. HAVING на результатах → после агрегации."
@@ -55,12 +93,24 @@
       "type": "multiple-choice",
       "question": "Capstone-архитектура включает Report Generator (сохранение в Parquet). В production Report Generator мог бы отправлять данные через Arrow Flight (M09 FDAP-стек). Какое преимущество Flight перед REST API для передачи аналитических результатов?",
       "options": [
-        { "id": "a", "text": "Arrow Flight передаёт данные в Arrow columnar формате через gRPC — zero-copy десериализация на стороне клиента. REST API потребовал бы JSON-сериализацию (типы теряются, размер растёт в 3-10 раз) и десериализацию обратно в columnar формат" },
-        { "id": "b", "text": "Flight поддерживает шифрование, REST API — нет" },
-        { "id": "c", "text": "Flight быстрее благодаря HTTP/3, REST использует устаревший HTTP/1.1" },
-        { "id": "d", "text": "Преимущества нет — Flight и REST одинаково эффективны для аналитических данных" }
+        {
+          "id": "a",
+          "text": "Flight быстрее благодаря HTTP/3, REST использует устаревший HTTP/1.1"
+        },
+        {
+          "id": "b",
+          "text": "Преимущества нет — Flight и REST одинаково эффективны для аналитических данных"
+        },
+        {
+          "id": "c",
+          "text": "Arrow Flight передаёт данные в Arrow columnar формате через gRPC — zero-copy десериализация на стороне клиента. REST API потребовал бы JSON-сериализацию (типы теряются, размер растёт в 3-10 раз) и десериализацию обратно в columnar формат"
+        },
+        {
+          "id": "d",
+          "text": "Flight поддерживает шифрование, REST API — нет"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Arrow Flight (FDAP-стек, модуль 9): данные передаются как Arrow RecordBatch через gRPC. Клиент получает columnar данные без десериализации — PyArrow, Polars, DuckDB работают с ними напрямую. REST + JSON: каждое число и строка кодируются в текст (3-10x overhead), типы теряются (INT64 → string), клиент должен парсить JSON и строить columnar структуру. Flight = Arrow на проводе.",
       "bloomLevel": "analytical",
       "studyHint": "Flight: Arrow на проводе → zero-copy. REST+JSON: текст → потеря типов + 3-10x overhead + парсинг. FDAP: Parquet (диск) → Arrow (память) → Flight (сеть)."
@@ -70,12 +120,24 @@
       "type": "multiple-choice",
       "question": "Капстон-движок работает на single node (DataFusion Python). Компания хочет масштабировать его на кластер. На основе модуля 8, какой подход минимизирует изменения в коде?",
       "options": [
-        { "id": "a", "text": "DataFusion Ray: Python API остаётся почти тем же (SessionContext → RayContext), Ray распределяет Physical Plan по узлам кластера. Минимальные изменения: замена импорта и конфигурация Ray-кластера" },
-        { "id": "b", "text": "Ballista: требует полного переписывания на Rust с gRPC-клиентом" },
-        { "id": "c", "text": "Apache Comet: подключается как Spark-плагин и автоматически масштабирует Python-код" },
-        { "id": "d", "text": "Масштабирование невозможно — DataFusion работает только на одном узле" }
+        {
+          "id": "a",
+          "text": "Ballista: требует полного переписывания на Rust с gRPC-клиентом"
+        },
+        {
+          "id": "b",
+          "text": "Масштабирование невозможно — DataFusion работает только на одном узле"
+        },
+        {
+          "id": "c",
+          "text": "Apache Comet: подключается как Spark-плагин и автоматически масштабирует Python-код"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion Ray: Python API остаётся почти тем же (SessionContext → RayContext), Ray распределяет Physical Plan по узлам кластера. Минимальные изменения: замена импорта и конфигурация Ray-кластера"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "DataFusion Ray (модуль 8): Python-first распределение. RayContext заменяет SessionContext, запросы распределяются по Ray-кластеру. Код capstone-проекта (UDF, SQL-запросы, DataFrame operations) остаётся практически без изменений. Ballista — Rust-native (потребует портирования). Comet — Spark-экосистема (другой контекст использования). DataFusion Ray — путь наименьшего сопротивления для Python-проектов.",
       "bloomLevel": "applied",
       "studyHint": "Python single-node → кластер: DataFusion Ray (RayContext вместо SessionContext). Ballista = Rust-native. Comet = Spark."
@@ -85,12 +147,24 @@
       "type": "multiple-choice",
       "question": "В capstone classify_amount UDF обрабатывает каждый элемент массива через Python-цикл. В модуле 2 описано vectorized execution DataFusion. Как можно ускорить этот UDF, сохранив Python?",
       "options": [
-        { "id": "a", "text": "Использовать PyArrow compute: pa.compute.if_else() и pa.compute.greater() вместо Python-цикла — операции выполняются в скомпилированном C++ коде Arrow, обрабатывая весь массив за один вызов без итерации в интерпретаторе Python" },
-        { "id": "b", "text": "Увеличить batch_size — больше данных за один вызов автоматически ускорит цикл" },
-        { "id": "c", "text": "Использовать asyncio для параллельной обработки элементов массива" },
-        { "id": "d", "text": "Ускорение невозможно без переписывания на Rust" }
+        {
+          "id": "a",
+          "text": "Увеличить batch_size — больше данных за один вызов автоматически ускорит цикл"
+        },
+        {
+          "id": "b",
+          "text": "Ускорение невозможно без переписывания на Rust"
+        },
+        {
+          "id": "c",
+          "text": "Использовать PyArrow compute: pa.compute.if_else() и pa.compute.greater() вместо Python-цикла — операции выполняются в скомпилированном C++ коде Arrow, обрабатывая весь массив за один вызов без итерации в интерпретаторе Python"
+        },
+        {
+          "id": "d",
+          "text": "Использовать asyncio для параллельной обработки элементов массива"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "PyArrow compute (модуль 1, модуль 4): pa.compute.if_else(condition, true_value, false_value) работает с целыми массивами в C++ без GIL. Вместо цикла по 8192 элементам — три vectorized-вызова. Производительность: C++ на массиве >> Python-цикл по элементам. Паттерн: заменяйте for-loops на PyArrow compute при работе с Arrow Arrays в UDF.",
       "bloomLevel": "applied",
       "studyHint": "Python UDF оптимизация: for-loop → pa.compute (C++, без GIL). if_else, greater, less — vectorized на весь массив."
@@ -100,12 +174,24 @@
       "type": "multiple-choice",
       "question": "Данные capstone хранятся в Parquet (M01). Запрос SELECT category, SUM(amount) FROM sales WHERE amount > 10000 использует predicate pushdown. На каком уровне Parquet-файла происходит фильтрация до чтения данных?",
       "options": [
-        { "id": "a", "text": "На уровне row group: Parquet footer содержит min/max статистику для каждого столбца в каждом row group. Если max(amount) в row group < 10000, весь row group пропускается без декодирования. Projection pushdown дополнительно читает только столбцы category и amount" },
-        { "id": "b", "text": "На уровне отдельных строк — Parquet фильтрует каждую запись до загрузки в память" },
-        { "id": "c", "text": "На уровне файла — если хотя бы одна строка не соответствует, весь файл пропускается" },
-        { "id": "d", "text": "Predicate pushdown не работает с Parquet — только с CSV" }
+        {
+          "id": "a",
+          "text": "На уровне отдельных строк — Parquet фильтрует каждую запись до загрузки в память"
+        },
+        {
+          "id": "b",
+          "text": "Predicate pushdown не работает с Parquet — только с CSV"
+        },
+        {
+          "id": "c",
+          "text": "На уровне row group: Parquet footer содержит min/max статистику для каждого столбца в каждом row group. Если max(amount) в row group < 10000, весь row group пропускается без декодирования. Projection pushdown дополнительно читает только столбцы category и amount"
+        },
+        {
+          "id": "d",
+          "text": "На уровне файла — если хотя бы одна строка не соответствует, весь файл пропускается"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Parquet (модуль 1): файл разбит на row groups (обычно 128MB). Footer содержит metadata с min/max для каждого столбца в каждом row group. DataFusion (модуль 6): ParquetExec проверяет min/max перед чтением. Для WHERE amount > 10000: если max(amount) row group < 10000 → skip. Projection pushdown: только столбцы category и amount декодируются из оставшихся row groups.",
       "bloomLevel": "analytical",
       "studyHint": "Parquet pushdown: row group level. Footer min/max → skip groups. Projection: только нужные столбцы. Два уровня фильтрации до чтения данных."
@@ -115,10 +201,22 @@
       "type": "multiple-choice",
       "question": "В модуле 5 изучались кастомные TableProvider. Если бы capstone-проект должен был читать данные из PostgreSQL вместо Parquet-файлов, какой подход к расширению DataFusion наиболее корректен?",
       "options": [
-        { "id": "a", "text": "Реализовать кастомный TableProvider, который подключается к PostgreSQL, транслирует DataFusion filter expressions в SQL WHERE и возвращает результаты как Arrow RecordBatch — DataFusion может протолкнуть фильтры и проекции в PostgreSQL через supports_filters_pushdown()" },
-        { "id": "b", "text": "Экспортировать данные из PostgreSQL в Parquet и использовать register_parquet" },
-        { "id": "c", "text": "Заменить DataFusion на PostgreSQL — использовать pg_query напрямую" },
-        { "id": "d", "text": "Использовать Arrow Flight SQL для подключения — TableProvider не нужен" }
+        {
+          "id": "a",
+          "text": "Реализовать кастомный TableProvider, который подключается к PostgreSQL, транслирует DataFusion filter expressions в SQL WHERE и возвращает результаты как Arrow RecordBatch — DataFusion может протолкнуть фильтры и проекции в PostgreSQL через supports_filters_pushdown()"
+        },
+        {
+          "id": "b",
+          "text": "Заменить DataFusion на PostgreSQL — использовать pg_query напрямую"
+        },
+        {
+          "id": "c",
+          "text": "Экспортировать данные из PostgreSQL в Parquet и использовать register_parquet"
+        },
+        {
+          "id": "d",
+          "text": "Использовать Arrow Flight SQL для подключения — TableProvider не нужен"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Кастомный TableProvider (модуль 5): реализует trait TableProvider, метод scan() подключается к PostgreSQL. supports_filters_pushdown() указывает DataFusion, какие фильтры можно протолкнуть в СУБД. scan() транслирует фильтры в SQL WHERE, выполняет запрос и возвращает RecordBatchStream. Готовая реализация: datafusion-contrib/datafusion-table-providers (модуль 9). Подход сохраняет весь стек DataFusion (оптимизатор, UDF, DataFrame API).",
@@ -130,12 +228,24 @@
       "type": "multiple-choice",
       "question": "Capstone-проект генерирует 10 000 записей о продажах. В production-системе данных может быть 10 млрд строк. Какая оптимизация из M06 становится критичной при масштабировании?",
       "options": [
-        { "id": "a", "text": "Join reordering и predicate pushdown: при 10 млрд строк неоптимальный порядок join может увеличить промежуточные результаты в тысячи раз, а без predicate pushdown DataFusion прочитает все row groups вместо 1-5% нужных" },
-        { "id": "b", "text": "Constant folding — вычисление констант на этапе планирования экономит наносекунды" },
-        { "id": "c", "text": "Projection pushdown — чтение только нужных столбцов важно только для широких таблиц" },
-        { "id": "d", "text": "Никакие — DataFusion автоматически масштабируется без оптимизаций" }
+        {
+          "id": "a",
+          "text": "Constant folding — вычисление констант на этапе планирования экономит наносекунды"
+        },
+        {
+          "id": "b",
+          "text": "Никакие — DataFusion автоматически масштабируется без оптимизаций"
+        },
+        {
+          "id": "c",
+          "text": "Join reordering и predicate pushdown: при 10 млрд строк неоптимальный порядок join может увеличить промежуточные результаты в тысячи раз, а без predicate pushdown DataFusion прочитает все row groups вместо 1-5% нужных"
+        },
+        {
+          "id": "d",
+          "text": "Projection pushdown — чтение только нужных столбцов важно только для широких таблиц"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "При 10 млрд строк (модуль 6): predicate pushdown критичен — WHERE date > '2024-01-01' может пропустить 95% row groups по min/max из footer, экономя TB I/O. Join reordering критичен — join маленькой таблицы (1000 строк) с большой (10 млрд) через build-стороны определяет разницу между секундами и часами. Projection pushdown тоже важен (100 столбцов × 10 млрд строк = огромный I/O), но join + predicate — наибольший эффект.",
       "bloomLevel": "analytical",
       "studyHint": "Масштаб 10 млрд: predicate pushdown (95% skip) + join reordering (маленькая таблица как build) = наибольший эффект. Оптимизатор M06 — не роскошь."
@@ -145,10 +255,22 @@
       "type": "multiple-choice",
       "question": "DataFusion применяет Partial → Final агрегацию для параллелизма (M02). В capstone weighted_avg UDAF merge() складывает sum_vw и sum_w. Для какого UDAF паттерн Partial → Final НЕ работает корректно без специальной обработки?",
       "options": [
-        { "id": "a", "text": "Медиана (PERCENTILE_CONT(0.5)): нельзя вычислить медиану из частичных медиан. Partial aggregate должен хранить все значения (или sketch-структуру вроде t-digest), а merge() объединяет sketches — в отличие от SUM/AVG, где достаточно арифметического слияния" },
-        { "id": "b", "text": "COUNT — частичные COUNT нельзя складывать" },
-        { "id": "c", "text": "MAX — максимум из частичных максимумов не равен глобальному максимуму" },
-        { "id": "d", "text": "SUM — при float64 возможна потеря точности при слиянии" }
+        {
+          "id": "a",
+          "text": "Медиана (PERCENTILE_CONT(0.5)): нельзя вычислить медиану из частичных медиан. Partial aggregate должен хранить все значения (или sketch-структуру вроде t-digest), а merge() объединяет sketches — в отличие от SUM/AVG, где достаточно арифметического слияния"
+        },
+        {
+          "id": "b",
+          "text": "MAX — максимум из частичных максимумов не равен глобальному максимуму"
+        },
+        {
+          "id": "c",
+          "text": "SUM — при float64 возможна потеря точности при слиянии"
+        },
+        {
+          "id": "d",
+          "text": "COUNT — частичные COUNT нельзя складывать"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Decomposable vs non-decomposable агрегаты. SUM, COUNT, MAX, MIN, AVG (через sum+count) — decomposable: частичные результаты корректно сливаются арифметически. Медиана (percentile) — non-decomposable: медиана частей ≠ медиана целого. Решение: state() хранит sketch (t-digest, quantile sketch), merge() объединяет sketches, evaluate() вычисляет приближённую медиану. Capstone weighted_avg — decomposable: sum_vw и sum_w складываются корректно.",
@@ -160,10 +282,22 @@
       "type": "multiple-choice",
       "question": "В модуле 7 Comet транслирует Spark-план в DataFusion через protobuf. В capstone ctx.sql() транслирует SQL в LogicalPlan. Оба маршрута заканчиваются выполнением на DataFusion. Какой ключевой этап присутствует в capstone, но отсутствует в Comet?",
       "options": [
-        { "id": "a", "text": "SQL-парсинг и логическое планирование: capstone использует DataFusion SQL-парсер (SQL → AST → LogicalPlan → оптимизация). Comet получает уже оптимизированный Spark Physical Plan и транслирует его напрямую в DataFusion ExecutionPlan, минуя SQL-парсер и логический оптимизатор DataFusion" },
-        { "id": "b", "text": "Физическое выполнение — Comet не использует DataFusion executor" },
-        { "id": "c", "text": "Arrow RecordBatch — Comet работает с row-based данными" },
-        { "id": "d", "text": "Оба маршрута идентичны — различий нет" }
+        {
+          "id": "a",
+          "text": "SQL-парсинг и логическое планирование: capstone использует DataFusion SQL-парсер (SQL → AST → LogicalPlan → оптимизация). Comet получает уже оптимизированный Spark Physical Plan и транслирует его напрямую в DataFusion ExecutionPlan, минуя SQL-парсер и логический оптимизатор DataFusion"
+        },
+        {
+          "id": "b",
+          "text": "Оба маршрута идентичны — различий нет"
+        },
+        {
+          "id": "c",
+          "text": "Arrow RecordBatch — Comet работает с row-based данными"
+        },
+        {
+          "id": "d",
+          "text": "Физическое выполнение — Comet не использует DataFusion executor"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Capstone: SQL → DataFusion SQL parser → AST → LogicalPlan → Optimizer (predicate pushdown, join reorder) → PhysicalPlan → Executor. Comet (модуль 7): Spark SQL parser → Spark LogicalPlan → Spark Optimizer → Spark PhysicalPlan → protobuf → DataFusion PhysicalPlanner → ExecutionPlan → Executor. Comet входит в DataFusion на уровне PhysicalPlan, минуя SQL-парсер и логический оптимизатор DataFusion — эти роли выполняет Spark.",
@@ -175,12 +309,24 @@
       "type": "multiple-choice",
       "question": "Capstone-проект применяет знания всего курса в одном проекте. Если бы вместо мини аналитического движка нужно было построить streaming-систему для реального времени, какие компоненты DataFusion пришлось бы расширить и какой проект экосистемы уже это сделал?",
       "options": [
-        { "id": "a", "text": "Кастомные LogicalPlan узлы для watermarks и window semantics, кастомные ExecutionPlan для стримингового выполнения, и расширенный SQL для event time. Arroyo (M09) реализовал этот подход: DataFusion SQL-парсер + оптимизатор из коробки, стриминговые конструкции через кастомные plan nodes" },
-        { "id": "b", "text": "Только замена TableProvider на Kafka-источник — остальное работает из коробки" },
-        { "id": "c", "text": "DataFusion не подходит для стриминга — нужно использовать Apache Flink" },
-        { "id": "d", "text": "Достаточно добавить while True цикл вокруг существующего batch-запроса" }
+        {
+          "id": "a",
+          "text": "Только замена TableProvider на Kafka-источник — остальное работает из коробки"
+        },
+        {
+          "id": "b",
+          "text": "Кастомные LogicalPlan узлы для watermarks и window semantics, кастомные ExecutionPlan для стримингового выполнения, и расширенный SQL для event time. Arroyo (M09) реализовал этот подход: DataFusion SQL-парсер + оптимизатор из коробки, стриминговые конструкции через кастомные plan nodes"
+        },
+        {
+          "id": "c",
+          "text": "Достаточно добавить while True цикл вокруг существующего batch-запроса"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не подходит для стриминга — нужно использовать Apache Flink"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Streaming на DataFusion (модуль 9, Arroyo): SQL-парсер и оптимизатор (predicate/projection pushdown) используются из коробки. Стриминговые конструкции добавлены через расширяемость DataFusion (модуль 5): кастомные LogicalPlan узлы (watermark, window semantics), кастомные ExecutionPlan (streaming operators), расширенный SQL (event time, session windows). Результат Arroyo: 3x throughput по сравнению с собственным движком. Ключевой паттерн: специализация через trait API.",
       "bloomLevel": "analytical",
       "studyHint": "Streaming: SQL-парсер + оптимизатор (batch) + кастомные plan nodes (streaming). Arroyo: 3x throughput через DataFusion. Паттерн: расширяемость (M05) для специализации."

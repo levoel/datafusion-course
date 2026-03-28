@@ -12,22 +12,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Vec<Row> — вектор строк"
-        },
-        {
-          "id": "b",
           "text": "DataFrame — обёртка для дальнейших трансформаций"
         },
         {
+          "id": "b",
+          "text": "Iterator<RecordBatch> — синхронный итератор"
+        },
+        {
           "id": "c",
-          "text": "SendableRecordBatchStream — асинхронный поток RecordBatch с известной схемой"
+          "text": "Vec<Row> — вектор строк"
         },
         {
           "id": "d",
-          "text": "Iterator<RecordBatch> — синхронный итератор"
+          "text": "SendableRecordBatchStream — асинхронный поток RecordBatch с известной схемой"
         }
       ],
-      "correctAnswer": "c",
+      "correctAnswer": "d",
       "explanation": "Каждый ExecutionPlan возвращает SendableRecordBatchStream (Stream<Item = Result<RecordBatch>> + SchemaRef). Это асинхронный поток, работающий по pull-модели: верхний оператор запрашивает следующий batch, запрос каскадом спускается до leaf-оператора (scan).",
       "bloomLevel": "conceptual",
       "studyHint": "Pull-модель: верхний оператор «тянет» данные от нижнего через async stream."
@@ -47,11 +47,11 @@
         },
         {
           "id": "c",
-          "text": "Nullable-обёртка над примитивным значением"
+          "text": "Указатель на offset buffer строковой колонки"
         },
         {
           "id": "d",
-          "text": "Указатель на offset buffer строковой колонки"
+          "text": "Nullable-обёртка над примитивным значением"
         }
       ],
       "correctAnswer": "b",
@@ -66,7 +66,7 @@
       "options": [
         {
           "id": "a",
-          "text": "NULL считается нулём — SUM([10, NULL, 30]) = 40"
+          "text": "Compute kernel выбрасывает ошибку при наличии NULL"
         },
         {
           "id": "b",
@@ -78,7 +78,7 @@
         },
         {
           "id": "d",
-          "text": "Compute kernel выбрасывает ошибку при наличии NULL"
+          "text": "NULL считается нулём — SUM([10, NULL, 30]) = 40"
         }
       ],
       "correctAnswer": "c",
@@ -93,22 +93,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Это требование спецификации SQL"
-        },
-        {
-          "id": "b",
-          "text": "Это позволяет ловить ошибки типов на этапе планирования, аллоцировать буферы заранее и выбирать оптимальный compute kernel по типу — до сканирования данных"
-        },
-        {
-          "id": "c",
           "text": "Схема нужна только для отображения результатов пользователю"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "DataFusion загружает все данные в память перед планированием"
+        },
+        {
+          "id": "c",
+          "text": "Это требование спецификации SQL"
+        },
+        {
+          "id": "d",
+          "text": "Это позволяет ловить ошибки типов на этапе планирования, аллоцировать буферы заранее и выбирать оптимальный compute kernel по типу — до сканирования данных"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "SchemaRef в каждом операторе позволяет: ловить ошибки типов на этапе планирования (до сканирования данных), аллоцировать буферы правильного размера заранее, выбирать оптимальный kernel по типу (Int32 vs Float64). Optimizer использует схему для projection pushdown — если верхний оператор запрашивает 2 из 10 колонок, scan не читает остальные 8.",
       "bloomLevel": "analytical",
       "studyHint": "Schema propagation → type safety + buffer preallocation + kernel selection + projection pushdown."
@@ -124,18 +124,18 @@
         },
         {
           "id": "b",
-          "text": "Вход: JSON строка, выход: JSON строка"
+          "text": "Вход: &[ArrayRef] (Arrow-массивы), выход: ArrayRef — прямая работа с Arrow без промежуточных форматов"
         },
         {
           "id": "c",
-          "text": "Вход: &[ArrayRef] (Arrow-массивы), выход: ArrayRef — прямая работа с Arrow без промежуточных форматов"
+          "text": "Вход: JSON строка, выход: JSON строка"
         },
         {
           "id": "d",
           "text": "Вход: DataFrame, выход: DataFrame"
         }
       ],
-      "correctAnswer": "c",
+      "correctAnswer": "b",
       "explanation": "UDF в DataFusion принимает &[ArrayRef] и возвращает ArrayRef. Нет DataFrame, нет Row, нет Object — только Arrow. Это означает, что UDF автоматически получает преимущества колоночной обработки: SIMD, cache locality, null propagation через validity bitmap.",
       "bloomLevel": "applied",
       "studyHint": "UDF = fn(&[ArrayRef]) → ArrayRef. Все преимущества Arrow (SIMD, zero-copy) доступны автоматически."

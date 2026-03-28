@@ -28,15 +28,15 @@ filtered = df.filter(col("amount") > lit(100))
 
 <DiagramContainer title="DataFrame: цепочка трансформаций в Python" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">ctx.read_parquet("orders.parquet")</FlowNode>
+    <FlowNode variant="input" tooltip="Чтение Parquet-файла — создаёт ленивый DataFrame без загрузки данных">ctx.read_parquet("orders.parquet")</FlowNode>
     <Arrow direction="down" label=".filter()" />
-    <FlowNode variant="process">DataFrame (LogicalPlan: Filter)</FlowNode>
+    <FlowNode variant="process" tooltip="Фильтрация — добавляет узел Filter в LogicalPlan">DataFrame (LogicalPlan: Filter)</FlowNode>
     <Arrow direction="down" label=".select()" />
-    <FlowNode variant="process">DataFrame (LogicalPlan: Projection)</FlowNode>
+    <FlowNode variant="process" tooltip="Проекция — выбор и вычисление колонок в плане">DataFrame (LogicalPlan: Projection)</FlowNode>
     <Arrow direction="down" label=".aggregate()" />
-    <FlowNode variant="process">DataFrame (LogicalPlan: Aggregate)</FlowNode>
+    <FlowNode variant="process" tooltip="Агрегация — группировка и вычисление итогов (SUM, AVG, COUNT)">DataFrame (LogicalPlan: Aggregate)</FlowNode>
     <Arrow direction="down" label=".collect()" />
-    <FlowNode variant="output">List[RecordBatch]</FlowNode>
+    <FlowNode variant="output" tooltip="Список PyArrow RecordBatch — результат выполнения всего плана">List[RecordBatch]</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

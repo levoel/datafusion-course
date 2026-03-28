@@ -282,19 +282,19 @@ Ballista 43.0.0 убрала несколько экспериментальны
 
 <DiagramContainer title="Удалённые компоненты Ballista 43.0.0" className="my-6">
   <Grid columns={2} className="gap-3 text-sm">
-    <DataBox label="Web UI" className="border-red-500/30">
+    <DataBox label="Web UI" className="border-red-500/30" tooltip="Встроенный веб-дашборд планировщика удалён — используйте внешний мониторинг (Prometheus, Grafana)">
       <div className="text-xs">Встроенный дашборд планировщика</div>
       <div className="text-xs mt-1 text-red-400">Удалён: используйте внешний мониторинг</div>
     </DataBox>
-    <DataBox label="Caching subsystem" className="border-red-500/30">
+    <DataBox label="Caching subsystem" className="border-red-500/30" tooltip="Подсистема кеширования промежуточных результатов удалена — реализуйте через кастомный TableProvider">
       <div className="text-xs">Кеширование промежуточных результатов</div>
       <div className="text-xs mt-1 text-red-400">Удалён: реализуйте через TableProvider</div>
     </DataBox>
-    <DataBox label="Plugin subsystem" className="border-red-500/30">
+    <DataBox label="Plugin subsystem" className="border-red-500/30" tooltip="Динамическая загрузка расширений удалена — компилируйте расширения статически для стабильности">
       <div className="text-xs">Динамическая загрузка расширений</div>
       <div className="text-xs mt-1 text-red-400">Удалён: компилируйте расширения статически</div>
     </DataBox>
-    <DataBox label="KV stores" className="border-red-500/30">
+    <DataBox label="KV stores" className="border-red-500/30" tooltip="Встроенные KV stores (etcd, sled) удалены — scheduler хранит состояние in-memory для простоты">
       <div className="text-xs">Встроенное хранилище метаданных (etcd, sled)</div>
       <div className="text-xs mt-1 text-red-400">Удалён: scheduler хранит состояние in-memory</div>
     </DataBox>

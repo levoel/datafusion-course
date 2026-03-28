@@ -51,21 +51,21 @@ df.show()
 
 <DiagramContainer title="SessionContext: точка входа Python API" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">SessionContext()</FlowNode>
+    <FlowNode variant="input" tooltip="Центральный объект Python API — управляет каталогом, конфигурацией и выполнением запросов">SessionContext()</FlowNode>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <DataBox label="Чтение файлов" className="border-blue-500/30 w-48">
+      <DataBox label="Чтение файлов" className="border-blue-500/30 w-48" tooltip="Методы чтения CSV, Parquet и JSON файлов в DataFrame">
         <div className="text-xs font-mono">read_csv, read_parquet, read_json</div>
       </DataBox>
-      <DataBox label="SQL-запросы" className="border-emerald-500/30 w-48">
+      <DataBox label="SQL-запросы" className="border-emerald-500/30 w-48" tooltip="Выполнение SQL — результат возвращается как ленивый DataFrame">
         <div className="text-xs font-mono">ctx.sql("SELECT ...")</div>
       </DataBox>
-      <DataBox label="Создание данных" className="border-yellow-500/30 w-48">
+      <DataBox label="Создание данных" className="border-yellow-500/30 w-48" tooltip="Создание DataFrame из Python-словарей и списков без файлов">
         <div className="text-xs font-mono">from_pydict, from_pylist</div>
       </DataBox>
     </FlowRow>
     <Arrow direction="down" />
-    <FlowNode variant="output">DataFrame</FlowNode>
+    <FlowNode variant="output" tooltip="Ленивый DataFrame — данные не обрабатываются до вызова терминальной операции">DataFrame</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

@@ -46,15 +46,15 @@ Volatility сообщает оптимизатору, можно ли кэшир
 
 <DiagramContainer title="Volatility: уровни" className="my-6">
   <Grid columns={3} className="gap-4 text-sm">
-    <DataBox label="immutable" className="border-emerald-500/30">
+    <DataBox label="immutable" className="border-emerald-500/30" tooltip="Неизменяемая функция — при одинаковом входе всегда одинаковый результат, оптимизатор может кэшировать">
       <div className="text-xs">Одинаковый вход --- всегда одинаковый выход. Оптимизатор может вычислить один раз.</div>
       <div className="text-xs font-mono mt-1">upper(), abs(), length()</div>
     </DataBox>
-    <DataBox label="stable" className="border-yellow-500/30">
+    <DataBox label="stable" className="border-yellow-500/30" tooltip="Стабильная функция — результат постоянен в рамках одного запроса, но может меняться между запросами">
       <div className="text-xs">Одинаковый вход --- одинаковый выход в пределах одного запроса.</div>
       <div className="text-xs font-mono mt-1">current_date(), config()</div>
     </DataBox>
-    <DataBox label="volatile" className="border-red-500/30">
+    <DataBox label="volatile" className="border-red-500/30" tooltip="Волатильная функция — результат может меняться при каждом вызове, кэширование невозможно">
       <div className="text-xs">Результат может меняться между вызовами. Никакого кэширования.</div>
       <div className="text-xs font-mono mt-1">random(), now(), uuid()</div>
     </DataBox>
@@ -253,3 +253,4 @@ df.show()
 - Volatility (`immutable`/`stable`/`volatile`) влияет на оптимизацию
 - UDF/UDAF регистрируются для SQL через `ctx.register_udf()` / `ctx.register_udaf()`
 - Вход и выход --- PyArrow Array/Scalar, обеспечивая zero-copy передачу данных
+�чу данных

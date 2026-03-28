@@ -14,22 +14,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Column pruning (читаются 2 из 10 буферов) + cache locality (значения одной колонки sequential в памяти) + SIMD-векторизация (contiguous values обрабатываются пакетами)"
+          "text": "Lazy evaluation: данные загружаются только при обращении"
         },
         {
           "id": "b",
-          "text": "Run-Length Encoding + Dictionary Encoding — сжатие доминирует"
+          "text": "Column pruning (читаются 2 из 10 буферов) + cache locality (значения одной колонки sequential в памяти) + SIMD-векторизация (contiguous values обрабатываются пакетами)"
         },
         {
           "id": "c",
-          "text": "Параллелизм: каждая колонка обрабатывается отдельным потоком"
+          "text": "Run-Length Encoding + Dictionary Encoding — сжатие доминирует"
         },
         {
           "id": "d",
-          "text": "Lazy evaluation: данные загружаются только при обращении"
+          "text": "Параллелизм: каждая колонка обрабатывается отдельным потоком"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Три преимущества работают вместе: column pruning сокращает объём данных в 5 раз (2/10), cache locality обеспечивает 8 значений int64 за одну загрузку cache line (64 байт), SIMD обрабатывает 4–8 значений за инструкцию. Компрессия (RLE, dictionary) — дополнительный бонус, но column pruning + cache + SIMD дают основной выигрыш для compute-bound запросов.",
       "studyHint": "Повторите урок 1: четыре преимущества колоночного формата и их взаимодействие.",
       "bloomLevel": "analytical"
@@ -41,22 +41,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Arrow автоматически переключится на LargeUtf8"
-        },
-        {
-          "id": "b",
           "text": "Переполнение int32 offset buffer — нужно заранее использовать LargeUtf8 (int64 offsets) для колонок с суммарным объёмом текста > 2 GB"
         },
         {
+          "id": "b",
+          "text": "Arrow автоматически переключится на LargeUtf8"
+        },
+        {
           "id": "c",
-          "text": "Arrow сожмёт существующие строки для освобождения места"
+          "text": "Arrow создаст новый chunk и продолжит работу"
         },
         {
           "id": "d",
-          "text": "Arrow создаст новый chunk и продолжит работу"
+          "text": "Arrow сожмёт существующие строки для освобождения места"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Utf8 использует int32 offsets — максимальный суммарный размер данных ~2 GB. При превышении этого лимита int32 переполняется. Автоматического переключения на LargeUtf8 нет — тип определяется при создании схемы. Если ожидается > 2 GB текста в колонке, нужно сразу указывать LargeUtf8 (int64 offsets, до 2^63 байт).",
       "studyHint": "Повторите уроки 2 (offset buffer) и 3 (Utf8 vs LargeUtf8).",
       "bloomLevel": "analytical"
@@ -68,22 +68,22 @@
       "options": [
         {
           "id": "a",
-          "text": "id: Int64, tags: Utf8 (теги через запятую), metadata: Utf8 (JSON строка)"
-        },
-        {
-          "id": "b",
           "text": "id: Int64, tags: List<Utf8>, metadata: Map<Utf8, Utf8>"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "id: Int64, tags: Struct{tag1, tag2, tag3}, metadata: List<Utf8>"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Все три поля как Utf8 — Arrow не поддерживает вложенные типы"
+        },
+        {
+          "id": "d",
+          "text": "id: Int64, tags: Utf8 (теги через запятую), metadata: Utf8 (JSON строка)"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "List<Utf8> для массива строк (tags) и Map<Utf8, Utf8> для key-value пар (metadata) — корректное использование вложенных типов Arrow. Хранение JSON как Utf8 теряет структуру и требует парсинга на каждом запросе. Struct фиксирует набор полей, а List допускает произвольное количество элементов.",
       "studyHint": "Повторите урок 3: List для массивов, Map для key-value, Struct для фиксированных полей.",
       "bloomLevel": "applied"
@@ -99,18 +99,18 @@
         },
         {
           "id": "b",
-          "text": "TableScan знает, что нужны только name и salary (projection pushdown) — остальные колонки не читаются из файла. Тип salary (Float64) определяет выбор compute kernel для умножения"
+          "text": "Schema сжимает данные перед передачей между операторами"
         },
         {
           "id": "c",
-          "text": "Schema сжимает данные перед передачей между операторами"
+          "text": "TableScan знает, что нужны только name и salary (projection pushdown) — остальные колонки не читаются из файла. Тип salary (Float64) определяет выбор compute kernel для умножения"
         },
         {
           "id": "d",
           "text": "Schema позволяет пропустить FilterExec, если все строки подходят"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Schema propagation позволяет: 1) ProjectionExec сообщает вверх по плану, что нужны только name и salary → TableScan не читает остальные колонки (projection pushdown). 2) Тип salary (Float64) известен до выполнения → выбирается оптимизированный kernel multiply_scalar для Float64. Ошибки типов ловятся на этапе планирования.",
       "studyHint": "Повторите урок 6: Schema Propagation через план и projection pushdown.",
       "bloomLevel": "analytical"
@@ -122,22 +122,22 @@
       "options": [
         {
           "id": "a",
-          "text": "REST API + JSON — универсальный и простой"
+          "text": "FTP + CSV файлы — batch передача"
         },
         {
           "id": "b",
-          "text": "gRPC + Protobuf — стандарт для микросервисов"
-        },
-        {
-          "id": "c",
           "text": "Arrow Flight — gRPC transport с Arrow IPC payload. Данные передаются как нативные Arrow буферы, без Protobuf-сериализации. Endpoints поддерживают параллельное чтение"
         },
         {
+          "id": "c",
+          "text": "gRPC + Protobuf — стандарт для микросервисов"
+        },
+        {
           "id": "d",
-          "text": "FTP + CSV файлы — batch передача"
+          "text": "REST API + JSON — универсальный и простой"
         }
       ],
-      "correctAnswer": "c",
+      "correctAnswer": "b",
       "explanation": "Для 500M строк overhead сериализации JSON или Protobuf доминирует. Arrow Flight передаёт Arrow IPC буферы напрямую через gRPC streams: zero-copy десериализация, поддержка параллельного чтения через endpoints, опциональное LZ4/ZSTD сжатие. gRPC + Protobuf — хорош для скалярных RPC, но не для массовой передачи данных.",
       "studyHint": "Повторите урок 4: Arrow IPC zero-copy + Flight endpoints для параллелизма.",
       "bloomLevel": "applied"
@@ -149,7 +149,7 @@
       "options": [
         {
           "id": "a",
-          "text": "2 значения NULL. Нужно сканировать data buffer и считать нулевые элементы"
+          "text": "Невозможно определить без чтения data buffer"
         },
         {
           "id": "b",
@@ -161,7 +161,7 @@
         },
         {
           "id": "d",
-          "text": "Невозможно определить без чтения data buffer"
+          "text": "2 значения NULL. Нужно сканировать data buffer и считать нулевые элементы"
         }
       ],
       "correctAnswer": "b",
@@ -203,7 +203,7 @@
       "options": [
         {
           "id": "a",
-          "text": "DataFusion написан на более быстром языке"
+          "text": "DataFusion поддерживает больше типов данных"
         },
         {
           "id": "b",
@@ -211,7 +211,7 @@
         },
         {
           "id": "c",
-          "text": "DataFusion поддерживает больше типов данных"
+          "text": "DataFusion написан на более быстром языке"
         },
         {
           "id": "d",
@@ -230,22 +230,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Проверить каждое значение на NaN и заменить на 0"
-        },
-        {
-          "id": "b",
           "text": "Использовать iter() с map(|v| v.map(|t| t * 9.0/5.0 + 32.0)) — iter() возвращает Option, map внутри Option пропускает NULL автоматически"
         },
         {
+          "id": "b",
+          "text": "Проверить каждое значение на NaN и заменить на 0"
+        },
+        {
           "id": "c",
-          "text": "Отфильтровать NULL перед вычислением и добавить обратно после"
+          "text": "Выбросить ошибку, если в массиве есть NULL"
         },
         {
           "id": "d",
-          "text": "Выбросить ошибку, если в массиве есть NULL"
+          "text": "Отфильтровать NULL перед вычислением и добавить обратно после"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Arrow-массив iter() возвращает итератор Option<T>: Some(value) для валидных, None для NULL. map внутри Option (v.map(|t| ...)) применяет трансформацию только к Some, пропуская None. Результирующий массив сохраняет NULL в тех же позициях. Это стандартный паттерн null propagation в UDF.",
       "studyHint": "Повторите урок 6: пример UDF celsius_to_fahrenheit и iter().map() паттерн.",
       "bloomLevel": "applied"
@@ -261,18 +261,18 @@
         },
         {
           "id": "b",
-          "text": "Footer с block index (offset + size каждого RecordBatch) позволяет читать конкретный batch без сканирования всего файла — произвольный доступ к любому RecordBatch по номеру"
-        },
-        {
-          "id": "c",
           "text": "Двойной magic позволяет читать файл в обоих направлениях"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Footer нужен для совместимости с Parquet-ридерами"
+        },
+        {
+          "id": "d",
+          "text": "Footer с block index (offset + size каждого RecordBatch) позволяет читать конкретный batch без сканирования всего файла — произвольный доступ к любому RecordBatch по номеру"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Footer содержит block index: offset и size каждого RecordBatch. Это позволяет seek к конкретному batch без сканирования файла — аналог row group index в Parquet. Stream format не имеет footer и поддерживает только последовательное чтение.",
       "studyHint": "Повторите урок 4: IPC File Format (Feather) vs Stream Format.",
       "bloomLevel": "conceptual"
@@ -284,11 +284,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Struct-уровневый bitmap заменяет bitmap полей — если структура NULL, поля не проверяются"
+          "text": "Struct-уровневый bitmap определяет, является ли вся структура NULL, отдельно от nullable полей внутри. Два уровня null: вся структура может быть NULL, и отдельные поля внутри не-NULL структуры тоже могут быть NULL"
         },
         {
           "id": "b",
-          "text": "Struct-уровневый bitmap определяет, является ли вся структура NULL, отдельно от nullable полей внутри. Два уровня null: вся структура может быть NULL, и отдельные поля внутри не-NULL структуры тоже могут быть NULL"
+          "text": "Bitmap структуры — это AND bitmap всех полей"
         },
         {
           "id": "c",
@@ -296,10 +296,10 @@
         },
         {
           "id": "d",
-          "text": "Bitmap структуры — это AND bitmap всех полей"
+          "text": "Struct-уровневый bitmap заменяет bitmap полей — если структура NULL, поля не проверяются"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Struct в Arrow имеет два уровня null: struct-уровневый validity bitmap определяет, является ли вся структура NULL (все поля не определены), а bitmap каждого child array определяет null отдельных полей внутри не-NULL структуры. Это не вложенный RecordBatch — каждое поле хранится как отдельный child array.",
       "studyHint": "Повторите урок 3: Struct — два уровня null (struct-level + field-level).",
       "bloomLevel": "analytical"
@@ -311,22 +311,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Только плюсы: меньше памяти, быстрее первый результат"
-        },
-        {
-          "id": "b",
           "text": "Латентность первого результата снизится, но эффективность SIMD-векторизации уменьшится (меньше значений за инструкцию), overhead per-batch (schema validation, buffer allocation) увеличится, общий throughput упадёт"
         },
         {
+          "id": "b",
+          "text": "DataFusion не позволяет менять batch_size"
+        },
+        {
           "id": "c",
-          "text": "Никаких trade-offs — batch_size не влияет на производительность"
+          "text": "Только плюсы: меньше памяти, быстрее первый результат"
         },
         {
           "id": "d",
-          "text": "DataFusion не позволяет менять batch_size"
+          "text": "Никаких trade-offs — batch_size не влияет на производительность"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Уменьшение batch_size — trade-off: быстрее первый результат (256 строк вместо 8192), но ниже SIMD-эффективность (меньше contiguous values для AVX), больше per-batch overhead (schema propagation, buffer allocation, async poll на каждый batch). Для interactive OLAP (дашборды) — разумный компромисс. Для batch analytics — потеря throughput.",
       "studyHint": "Повторите урок 1 (SIMD + cache) и урок 6 (batch_size и SessionConfig).",
       "bloomLevel": "analytical"

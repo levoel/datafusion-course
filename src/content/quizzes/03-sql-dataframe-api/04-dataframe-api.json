@@ -1,19 +1,33 @@
 {
   "lessonSlug": "03-sql-dataframe-api/04-dataframe-api",
   "moduleId": "03-sql-dataframe-api",
-  "_meta": { "idPrefix": "df-m03-04" },
+  "_meta": {
+    "idPrefix": "df-m03-04"
+  },
   "questions": [
     {
       "id": "df-m03-04-q1",
       "type": "multiple-choice",
       "question": "Почему DataFrame в DataFusion является ленивым (lazy)?",
       "options": [
-        { "id": "a", "text": "DataFrame хранит LogicalPlan, а не данные. Выполнение начинается только при вызове terminal-операции (collect, show, write)" },
-        { "id": "b", "text": "DataFrame загружает данные в память при создании, но обрабатывает их отложенно" },
-        { "id": "c", "text": "DataFrame автоматически кеширует все промежуточные результаты" },
-        { "id": "d", "text": "DataFrame выполняет каждую операцию немедленно, но буферизует вывод" }
+        {
+          "id": "a",
+          "text": "DataFrame загружает данные в память при создании, но обрабатывает их отложенно"
+        },
+        {
+          "id": "b",
+          "text": "DataFrame выполняет каждую операцию немедленно, но буферизует вывод"
+        },
+        {
+          "id": "c",
+          "text": "DataFrame хранит LogicalPlan, а не данные. Выполнение начинается только при вызове terminal-операции (collect, show, write)"
+        },
+        {
+          "id": "d",
+          "text": "DataFrame автоматически кеширует все промежуточные результаты"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "DataFrame — ленивая обёртка над LogicalPlan. Вызовы filter(), select(), aggregate() трансформируют план, но не выполняют его. Выполнение запускается только terminal-операцией: collect() возвращает RecordBatch, show() печатает таблицу, write_parquet() записывает файл.",
       "bloomLevel": "conceptual",
       "studyHint": "Аналогия: DataFrame как рецепт, collect() как приготовление. Пока не вызвали collect() — только рецепт."
@@ -23,10 +37,22 @@
       "type": "multiple-choice",
       "question": "Какой код корректно фильтрует DataFrame по условию amount > 100?",
       "options": [
-        { "id": "a", "text": "df.filter(col(\"amount\").gt(lit(100)))?" },
-        { "id": "b", "text": "df.where(\"amount > 100\")?" },
-        { "id": "c", "text": "df.filter(amount > 100)?" },
-        { "id": "d", "text": "df.select(col(\"amount\") > 100)?" }
+        {
+          "id": "a",
+          "text": "df.filter(col(\"amount\").gt(lit(100)))?"
+        },
+        {
+          "id": "b",
+          "text": "df.where(\"amount > 100\")?"
+        },
+        {
+          "id": "c",
+          "text": "df.select(col(\"amount\") > 100)?"
+        },
+        {
+          "id": "d",
+          "text": "df.filter(amount > 100)?"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "В DataFrame API фильтры строятся через Expr: col(\"amount\") создаёт ссылку на колонку, .gt(lit(100)) создаёт выражение сравнения. lit() оборачивает константу в Expr. Метод filter() принимает Expr и добавляет узел Filter в LogicalPlan.",
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "Что возвращает метод df.collect().await?",
       "options": [
-        { "id": "a", "text": "Vec<RecordBatch> — вектор Arrow-батчей с результатами запроса" },
-        { "id": "b", "text": "DataFrame с материализованными данными" },
-        { "id": "c", "text": "Iterator по строкам результата" },
-        { "id": "d", "text": "JSON-строку с результатами" }
+        {
+          "id": "a",
+          "text": "Vec<RecordBatch> — вектор Arrow-батчей с результатами запроса"
+        },
+        {
+          "id": "b",
+          "text": "Iterator по строкам результата"
+        },
+        {
+          "id": "c",
+          "text": "JSON-строку с результатами"
+        },
+        {
+          "id": "d",
+          "text": "DataFrame с материализованными данными"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "collect().await запускает выполнение плана и возвращает Result<Vec<RecordBatch>>. Каждый RecordBatch содержит набор колонок в Arrow-формате. Данные полностью материализуются в памяти. Для потоковой обработки используйте execute_stream().",
@@ -53,10 +91,22 @@
       "type": "multiple-choice",
       "question": "Как выполнить агрегацию в DataFrame API: подсчитать количество заказов и среднюю сумму по каждому региону?",
       "options": [
-        { "id": "a", "text": "df.aggregate(vec![col(\"region\")], vec![count(lit(1)).alias(\"cnt\"), avg(col(\"amount\")).alias(\"avg_amount\")])?" },
-        { "id": "b", "text": "df.group_by(\"region\").agg(\"COUNT(*), AVG(amount)\")?" },
-        { "id": "c", "text": "df.select(vec![col(\"region\"), count(col(\"amount\"))])?" },
-        { "id": "d", "text": "df.aggregate(\"region\", \"count\", \"avg\")?" }
+        {
+          "id": "a",
+          "text": "df.aggregate(vec![col(\"region\")], vec![count(lit(1)).alias(\"cnt\"), avg(col(\"amount\")).alias(\"avg_amount\")])?"
+        },
+        {
+          "id": "b",
+          "text": "df.group_by(\"region\").agg(\"COUNT(*), AVG(amount)\")?"
+        },
+        {
+          "id": "c",
+          "text": "df.aggregate(\"region\", \"count\", \"avg\")?"
+        },
+        {
+          "id": "d",
+          "text": "df.select(vec![col(\"region\"), count(col(\"amount\"))])?"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Метод aggregate() принимает два аргумента: вектор group-by выражений и вектор агрегатных выражений. Каждое агрегатное выражение — функция (count, avg, sum) от Expr, с опциональным alias(). Это создаёт узел Aggregate в LogicalPlan.",
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Что произойдёт, если вызвать filter() на DataFrame после collect()?",
       "options": [
-        { "id": "a", "text": "Ошибка компиляции — collect() потребляет DataFrame (перемещение владения)" },
-        { "id": "b", "text": "Фильтр применится к уже загруженным данным в памяти" },
-        { "id": "c", "text": "DataFusion откатит выполнение и перестроит план" },
-        { "id": "d", "text": "Фильтр будет проигнорирован" }
+        {
+          "id": "a",
+          "text": "Фильтр будет проигнорирован"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion откатит выполнение и перестроит план"
+        },
+        {
+          "id": "c",
+          "text": "Ошибка компиляции — collect() потребляет DataFrame (перемещение владения)"
+        },
+        {
+          "id": "d",
+          "text": "Фильтр применится к уже загруженным данным в памяти"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "В Rust DataFrame перемещается (move semantics) при вызове collect(). После перемещения переменная недоступна — попытка вызвать filter() вызовет ошибку компиляции (use of moved value). Для повторного использования клонируйте DataFrame перед collect().",
       "bloomLevel": "applied",
       "studyHint": "DataFrame в Rust следует ownership: collect() забирает владение. Клонируйте, если нужен тот же план повторно."

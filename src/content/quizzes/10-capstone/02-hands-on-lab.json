@@ -1,19 +1,33 @@
 {
   "lessonSlug": "10-capstone/02-hands-on-lab",
   "moduleId": "10-capstone",
-  "_meta": { "idPrefix": "df-m10-02" },
+  "_meta": {
+    "idPrefix": "df-m10-02"
+  },
   "questions": [
     {
       "id": "df-m10-02-q1",
       "type": "multiple-choice",
       "question": "UDF classify_amount в лабораторной принимает pa.Array и возвращает pa.Array. Почему DataFusion передаёт в UDF массив значений, а не отдельные скаляры?",
       "options": [
-        { "id": "a", "text": "Vectorized-выполнение: DataFusion обрабатывает данные RecordBatch-ами (тысячи строк). UDF получает массив для обработки целого batch за один вызов — это минимизирует overhead вызова Python-функции и позволяет использовать vectorized-операции PyArrow" },
-        { "id": "b", "text": "Python не поддерживает вызов функций для отдельных значений" },
-        { "id": "c", "text": "Массивы нужны только для UDAF, скалярные UDF работают построчно" },
-        { "id": "d", "text": "Это ограничение PyO3 — Rust не может передавать скаляры в Python" }
+        {
+          "id": "a",
+          "text": "Python не поддерживает вызов функций для отдельных значений"
+        },
+        {
+          "id": "b",
+          "text": "Vectorized-выполнение: DataFusion обрабатывает данные RecordBatch-ами (тысячи строк). UDF получает массив для обработки целого batch за один вызов — это минимизирует overhead вызова Python-функции и позволяет использовать vectorized-операции PyArrow"
+        },
+        {
+          "id": "c",
+          "text": "Это ограничение PyO3 — Rust не может передавать скаляры в Python"
+        },
+        {
+          "id": "d",
+          "text": "Массивы нужны только для UDAF, скалярные UDF работают построчно"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "DataFusion использует vectorized execution (модуль 2): данные обрабатываются RecordBatch-ами. UDF вызывается один раз на batch (обычно 8192 строк), получая Arrow Array. Это критично для Python: один вызов с массивом вместо 8192 вызовов со скалярами — overhead интерпретатора минимизирован. Дополнительно: PyArrow позволяет обрабатывать массивы без цикла (vectorized ops).",
       "bloomLevel": "analytical",
       "studyHint": "Vectorized UDF: один вызов на batch (8192 строк) → минимальный Python-overhead. pa.Array вход/выход = Arrow columnar format."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "При создании UDF через udf() четвёртый аргумент — volatility ('immutable', 'stable', 'volatile'). Для classify_amount указан 'immutable'. Какое практическое следствие этого выбора?",
       "options": [
-        { "id": "a", "text": "Оптимизатор может вычислить classify_amount с константным аргументом на этапе планирования (constant folding) и кешировать результат — если бы была 'volatile', оптимизатор вызывал бы функцию для каждого batch, даже с одинаковыми входными данными" },
-        { "id": "b", "text": "Immutable означает, что UDF нельзя переопределить после регистрации" },
-        { "id": "c", "text": "Volatility влияет только на порядок сортировки результатов" },
-        { "id": "d", "text": "Immutable ускоряет выполнение в 10 раз за счёт компиляции функции" }
+        {
+          "id": "a",
+          "text": "Volatility влияет только на порядок сортировки результатов"
+        },
+        {
+          "id": "b",
+          "text": "Immutable означает, что UDF нельзя переопределить после регистрации"
+        },
+        {
+          "id": "c",
+          "text": "Оптимизатор может вычислить classify_amount с константным аргументом на этапе планирования (constant folding) и кешировать результат — если бы была 'volatile', оптимизатор вызывал бы функцию для каждого batch, даже с одинаковыми входными данными"
+        },
+        {
+          "id": "d",
+          "text": "Immutable ускоряет выполнение в 10 раз за счёт компиляции функции"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Volatility (модуль 4): immutable — одинаковый вход всегда даёт одинаковый выход. Оптимизатор DataFusion (модуль 6) использует это для constant folding: classify_amount(literal(500)) → 'small' на этапе планирования. stable — результат стабилен в рамках одного запроса. volatile — каждый вызов может дать разный результат (например, random()). Выбор влияет на оптимизации.",
       "bloomLevel": "analytical",
       "studyHint": "immutable → constant folding, кеширование. stable → стабильно в рамках запроса. volatile → без оптимизаций. Влияет на optimizer rules."
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "WeightedAvg UDAF хранит два значения: _sum_vw (сумма взвешенных значений) и _sum_w (сумма весов). Метод state() возвращает оба как список скаляров. Зачем оптимизатору знать промежуточное состояние UDAF?",
       "options": [
-        { "id": "a", "text": "Для Partial → Final агрегации: DataFusion выполняет update() на каждой партиции параллельно, затем сериализует state() каждого partial accumulator и передаёт в final accumulator через merge(). Без state() промежуточные результаты невозможно передать между партициями" },
-        { "id": "b", "text": "state() нужен только для отладки — в production не используется" },
-        { "id": "c", "text": "Оптимизатор использует state() для выбора индексов" },
-        { "id": "d", "text": "state() определяет тип возвращаемого значения UDAF" }
+        {
+          "id": "a",
+          "text": "Для Partial → Final агрегации: DataFusion выполняет update() на каждой партиции параллельно, затем сериализует state() каждого partial accumulator и передаёт в final accumulator через merge(). Без state() промежуточные результаты невозможно передать между партициями"
+        },
+        {
+          "id": "b",
+          "text": "state() нужен только для отладки — в production не используется"
+        },
+        {
+          "id": "c",
+          "text": "state() определяет тип возвращаемого значения UDAF"
+        },
+        {
+          "id": "d",
+          "text": "Оптимизатор использует state() для выбора индексов"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Partial → Final паттерн (модуль 2, модуль 4): DataFusion параллелит агрегацию по партициям. Каждая партиция: update() → state() → сериализация. Финальный узел: десериализация → merge() → evaluate(). state() определяет контракт промежуточного состояния. Для WeightedAvg: [sum_vw, sum_w] — два float64, которые корректно объединяются через merge(): sum_vw_total += sum_vw_partial, sum_w_total += sum_w_partial.",
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "В упражнении 3 класс AnalyticsEngine вызывает ctx.sql() для аналитических запросов и df.write_parquet() для сохранения отчётов. Что произойдёт, если вызвать ctx.sql() без предварительного register_parquet()?",
       "options": [
-        { "id": "a", "text": "DataFusion вернёт ошибку 'table not found' на этапе логического планирования — SQL-парсер разберёт запрос, но при построении LogicalPlan обращение к каталогу не найдёт таблицу" },
-        { "id": "b", "text": "Запрос выполнится, но вернёт пустой DataFrame" },
-        { "id": "c", "text": "DataFusion автоматически найдёт файл по имени таблицы в текущей директории" },
-        { "id": "d", "text": "Ошибка произойдёт только при вызове .show() — ctx.sql() всегда успешен" }
+        {
+          "id": "a",
+          "text": "DataFusion автоматически найдёт файл по имени таблицы в текущей директории"
+        },
+        {
+          "id": "b",
+          "text": "Запрос выполнится, но вернёт пустой DataFrame"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion вернёт ошибку 'table not found' на этапе логического планирования — SQL-парсер разберёт запрос, но при построении LogicalPlan обращение к каталогу не найдёт таблицу"
+        },
+        {
+          "id": "d",
+          "text": "Ошибка произойдёт только при вызове .show() — ctx.sql() всегда успешен"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Этапы обработки SQL (модуль 2): парсинг → построение LogicalPlan → оптимизация → PhysicalPlan → выполнение. При построении LogicalPlan DataFusion обращается к CatalogProvider для разрешения имён таблиц. Если таблица не зарегистрирована, ошибка возникает сразу — до оптимизации и выполнения. ctx.sql() возвращает Result, ошибка будет при вызове, не при .show().",
       "bloomLevel": "applied",
       "studyHint": "Ошибка 'table not found' → этап логического планирования, не выполнения. CatalogProvider разрешает имена при построении LogicalPlan."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Docker-среда лабораторной монтирует exercises/ как volume. Зачем это нужно для workflow разработки?",
       "options": [
-        { "id": "a", "text": "Изменения файлов на хост-машине сразу видны в контейнере без пересборки образа — можно редактировать код в IDE на хосте, а запускать в контейнере с предустановленным datafusion, pyarrow и pandas" },
-        { "id": "b", "text": "Volume нужен для сохранения данных при перезапуске контейнера — без него данные теряются" },
-        { "id": "c", "text": "Volume увеличивает производительность файловых операций в Docker" },
-        { "id": "d", "text": "Без volume Docker не может читать Python-файлы" }
+        {
+          "id": "a",
+          "text": "Без volume Docker не может читать Python-файлы"
+        },
+        {
+          "id": "b",
+          "text": "Volume увеличивает производительность файловых операций в Docker"
+        },
+        {
+          "id": "c",
+          "text": "Volume нужен для сохранения данных при перезапуске контейнера — без него данные теряются"
+        },
+        {
+          "id": "d",
+          "text": "Изменения файлов на хост-машине сразу видны в контейнере без пересборки образа — можно редактировать код в IDE на хосте, а запускать в контейнере с предустановленным datafusion, pyarrow и pandas"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Bind mount (volume) монтирует директорию хоста в контейнер. Workflow: редактирование в IDE на хосте → файл мгновенно доступен в контейнере → python exercises/01_explore_data.py запускает обновлённый код без docker build. Без volume изменения требовали бы пересборки образа (docker compose up --build) при каждом редактировании.",
       "bloomLevel": "applied",
       "studyHint": "Bind mount: хост ↔ контейнер синхронно. Редактирование в IDE → запуск в Docker без пересборки. Стандартный dev workflow."

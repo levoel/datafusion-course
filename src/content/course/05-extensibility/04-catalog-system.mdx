@@ -17,27 +17,27 @@ DataFusion использует трёхуровневую модель имен
 
 <DiagramContainer title="Catalog Hierarchy: полная картина" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="SessionContext" className="border-gray-500/30 w-72 mx-auto">
+    <DataBox label="SessionContext" className="border-gray-500/30 w-72 mx-auto" tooltip="Корневой контейнер, хранящий список каталогов и управляющий их жизненным циклом">
       <div className="text-xs">catalog_list: CatalogProviderList</div>
     </DataBox>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <DataBox label='CatalogProvider "analytics"' className="border-blue-500/30 w-52">
+      <DataBox label='CatalogProvider "analytics"' className="border-blue-500/30 w-52" tooltip="Каталог для аналитических данных — изолирует схемы raw и curated">
         <FlowColumn className="gap-1 mt-1">
-          <DataBox label='SchemaProvider "raw"' className="border-yellow-500/30">
+          <DataBox label='SchemaProvider "raw"' className="border-yellow-500/30" tooltip="Схема с сырыми данными — events, users, logs до обработки">
             <div className="text-xs font-mono">events, users, logs</div>
           </DataBox>
-          <DataBox label='SchemaProvider "curated"' className="border-yellow-500/30">
+          <DataBox label='SchemaProvider "curated"' className="border-yellow-500/30" tooltip="Схема с обработанными данными — агрегированные метрики и воронки">
             <div className="text-xs font-mono">daily_metrics, funnels</div>
           </DataBox>
         </FlowColumn>
       </DataBox>
-      <DataBox label='CatalogProvider "ml"' className="border-blue-500/30 w-52">
+      <DataBox label='CatalogProvider "ml"' className="border-blue-500/30 w-52" tooltip="Каталог для ML-данных — разделение фичей и результатов моделей">
         <FlowColumn className="gap-1 mt-1">
-          <DataBox label='SchemaProvider "features"' className="border-yellow-500/30">
+          <DataBox label='SchemaProvider "features"' className="border-yellow-500/30" tooltip="Схема с feature store — предвычисленные признаки для ML-моделей">
             <div className="text-xs font-mono">user_features, embeddings</div>
           </DataBox>
-          <DataBox label='SchemaProvider "models"' className="border-yellow-500/30">
+          <DataBox label='SchemaProvider "models"' className="border-yellow-500/30" tooltip="Схема с результатами инференса — предсказания и скоринг">
             <div className="text-xs font-mono">predictions, scores</div>
           </DataBox>
         </FlowColumn>

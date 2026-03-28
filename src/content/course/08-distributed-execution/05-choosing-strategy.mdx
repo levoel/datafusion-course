@@ -15,21 +15,21 @@ topics: ["Ballista", "DataFusion Ray", "Comet", "distributed strategy", "Spice A
 
 <DiagramContainer title="Три подхода к распределённому DataFusion" className="my-6">
   <Grid columns={3} className="gap-3 text-sm">
-    <DataBox label="Ballista" className="border-emerald-500/30">
+    <DataBox label="Ballista" className="border-emerald-500/30" tooltip="Rust-нативная распределённая система: свой scheduler/executor кластер, Arrow IPC shuffle, Flight SQL доступ">
       <div className="text-xs"><b>Подход:</b> Rust-нативная распределённая система</div>
       <div className="text-xs mt-1"><b>Модель:</b> Scheduler + Executors</div>
       <div className="text-xs mt-1"><b>Shuffle:</b> Arrow IPC, диски executor-ов</div>
       <div className="text-xs mt-1"><b>Зрелость:</b> Production-ориентирован</div>
       <div className="text-xs mt-1"><b>Версия:</b> 43.0.0 (февраль 2025)</div>
     </DataBox>
-    <DataBox label="DataFusion Ray" className="border-blue-500/30">
+    <DataBox label="DataFusion Ray" className="border-blue-500/30" tooltip="Python-first интеграция: Ray-оркестрация, shared filesystem для shuffle, ранняя стадия (~1700 LOC)">
       <div className="text-xs"><b>Подход:</b> Python + Ray кластер</div>
       <div className="text-xs mt-1"><b>Модель:</b> Ray remote functions</div>
       <div className="text-xs mt-1"><b>Shuffle:</b> Arrow IPC, shared filesystem</div>
       <div className="text-xs mt-1"><b>Зрелость:</b> Ранняя стадия</div>
       <div className="text-xs mt-1"><b>Версия:</b> ~1700 LOC, Apache donation</div>
     </DataBox>
-    <DataBox label="Comet" className="border-amber-500/30">
+    <DataBox label="Comet" className="border-amber-500/30" tooltip="Spark-плагин с нативным ядром DataFusion: zero-change ускорение, columnar shuffle, 97% совместимость">
       <div className="text-xs"><b>Подход:</b> Ускорение существующего Spark</div>
       <div className="text-xs mt-1"><b>Модель:</b> Spark plugin (нативное ядро)</div>
       <div className="text-xs mt-1"><b>Shuffle:</b> Native columnar (внутри Spark)</div>
@@ -108,37 +108,37 @@ topics: ["Ballista", "DataFusion Ray", "Comet", "distributed strategy", "Spice A
 
 <DiagramContainer title="Выбор стратегии распределения" className="my-6">
   <FlowColumn className="gap-3 text-sm">
-    <FlowNode className="bg-blue-950/60 p-2 mx-auto">Нужно ли распределённое выполнение?</FlowNode>
+    <FlowNode className="bg-blue-950/60 p-2 mx-auto" tooltip="Начальная точка: оцените, нужна ли распределённость или хватит однопроцессного DataFusion">Нужно ли распределённое выполнение?</FlowNode>
     <FlowRow className="gap-6 justify-center">
       <FlowColumn className="gap-2 items-center">
-        <FlowNode className="bg-gray-800/60 text-xs p-1">Нет: данные &lt; RAM одного узла</FlowNode>
+        <FlowNode className="bg-gray-800/60 text-xs p-1" tooltip="Если данные помещаются в RAM одного узла — распределённость добавит overhead без выигрыша">Нет: данные &lt; RAM одного узла</FlowNode>
         <Arrow direction="down" />
-        <FlowNode className="bg-emerald-900/60 text-xs p-2 border border-emerald-400/30">DataFusion (однопроцессный)<br/>target_partitions = N ядер</FlowNode>
+        <FlowNode className="bg-emerald-900/60 text-xs p-2 border border-emerald-400/30" tooltip="Однопроцессный DataFusion: target_partitions = N ядер, spill-to-disk для больших join/sort">DataFusion (однопроцессный)<br/>target_partitions = N ядер</FlowNode>
       </FlowColumn>
       <FlowColumn className="gap-2 items-center">
-        <FlowNode className="bg-gray-800/60 text-xs p-1">Да: объём / время / архитектура</FlowNode>
+        <FlowNode className="bg-gray-800/60 text-xs p-1" tooltip="Данные не помещаются в один узел, вычисление слишком долгое, или данные изначально шардированы">Да: объём / время / архитектура</FlowNode>
         <Arrow direction="down" />
-        <FlowNode className="bg-blue-950/60 text-xs p-2">Есть ли Spark-кластер?</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-2" tooltip="Наличие Spark-кластера определяет, стоит ли ускорять его Comet-ом или строить отдельную систему">Есть ли Spark-кластер?</FlowNode>
         <FlowRow className="gap-4 justify-center">
           <FlowColumn className="gap-2 items-center">
-            <FlowNode className="bg-gray-800/60 text-xs p-1">Да</FlowNode>
+            <FlowNode className="bg-gray-800/60 text-xs p-1" tooltip="Spark-кластер уже есть — Comet ускорит без миграции">Да</FlowNode>
             <Arrow direction="down" />
-            <FlowNode className="bg-amber-900/60 text-xs p-2 border border-amber-400/30">Comet<br/>Zero-change ускорение Spark</FlowNode>
+            <FlowNode className="bg-amber-900/60 text-xs p-2 border border-amber-400/30" tooltip="Comet: подключается как Spark-плагин, zero code changes, 2.2x ускорение на аналитике">Comet<br/>Zero-change ускорение Spark</FlowNode>
           </FlowColumn>
           <FlowColumn className="gap-2 items-center">
-            <FlowNode className="bg-gray-800/60 text-xs p-1">Нет Spark</FlowNode>
+            <FlowNode className="bg-gray-800/60 text-xs p-1" tooltip="Spark-а нет — выбор между Rust-нативным и Python-подходом">Нет Spark</FlowNode>
             <Arrow direction="down" />
-            <FlowNode className="bg-blue-950/60 text-xs p-2">Стек?</FlowNode>
+            <FlowNode className="bg-blue-950/60 text-xs p-2" tooltip="Выбор стека определяет подход: Rust → Ballista, Python + Ray → DataFusion Ray">Стек?</FlowNode>
             <FlowRow className="gap-3 justify-center">
               <FlowColumn className="gap-2 items-center">
-                <FlowNode className="bg-gray-800/60 text-xs p-1">Rust</FlowNode>
+                <FlowNode className="bg-gray-800/60 text-xs p-1" tooltip="Rust-экосистема: полный контроль, максимальная производительность">Rust</FlowNode>
                 <Arrow direction="down" />
-                <FlowNode className="bg-emerald-900/60 text-xs p-2 border border-emerald-400/30">Ballista<br/>или кастомное решение</FlowNode>
+                <FlowNode className="bg-emerald-900/60 text-xs p-2 border border-emerald-400/30" tooltip="Ballista для готовой системы или кастомное решение (DataFusion как библиотека) для специфических требований">Ballista<br/>или кастомное решение</FlowNode>
               </FlowColumn>
               <FlowColumn className="gap-2 items-center">
-                <FlowNode className="bg-gray-800/60 text-xs p-1">Python + Ray</FlowNode>
+                <FlowNode className="bg-gray-800/60 text-xs p-1" tooltip="Python-экосистема с Ray: SQL-аналитика рядом с ML-нагрузками">Python + Ray</FlowNode>
                 <Arrow direction="down" />
-                <FlowNode className="bg-blue-900/60 text-xs p-2 border border-blue-400/30">DataFusion Ray<br/>(ранняя стадия)</FlowNode>
+                <FlowNode className="bg-blue-900/60 text-xs p-2 border border-blue-400/30" tooltip="DataFusion Ray: ранняя стадия, подходит для экспериментов в существующем Ray-кластере">DataFusion Ray<br/>(ранняя стадия)</FlowNode>
               </FlowColumn>
             </FlowRow>
           </FlowColumn>
@@ -197,33 +197,33 @@ GreptimeDB — мультимодальная time-series СУБД, объеди
 
 <DiagramContainer title="DataFusion как библиотека: паттерн распределения" className="my-6">
   <FlowColumn className="gap-3 text-sm">
-    <FlowNode className="bg-blue-950/60 p-2 mx-auto">Координатор (маршрутизация, сбор результатов)</FlowNode>
+    <FlowNode className="bg-blue-950/60 p-2 mx-auto" tooltip="Координатор маршрутизирует фрагменты плана к узлам и собирает частичные результаты">Координатор (маршрутизация, сбор результатов)</FlowNode>
     <Arrow direction="down" label="Фрагмент плана" />
     <FlowRow className="gap-3 justify-center">
-      <DataBox label="Узел 1" className="border-emerald-500/30">
+      <DataBox label="Узел 1" className="border-emerald-500/30" tooltip="Каждый узел содержит полноценный DataFusion runtime с кастомным TableProvider для доступа к локальным данным">
         <FlowColumn className="gap-1 p-2">
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">DataFusion SessionContext</FlowNode>
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">Кастомный TableProvider</FlowNode>
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">Локальные данные (шард)</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="DataFusion SessionContext — планирование и выполнение запросов на узле">DataFusion SessionContext</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Кастомный TableProvider для доступа к внутреннему хранилищу (time-series, columnar, шард)">Кастомный TableProvider</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Локальный фрагмент данных — шард, реплика, или партиция">Локальные данные (шард)</FlowNode>
         </FlowColumn>
       </DataBox>
-      <DataBox label="Узел 2" className="border-emerald-500/30">
+      <DataBox label="Узел 2" className="border-emerald-500/30" tooltip="Идентичная архитектура — каждый узел автономен, координатор объединяет результаты">
         <FlowColumn className="gap-1 p-2">
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">DataFusion SessionContext</FlowNode>
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">Кастомный TableProvider</FlowNode>
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">Локальные данные (шард)</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="DataFusion SessionContext — идентичная конфигурация на каждом узле">DataFusion SessionContext</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Тот же TableProvider — данные различаются, код одинаковый">Кастомный TableProvider</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Другой шард данных — координатор знает, какие данные на каком узле">Локальные данные (шард)</FlowNode>
         </FlowColumn>
       </DataBox>
-      <DataBox label="Узел N" className="border-emerald-500/30">
+      <DataBox label="Узел N" className="border-emerald-500/30" tooltip="Масштабирование добавлением узлов — каждый обрабатывает свой фрагмент данных параллельно">
         <FlowColumn className="gap-1 p-2">
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">DataFusion SessionContext</FlowNode>
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">Кастомный TableProvider</FlowNode>
-          <FlowNode className="bg-emerald-950/60 text-xs p-1">Локальные данные (шард)</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="DataFusion как библиотека: встроен в каждый узел, не требует отдельного кластера">DataFusion SessionContext</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="TableProvider может включать кастомные оптимизации (дедупликация, federation pushdown)">Кастомный TableProvider</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Локальные данные доступны напрямую — без сетевого I/O">Локальные данные (шард)</FlowNode>
         </FlowColumn>
       </DataBox>
     </FlowRow>
     <Arrow direction="down" label="RecordBatch (Arrow)" />
-    <FlowNode className="bg-blue-950/60 p-2 mx-auto">Координатор → Результат клиенту</FlowNode>
+    <FlowNode className="bg-blue-950/60 p-2 mx-auto" tooltip="Координатор объединяет RecordBatch от всех узлов и возвращает финальный результат клиенту">Координатор → Результат клиенту</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

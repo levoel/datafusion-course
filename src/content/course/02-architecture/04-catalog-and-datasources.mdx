@@ -17,22 +17,22 @@ DataFusion использует модель именования `catalog.schem
 
 <DiagramContainer title="Catalog Hierarchy" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="CatalogProvider" className="border-blue-500/30 w-64 mx-auto">
+    <DataBox label="CatalogProvider" tooltip="Верхний уровень иерархии: содержит именованные схемы. По умолчанию — 'datafusion'" className="border-blue-500/30 w-64 mx-auto">
       <div className="text-xs font-mono">name: "datafusion" (по умолчанию)</div>
     </DataBox>
     <Arrow direction="down" />
-    <DataBox label="SchemaProvider" className="border-yellow-500/30 w-64 mx-auto">
+    <DataBox label="SchemaProvider" tooltip="Средний уровень: содержит коллекцию таблиц. По умолчанию — 'public'" className="border-yellow-500/30 w-64 mx-auto">
       <div className="text-xs font-mono">name: "public" (по умолчанию)</div>
     </DataBox>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <DataBox label="TableProvider" className="border-emerald-500/30 w-36">
+      <DataBox label="TableProvider" tooltip="Провайдер данных: определяет схему таблицы и метод scan() для создания ExecutionPlan" className="border-emerald-500/30 w-36">
         <div className="text-xs font-mono">orders</div>
       </DataBox>
-      <DataBox label="TableProvider" className="border-emerald-500/30 w-36">
+      <DataBox label="TableProvider" tooltip="Каждый TableProvider — самостоятельный источник данных (Parquet, CSV, API, Memory)" className="border-emerald-500/30 w-36">
         <div className="text-xs font-mono">users</div>
       </DataBox>
-      <DataBox label="TableProvider" className="border-emerald-500/30 w-36">
+      <DataBox label="TableProvider" tooltip="Метод supports_filters_pushdown() позволяет источнику фильтровать данные самостоятельно" className="border-emerald-500/30 w-36">
         <div className="text-xs font-mono">products</div>
       </DataBox>
     </FlowRow>

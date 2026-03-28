@@ -17,15 +17,15 @@ topics: ["Optimizer", "AnalyzerRule", "OptimizerRule", "PhysicalOptimizerRule", 
 
 <DiagramContainer title="Трёхфазный конвейер оптимизации" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">SQL / DataFrame API</FlowNode>
+    <FlowNode variant="input" tooltip="SQL-запрос или DataFrame API — входная точка конвейера оптимизации">SQL / DataFrame API</FlowNode>
     <Arrow direction="down" label="Парсинг → Unresolved LogicalPlan" />
-    <FlowNode variant="process">Фаза 1: Analyzer (AnalyzerRules)</FlowNode>
+    <FlowNode variant="process" tooltip="Analyzer разрешает типы, подставляет CAST, разворачивает wildcard и валидирует семантику">Фаза 1: Analyzer (AnalyzerRules)</FlowNode>
     <Arrow direction="down" label="Resolved LogicalPlan" />
-    <FlowNode variant="process">Фаза 2: Logical Optimizer (OptimizerRules)</FlowNode>
+    <FlowNode variant="process" tooltip="Логический оптимизатор применяет multi-pass правила: pushdown фильтров, устранение проекций, упрощение выражений">Фаза 2: Logical Optimizer (OptimizerRules)</FlowNode>
     <Arrow direction="down" label="Optimized LogicalPlan" />
-    <FlowNode variant="process">Фаза 3: Physical Optimizer (PhysicalOptimizerRules)</FlowNode>
+    <FlowNode variant="process" tooltip="Физический оптимизатор выбирает алгоритмы JOIN, вставляет Repartition/Sort и оптимизирует pipeline">Фаза 3: Physical Optimizer (PhysicalOptimizerRules)</FlowNode>
     <Arrow direction="down" label="Optimized ExecutionPlan" />
-    <FlowNode variant="output">Выполнение (RecordBatch stream)</FlowNode>
+    <FlowNode variant="output" tooltip="Финальный физический план выполняется как потоковый конвейер RecordBatch">Выполнение (RecordBatch stream)</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

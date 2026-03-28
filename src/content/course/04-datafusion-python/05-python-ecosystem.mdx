@@ -40,15 +40,15 @@ print(table.schema)
 <DiagramContainer title="Zero-copy: C data interface" className="my-6">
   <FlowColumn className="p-4 gap-2">
     <FlowRow className="gap-4 justify-center">
-      <DataBox label="DataFusion (Rust)" className="border-blue-500/30 w-52">
+      <DataBox label="DataFusion (Rust)" className="border-blue-500/30 w-52" tooltip="Движок запросов на Rust — выполняет SQL и DataFrame операции над Arrow-данными">
         <div className="text-xs font-mono">Arrow RecordBatch</div>
         <div className="text-xs">Данные в памяти</div>
       </DataBox>
-      <DataBox label="C Data Interface" className="border-yellow-500/30 w-44">
+      <DataBox label="C Data Interface" className="border-yellow-500/30 w-44" tooltip="Стандартный интерфейс Apache Arrow — передаёт указатели на данные без копирования между языками">
         <div className="text-xs font-mono">ArrowArray + ArrowSchema</div>
         <div className="text-xs">Указатели, без копирования</div>
       </DataBox>
-      <DataBox label="PyArrow (Python)" className="border-emerald-500/30 w-52">
+      <DataBox label="PyArrow (Python)" className="border-emerald-500/30 w-52" tooltip="Python-обёртка над Arrow — работает с теми же данными в памяти через zero-copy">
         <div className="text-xs font-mono">pa.RecordBatch</div>
         <div className="text-xs">Те же данные</div>
       </DataBox>
@@ -171,19 +171,19 @@ DataFusion занимает определённую нишу среди Python-
 
 <DiagramContainer title="Позиционирование DataFusion" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="DataFusion" className="border-blue-500/30">
+    <DataBox label="DataFusion" className="border-blue-500/30" tooltip="Встраиваемый движок запросов — SQL + DataFrame + кастомные провайдеры и UDF">
       <div className="text-xs">SQL + DataFrame + расширяемость</div>
       <div className="text-xs mt-1">Сильная сторона: UDF/UDAF, кастомные провайдеры, встраивание в системы</div>
     </DataBox>
-    <DataBox label="Pandas" className="border-yellow-500/30">
+    <DataBox label="Pandas" className="border-yellow-500/30" tooltip="Классический Python DataFrame — богатая экосистема ML и визуализации">
       <div className="text-xs">Классика анализа данных</div>
       <div className="text-xs mt-1">Сильная сторона: экосистема (sklearn, matplotlib), knowledge base</div>
     </DataBox>
-    <DataBox label="Polars" className="border-emerald-500/30">
+    <DataBox label="Polars" className="border-emerald-500/30" tooltip="Высокопроизводительный DataFrame на Rust — lazy API и эффективное использование памяти">
       <div className="text-xs">Быстрый DataFrame на Rust</div>
       <div className="text-xs mt-1">Сильная сторона: скорость, lazy API, memory efficiency</div>
     </DataBox>
-    <DataBox label="DuckDB" className="border-purple-500/30">
+    <DataBox label="DuckDB" className="border-purple-500/30" tooltip="Встраиваемая OLAP-база с ACID — прямое чтение файлов и персистентное хранение">
       <div className="text-xs">Встраиваемая OLAP БД</div>
       <div className="text-xs mt-1">Сильная сторона: SQL, persistence, прямое чтение файлов</div>
     </DataBox>

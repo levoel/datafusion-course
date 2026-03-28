@@ -74,15 +74,15 @@ spark.comet.memory.overhead.min=402653184  # 384 MB
 
 <DiagramContainer title="Модель памяти Comet" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">Executor Memory (spark.executor.memory)</FlowNode>
+    <FlowNode variant="input" tooltip="Общий объём памяти executor — делится между JVM heap и off-heap">Executor Memory (spark.executor.memory)</FlowNode>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <DataBox label="JVM Heap" className="border-blue-500/30 text-xs">
+      <DataBox label="JVM Heap" className="border-blue-500/30 text-xs" tooltip="JVM-heap используется Spark Storage и Execution — подвержен GC-паузам">
         <div>Spark Storage</div>
         <div>Spark Execution</div>
         <div>User objects</div>
       </DataBox>
-      <DataBox label="Off-Heap" className="border-emerald-500/30 text-xs">
+      <DataBox label="Off-Heap" className="border-emerald-500/30 text-xs" tooltip="Off-heap для Comet: Arrow-буферы, агрегация, сортировка, shuffle — без GC overhead">
         <div>spark.memory.offHeap.size</div>
         <div className="mt-1 font-semibold">Comet memory pool:</div>
         <div>Arrow buffers</div>

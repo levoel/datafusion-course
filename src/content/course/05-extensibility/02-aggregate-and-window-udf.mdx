@@ -19,15 +19,15 @@ topics: ["Accumulator", "UDAF", "UDWF", "PartitionEvaluator", "create_udaf", "cr
 
 <DiagramContainer title="Accumulator: жизненный цикл" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">Создание Accumulator</FlowNode>
+    <FlowNode variant="input" tooltip="DataFusion создаёт новый экземпляр Accumulator для каждой партиции данных">Создание Accumulator</FlowNode>
     <Arrow direction="down" label="Partition 1" />
-    <FlowNode variant="process">update_batch(values)</FlowNode>
+    <FlowNode variant="process" tooltip="Первый батч строк обновляет внутреннее состояние аккумулятора — суммы, счётчики, коллекции">update_batch(values)</FlowNode>
     <Arrow direction="down" label="Partition 2" />
-    <FlowNode variant="process">update_batch(values)</FlowNode>
+    <FlowNode variant="process" tooltip="Каждый следующий батч инкрементально обновляет состояние без пересоздания аккумулятора">update_batch(values)</FlowNode>
     <Arrow direction="down" label="Слияние партиций" />
-    <FlowNode variant="process">merge_batch(states)</FlowNode>
+    <FlowNode variant="process" tooltip="Промежуточные состояния из параллельных партиций объединяются в единый аккумулятор">merge_batch(states)</FlowNode>
     <Arrow direction="down" label="Финал" />
-    <FlowNode variant="output">evaluate() → ScalarValue</FlowNode>
+    <FlowNode variant="output" tooltip="Финальное вычисление преобразует внутреннее состояние в одно скалярное значение результата">evaluate() → ScalarValue</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 
@@ -324,17 +324,17 @@ let df = ctx.sql(
 
 <DiagramContainer title="Типы пользовательских функций" className="my-6">
   <Grid columns={3} className="gap-4 text-sm">
-    <DataBox label="Scalar UDF" className="border-blue-500/30">
+    <DataBox label="Scalar UDF" className="border-blue-500/30" tooltip="Скалярная функция: вычисляет одно значение для каждой входной строки — map-операция над массивами">
       <div className="text-xs">1 строка → 1 значение</div>
       <div className="text-xs mt-1">ScalarUDFImpl</div>
       <div className="text-xs font-mono mt-1">square(x), geohash(lat, lon)</div>
     </DataBox>
-    <DataBox label="Aggregate UDAF" className="border-emerald-500/30">
+    <DataBox label="Aggregate UDAF" className="border-emerald-500/30" tooltip="Агрегатная функция: сводит N строк к одному значению через Accumulator с поддержкой параллельного слияния">
       <div className="text-xs">N строк → 1 значение</div>
       <div className="text-xs mt-1">AggregateUDFImpl + Accumulator</div>
       <div className="text-xs font-mono mt-1">weighted_avg(val, weight)</div>
     </DataBox>
-    <DataBox label="Window UDWF" className="border-yellow-500/30">
+    <DataBox label="Window UDWF" className="border-yellow-500/30" tooltip="Оконная функция: вычисляет значение для каждой строки в контексте окна через PartitionEvaluator">
       <div className="text-xs">N строк → N значений (в контексте окна)</div>
       <div className="text-xs mt-1">WindowUDFImpl + PartitionEvaluator</div>
       <div className="text-xs font-mono mt-1">ema(price) OVER (...)</div>

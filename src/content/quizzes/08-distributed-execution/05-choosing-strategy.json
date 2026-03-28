@@ -1,19 +1,33 @@
 {
   "lessonSlug": "08-distributed-execution/05-choosing-strategy",
   "moduleId": "08-distributed-execution",
-  "_meta": { "idPrefix": "df-m08-05" },
+  "_meta": {
+    "idPrefix": "df-m08-05"
+  },
   "questions": [
     {
       "id": "df-m08-05-q1",
       "type": "multiple-choice",
       "question": "Какое ключевое различие между Comet и Ballista/DataFusion Ray в контексте распределённого выполнения?",
       "options": [
-        { "id": "a", "text": "Ballista и DataFusion Ray — самостоятельные распределённые системы, выполняющие DataFusion-запросы. Comet — ускоритель внутри Spark, использующий распределённую модель самого Spark" },
-        { "id": "b", "text": "Comet работает на кластере любого размера, Ballista — только на одном узле" },
-        { "id": "c", "text": "Различий нет — все три являются самостоятельными распределёнными системами" },
-        { "id": "d", "text": "Ballista и DataFusion Ray используют Spark для координации, Comet — нет" }
+        {
+          "id": "a",
+          "text": "Различий нет — все три являются самостоятельными распределёнными системами"
+        },
+        {
+          "id": "b",
+          "text": "Ballista и DataFusion Ray — самостоятельные распределённые системы, выполняющие DataFusion-запросы. Comet — ускоритель внутри Spark, использующий распределённую модель самого Spark"
+        },
+        {
+          "id": "c",
+          "text": "Ballista и DataFusion Ray используют Spark для координации, Comet — нет"
+        },
+        {
+          "id": "d",
+          "text": "Comet работает на кластере любого размера, Ballista — только на одном узле"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Ключевое различие: Ballista и DataFusion Ray сами управляют распределением (свой scheduler, свой shuffle). Comet — не замена распределённой модели Spark, а нативный ускоритель внутри неё: Spark управляет координацией и shuffle, Comet заменяет JVM-выполнение на нативное (DataFusion) внутри каждого stage.",
       "bloomLevel": "conceptual",
       "studyHint": "Ballista/Ray = свои системы распределения. Comet = ускоритель внутри чужой (Spark) распределённой модели."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "Компания с существующим Spark-кластером хочет ускорить аналитические запросы по Parquet без переписывания приложений. Какое решение выбрать?",
       "options": [
-        { "id": "a", "text": "Comet — zero-change ускорение Spark: добавить JAR, установить spark.plugins, без модификации SQL/DataFrame кода" },
-        { "id": "b", "text": "Ballista — более производительный (2.9x vs Spark), всегда лучше Comet (2.2x)" },
-        { "id": "c", "text": "DataFusion Ray — Python-first подход проще для аналитиков" },
-        { "id": "d", "text": "Однопроцессный DataFusion — распределение не нужно" }
+        {
+          "id": "a",
+          "text": "Однопроцессный DataFusion — распределение не нужно"
+        },
+        {
+          "id": "b",
+          "text": "Comet — zero-change ускорение Spark: добавить JAR, установить spark.plugins, без модификации SQL/DataFrame кода"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion Ray — Python-first подход проще для аналитиков"
+        },
+        {
+          "id": "d",
+          "text": "Ballista — более производительный (2.9x vs Spark), всегда лучше Comet (2.2x)"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Условия: существующий Spark-кластер + без переписывания. Comet подходит идеально: zero code changes, добавление JAR + spark.plugins. Ballista быстрее (2.9x vs 2.2x), но требует миграции на новую инфраструктуру и переписывания приложений — не соответствует условию «без переписывания».",
       "bloomLevel": "applied",
       "studyHint": "Есть Spark + не хотят переписывать → Comet. Нет Spark + Rust → Ballista. Нет Spark + Python/Ray → DataFusion Ray."
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "InfluxDB IOx, GreptimeDB и Spice AI строят собственное распределение поверх DataFusion. Какой общий паттерн они используют?",
       "options": [
-        { "id": "a", "text": "DataFusion как библиотека: координатор маршрутизирует запросы, каждый узел выполняет DataFusion SessionContext с кастомным TableProvider над локальными данными (шардами), координатор собирает результаты" },
-        { "id": "b", "text": "Все используют Ballista как распределённый слой поверх DataFusion" },
-        { "id": "c", "text": "Все используют Spark для координации, DataFusion — для вычислений" },
-        { "id": "d", "text": "Все заменяют DataFusion на собственный query engine для распределённого выполнения" }
+        {
+          "id": "a",
+          "text": "Все используют Ballista как распределённый слой поверх DataFusion"
+        },
+        {
+          "id": "b",
+          "text": "Все заменяют DataFusion на собственный query engine для распределённого выполнения"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion как библиотека: координатор маршрутизирует запросы, каждый узел выполняет DataFusion SessionContext с кастомным TableProvider над локальными данными (шардами), координатор собирает результаты"
+        },
+        {
+          "id": "d",
+          "text": "Все используют Spark для координации, DataFusion — для вычислений"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Общий паттерн «DataFusion как библиотека»: координатор маршрутизирует запросы → каждый узел имеет DataFusion SessionContext с кастомным TableProvider для доступа к локальным данным → координатор собирает результаты (RecordBatch Arrow). Ключевые точки расширения: TableProvider, OptimizerRule, ExtensionPlanner.",
       "bloomLevel": "analytical",
       "studyHint": "Паттерн: координатор + DataFusion на каждом узле + кастомный TableProvider. Расширение через стандартные механизмы DataFusion."
@@ -53,10 +91,22 @@
       "type": "multiple-choice",
       "question": "Все подходы к распределению DataFusion строятся на общих примитивах. Какие пять примитивов объединяют Ballista, DataFusion Ray, Comet и кастомные решения?",
       "options": [
-        { "id": "a", "text": "ExecutionPlan (единица выполнения), Partitioning (параллелизм и shuffle), EnforceDistribution/EnforceSorting (границы stage), Arrow (формат данных), SessionContext (API)" },
-        { "id": "b", "text": "SQL-парсер, логический план, физический план, каталог, оптимизатор" },
-        { "id": "c", "text": "gRPC, protobuf, Arrow IPC, scheduler, executor" },
-        { "id": "d", "text": "TableProvider, UDF, UDAF, UDTF, OptimizerRule" }
+        {
+          "id": "a",
+          "text": "ExecutionPlan (единица выполнения), Partitioning (параллелизм и shuffle), EnforceDistribution/EnforceSorting (границы stage), Arrow (формат данных), SessionContext (API)"
+        },
+        {
+          "id": "b",
+          "text": "gRPC, protobuf, Arrow IPC, scheduler, executor"
+        },
+        {
+          "id": "c",
+          "text": "SQL-парсер, логический план, физический план, каталог, оптимизатор"
+        },
+        {
+          "id": "d",
+          "text": "TableProvider, UDF, UDAF, UDTF, OptimizerRule"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Пять общих примитивов: (1) ExecutionPlan — единица выполнения каждого stage, (2) Partitioning — определяет параллелизм и точки shuffle, (3) EnforceDistribution/EnforceSorting — вставляют RepartitionExec (границы stage), (4) Arrow — columnar формат для данных в памяти и на диске, (5) SessionContext — единый API для планирования и выполнения.",
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Команда строит time-series СУБД с шардированным хранилищем и специфической дедупликацией. Какой подход к распределению DataFusion оптимален?",
       "options": [
-        { "id": "a", "text": "Кастомное решение (DataFusion как библиотека) — данные уже шардированы, нужна специфическая семантика (дедупликация), нужна интеграция с собственным хранилищем — как делают InfluxDB IOx и GreptimeDB" },
-        { "id": "b", "text": "Ballista — наиболее зрелый, подходит для любого сценария" },
-        { "id": "c", "text": "DataFusion Ray — Python-first подход удобнее для time-series" },
-        { "id": "d", "text": "Comet — ускоряет аналитику в любом окружении" }
+        {
+          "id": "a",
+          "text": "Ballista — наиболее зрелый, подходит для любого сценария"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion Ray — Python-first подход удобнее для time-series"
+        },
+        {
+          "id": "c",
+          "text": "Comet — ускоряет аналитику в любом окружении"
+        },
+        {
+          "id": "d",
+          "text": "Кастомное решение (DataFusion как библиотека) — данные уже шардированы, нужна специфическая семантика (дедупликация), нужна интеграция с собственным хранилищем — как делают InfluxDB IOx и GreptimeDB"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Кастомное решение оптимально, когда: (1) данные уже шардированы по своей логике, (2) требуется специфическая семантика (time-series дедупликация, как DeduplicateExec в InfluxDB IOx), (3) нужна интеграция с собственным хранилищем. Ballista/Ray — generic distributed SQL, не поддерживают domain-specific оптимизации. Comet требует Spark.",
       "bloomLevel": "analytical",
       "studyHint": "Шардированные данные + domain-specific семантика → кастомное решение. Generic SQL → Ballista/Ray. Существующий Spark → Comet."

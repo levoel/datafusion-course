@@ -26,30 +26,30 @@ Apache Comet — плагин для Spark, который перехватыв�
 
 <DiagramContainer title="Spark-запрос: без Comet и с Comet" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="Без Comet (стандартный Spark)" className="border-orange-500/30">
+    <DataBox label="Без Comet (стандартный Spark)" className="border-orange-500/30" tooltip="Стандартный конвейер Spark: columnar→row конвертация, JVM codegen, GC-паузы">
       <FlowColumn className="gap-1 p-2">
-        <FlowNode variant="input">SQL / DataFrame API</FlowNode>
+        <FlowNode variant="input" tooltip="Пользовательский запрос проходит через стандартный Spark API">SQL / DataFrame API</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="process">Catalyst Optimizer</FlowNode>
+        <FlowNode variant="process" tooltip="Catalyst применяет логическую и физическую оптимизацию плана">Catalyst Optimizer</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="process">Spark Physical Plan</FlowNode>
+        <FlowNode variant="process" tooltip="Физический план определяет конкретные операторы для исполнения">Spark Physical Plan</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="process">Whole-Stage CodeGen (JVM)</FlowNode>
+        <FlowNode variant="process" tooltip="WSCG генерирует Java bytecode для цепочки операторов — row-by-row обработка">Whole-Stage CodeGen (JVM)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="output">InternalRow (row-based)</FlowNode>
+        <FlowNode variant="output" tooltip="Результат в формате строк — columnar→row конвертация снижает производительность">InternalRow (row-based)</FlowNode>
       </FlowColumn>
     </DataBox>
-    <DataBox label="С Comet" className="border-emerald-500/30">
+    <DataBox label="С Comet" className="border-emerald-500/30" tooltip="Comet-конвейер: нативное columnar исполнение через DataFusion, zero copy">
       <FlowColumn className="gap-1 p-2">
-        <FlowNode variant="input">SQL / DataFrame API</FlowNode>
+        <FlowNode variant="input" tooltip="Тот же API — Comet не требует изменения кода приложения">SQL / DataFrame API</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="process">Catalyst Optimizer</FlowNode>
+        <FlowNode variant="process" tooltip="Catalyst оптимизирует план до замены операторов Comet">Catalyst Optimizer</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="process">CometExecRule (замена операторов)</FlowNode>
+        <FlowNode variant="process" tooltip="CometExecRule заменяет JVM-операторы на нативные Comet-обёртки">CometExecRule (замена операторов)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="process">DataFusion ExecutionPlan (native)</FlowNode>
+        <FlowNode variant="process" tooltip="DataFusion исполняет план нативно с SIMD-векторизацией">DataFusion ExecutionPlan (native)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="output">Arrow RecordBatch (columnar)</FlowNode>
+        <FlowNode variant="output" tooltip="Результат в Arrow columnar формате — без row-to-columnar конвертации">Arrow RecordBatch (columnar)</FlowNode>
       </FlowColumn>
     </DataBox>
   </Grid>
@@ -80,18 +80,18 @@ class CometPlugin extends SparkPlugin {
 
 <DiagramContainer title="Архитектура CometPlugin" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">SparkSession (spark.plugins = CometPlugin)</FlowNode>
+    <FlowNode variant="input" tooltip="Точка входа: плагин загружается через spark.plugins и инициализирует расширения">SparkSession (spark.plugins = CometPlugin)</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">CometSparkSessionExtensions</FlowNode>
+    <FlowNode variant="process" tooltip="Регистрирует CometScanRule и CometExecRule через Spark Extension API">CometSparkSessionExtensions</FlowNode>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center">
-      <FlowNode variant="process">CometScanRule</FlowNode>
-      <FlowNode variant="process">CometExecRule</FlowNode>
+      <FlowNode variant="process" tooltip="Заменяет Parquet scan на нативный CometScanExec — чтение без row-конвертации">CometScanRule</FlowNode>
+      <FlowNode variant="process" tooltip="Заменяет физические операторы (Filter, Project, Agg, Join) на Comet-обёртки">CometExecRule</FlowNode>
     </FlowRow>
     <Arrow direction="down" label="protobuf + JNI" />
-    <FlowNode variant="decision">Rust: PhysicalPlanner (planner.rs)</FlowNode>
+    <FlowNode variant="decision" tooltip="Rust-сторона десериализует protobuf и строит нативный план исполнения">Rust: PhysicalPlanner (planner.rs)</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="output">DataFusion ExecutionPlan</FlowNode>
+    <FlowNode variant="output" tooltip="Финальный план исполняется нативно с Arrow compute kernels и SIMD">DataFusion ExecutionPlan</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

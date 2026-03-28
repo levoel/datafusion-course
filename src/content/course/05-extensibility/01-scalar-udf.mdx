@@ -19,13 +19,13 @@ topics: ["ScalarUDFImpl", "UDF", "Signature", "Volatility", "create_udf", "invok
 
 <DiagramContainer title="UDF Execution Flow" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">SQL: SELECT my_func(col_a, col_b) FROM t</FlowNode>
+    <FlowNode variant="input" tooltip="SQL-запрос с вызовом пользовательской функции запускает процесс поиска и выполнения UDF">SQL: SELECT my_func(col_a, col_b) FROM t</FlowNode>
     <Arrow direction="down" label="Каталог функций" />
-    <FlowNode variant="process">ScalarUDF lookup по имени</FlowNode>
+    <FlowNode variant="process" tooltip="Каталог функций SessionContext ищет зарегистрированный UDF по имени из SQL-запроса">ScalarUDF lookup по имени</FlowNode>
     <Arrow direction="down" label="Физическое выполнение" />
-    <FlowNode variant="process">invoke_with_args(ScalarFunctionArgs)</FlowNode>
+    <FlowNode variant="process" tooltip="Метод invoke_with_args получает колонки как Arrow-массивы и выполняет vectorized-вычисление">invoke_with_args(ScalarFunctionArgs)</FlowNode>
     <Arrow direction="down" label="Vectorized execution" />
-    <FlowNode variant="output">Arrow Array (результат)</FlowNode>
+    <FlowNode variant="output" tooltip="Результат — Arrow-массив той же длины, что и входные данные, готовый для дальнейшей обработки">Arrow Array (результат)</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 
@@ -101,19 +101,19 @@ impl ScalarUDFImpl for SquareUdf {
 
 <DiagramContainer title="Варианты Signature" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="Uniform" className="border-blue-500/30">
+    <DataBox label="Uniform" className="border-blue-500/30" tooltip="Все аргументы одного типа из допустимого списка — самый простой вариант сигнатуры">
       <div className="text-xs">Все аргументы одного типа из допустимого списка</div>
       <div className="text-xs font-mono mt-1">Signature::uniform(2, vec![Float64, Int64], Volatility::Immutable)</div>
     </DataBox>
-    <DataBox label="Exact" className="border-emerald-500/30">
+    <DataBox label="Exact" className="border-emerald-500/30" tooltip="Фиксированный набор типов в строгом порядке — для функций с чётко определённой сигнатурой">
       <div className="text-xs">Фиксированный набор типов в точном порядке</div>
       <div className="text-xs font-mono mt-1">Signature::exact(vec![Utf8, Int64], Volatility::Stable)</div>
     </DataBox>
-    <DataBox label="Variadic" className="border-yellow-500/30">
+    <DataBox label="Variadic" className="border-yellow-500/30" tooltip="Принимает произвольное число аргументов одного типа — аналог varargs в языках программирования">
       <div className="text-xs">Любое количество аргументов одного типа</div>
       <div className="text-xs font-mono mt-1">Signature::variadic(vec![Float64], Volatility::Immutable)</div>
     </DataBox>
-    <DataBox label="OneOf" className="border-purple-500/30">
+    <DataBox label="OneOf" className="border-purple-500/30" tooltip="Несколько допустимых перегрузок — оптимизатор выбирает подходящую на основе типов аргументов вызова">
       <div className="text-xs">Несколько допустимых перегрузок (overloads)</div>
       <div className="text-xs font-mono mt-1">Signature::one_of(vec![exact1, exact2], Volatility::Stable)</div>
     </DataBox>

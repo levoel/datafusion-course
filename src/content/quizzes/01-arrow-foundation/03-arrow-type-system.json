@@ -12,7 +12,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Float64 — достаточная точность для финансовых расчётов"
+          "text": "Utf8 — хранить как строку для максимальной точности"
         },
         {
           "id": "b",
@@ -24,7 +24,7 @@
         },
         {
           "id": "d",
-          "text": "Utf8 — хранить как строку для максимальной точности"
+          "text": "Float64 — достаточная точность для финансовых расчётов"
         }
       ],
       "correctAnswer": "b",
@@ -39,22 +39,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Utf8 поддерживает только ASCII, LargeUtf8 — полный Unicode"
-        },
-        {
-          "id": "b",
           "text": "Utf8 использует int32 offsets (макс. ~2 GB суммарно), LargeUtf8 — int64 offsets (до 2^63 байт)"
         },
         {
+          "id": "b",
+          "text": "Utf8 хранит строки по значению, LargeUtf8 — по ссылке"
+        },
+        {
           "id": "c",
-          "text": "LargeUtf8 автоматически сжимает длинные строки"
+          "text": "Utf8 поддерживает только ASCII, LargeUtf8 — полный Unicode"
         },
         {
           "id": "d",
-          "text": "Utf8 хранит строки по значению, LargeUtf8 — по ссылке"
+          "text": "LargeUtf8 автоматически сжимает длинные строки"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Разница только в размере offset buffer: Utf8 использует int32 (максимальный суммарный размер данных ~2 GB), LargeUtf8 — int64 (до 2^63 байт). Оба типа хранят полный UTF-8. DataFusion по умолчанию работает с Utf8, LargeUtf8 нужен только для колонок с огромным суммарным объёмом текста.",
       "bloomLevel": "conceptual",
       "studyHint": "Ключ — в offset buffer: int32 vs int64. Вспомните из урока 2, как offset buffer определяет границы строк."
@@ -66,7 +66,7 @@
       "options": [
         {
           "id": "a",
-          "text": "List — массив пар (key, value)"
+          "text": "Map — внутренне List<Struct<key, value>> с гарантией уникальности ключей"
         },
         {
           "id": "b",
@@ -74,14 +74,14 @@
         },
         {
           "id": "c",
-          "text": "Map — внутренне List<Struct<key, value>> с гарантией уникальности ключей"
+          "text": "List — массив пар (key, value)"
         },
         {
           "id": "d",
           "text": "Union — каждый элемент может быть ключом или значением"
         }
       ],
-      "correctAnswer": "c",
+      "correctAnswer": "a",
       "explanation": "Map в Arrow — это ассоциативный массив, внутренне реализованный как List<Struct<key, value>>. В отличие от обычного List<Struct>, Map гарантирует уникальность ключей. Struct — это именованная группа полей (аналог записи/объекта), а не key-value хранилище.",
       "bloomLevel": "conceptual",
       "studyHint": "Map = List<Struct<key, value>> + уникальность ключей. Struct — фиксированные именованные поля."
@@ -93,11 +93,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Новые примитивные типы, добавляемые в спецификацию Arrow с каждой версией"
+          "text": "Расширения для поддержки BLOB и CLOB типов"
         },
         {
           "id": "b",
-          "text": "Пользовательская семантика поверх базовых типов без изменения byte layout — например, UUID хранится как FixedSizeBinary(16) с пометкой arrow.uuid"
+          "text": "Новые примитивные типы, добавляемые в спецификацию Arrow с каждой версией"
         },
         {
           "id": "c",
@@ -105,10 +105,10 @@
         },
         {
           "id": "d",
-          "text": "Расширения для поддержки BLOB и CLOB типов"
+          "text": "Пользовательская семантика поверх базовых типов без изменения byte layout — например, UUID хранится как FixedSizeBinary(16) с пометкой arrow.uuid"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Extension types добавляют семантику через metadata поля (ARROW:extension:name, ARROW:extension:metadata), не меняя byte layout. Система, не знающая о расширении, видит базовый тип и работает корректно. Система, понимающая расширение, интерпретирует данные точнее.",
       "bloomLevel": "conceptual",
       "studyHint": "Обратная совместимость — ключ: extension type = metadata + базовый тип, работает даже без поддержки расширения."

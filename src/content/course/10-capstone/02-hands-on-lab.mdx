@@ -269,13 +269,13 @@ ctx.sql("""
 
 <DiagramContainer title="Конвейер AnalyticsEngine" className="my-6">
   <FlowColumn className="gap-3 text-sm">
-    <FlowNode variant="input">[1] load_sources()</FlowNode>
+    <FlowNode tooltip="Автоматическая регистрация всех Parquet-файлов из директории data/" variant="input">[1] load_sources()</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">[2] register_functions()</FlowNode>
+    <FlowNode tooltip="Регистрация скалярных UDF и агрегатных UDAF для бизнес-логики" variant="process">[2] register_functions()</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">[3] run_sales_summary() / run_channel_analysis() / run_top_users()</FlowNode>
+    <FlowNode tooltip="SQL-запросы для аналитических отчётов — сводки, каналы, топ пользователей" variant="process">[3] run_sales_summary() / run_channel_analysis() / run_top_users()</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="output">[4] save_report() --- Parquet-отчёты</FlowNode>
+    <FlowNode tooltip="Сохранение DataFrame-результатов в Parquet-файлы для дальнейшего использования" variant="output">[4] save_report() --- Parquet-отчёты</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

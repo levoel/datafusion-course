@@ -12,22 +12,22 @@
       "options": [
         {
           "id": "a",
-          "text": "CatalogProvider → SchemaProvider → TableProvider (catalog.schema.table)"
-        },
-        {
-          "id": "b",
           "text": "TableProvider → SchemaProvider → CatalogProvider (table.schema.catalog)"
         },
         {
+          "id": "b",
+          "text": "CatalogProvider → SchemaProvider → TableProvider (catalog.schema.table)"
+        },
+        {
           "id": "c",
-          "text": "SessionContext → TableProvider → RecordBatch"
+          "text": "DatabaseProvider → CollectionProvider → DocumentProvider"
         },
         {
           "id": "d",
-          "text": "DatabaseProvider → CollectionProvider → DocumentProvider"
+          "text": "SessionContext → TableProvider → RecordBatch"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Три уровня: CatalogProvider (верхний, содержит схемы) → SchemaProvider (средний, содержит таблицы) → TableProvider (нижний, знает как читать данные). Именование catalog.schema.table аналогично PostgreSQL. По умолчанию DataFusion создаёт каталог \"datafusion\" со схемой \"public\".",
       "bloomLevel": "conceptual",
       "studyHint": "Запомните аналогию с PostgreSQL: SELECT * FROM orders = datafusion.public.orders."
@@ -39,7 +39,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Декоративные подсказки для логирования — источник всегда читает все данные"
+          "text": "Настройки сжатия для выходного потока"
         },
         {
           "id": "b",
@@ -51,7 +51,7 @@
         },
         {
           "id": "d",
-          "text": "Настройки сжатия для выходного потока"
+          "text": "Декоративные подсказки для логирования — источник всегда читает все данные"
         }
       ],
       "correctAnswer": "b",
@@ -66,22 +66,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Parquet"
-        },
-        {
-          "id": "b",
           "text": "CSV"
         },
         {
+          "id": "b",
+          "text": "JSON"
+        },
+        {
           "id": "c",
-          "text": "Protocol Buffers (protobuf)"
+          "text": "Parquet"
         },
         {
           "id": "d",
-          "text": "JSON"
+          "text": "Protocol Buffers (protobuf)"
         }
       ],
-      "correctAnswer": "c",
+      "correctAnswer": "d",
       "explanation": "ListingTable — универсальный провайдер для файловых источников: Parquet, CSV, JSON и Avro. Protocol Buffers не поддерживается из коробки — для нестандартных форматов нужен пользовательский TableProvider. ListingTable также поддерживает inference схемы, partition pruning и predicate pushdown.",
       "bloomLevel": "conceptual",
       "studyHint": "Четыре встроенных формата: Parquet, CSV, JSON, Avro. Всё остальное — custom TableProvider."
@@ -93,22 +93,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Немедленно вызвать API и вернуть все данные в Vec<RecordBatch>"
-        },
-        {
-          "id": "b",
-          "text": "Вернуть Arc<dyn ExecutionPlan> — кастомный физический оператор, который вызовет API при execute() и вернёт SendableRecordBatchStream"
-        },
-        {
-          "id": "c",
           "text": "Вернуть URL для прямого доступа из клиента"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Записать данные в Parquet-файл и вернуть ListingTable"
+        },
+        {
+          "id": "c",
+          "text": "Немедленно вызвать API и вернуть все данные в Vec<RecordBatch>"
+        },
+        {
+          "id": "d",
+          "text": "Вернуть Arc<dyn ExecutionPlan> — кастомный физический оператор, который вызовет API при execute() и вернёт SendableRecordBatchStream"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "scan() возвращает Arc<dyn ExecutionPlan> — план, который будет встроен в дерево выполнения. Реальный вызов API произойдёт при execute(), когда верхний оператор запросит данные. Это сохраняет ленивость pipeline: scan() не загружает данные, а создаёт оператор для их загрузки.",
       "bloomLevel": "applied",
       "studyHint": "Паттерн: TableProvider::scan() → кастомный ExecutionPlan → при execute() вызывается API."
@@ -120,7 +120,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Таблицы загружаются быстрее за счёт многопоточности"
+          "text": "Таблицы автоматически обновляются при изменении данных"
         },
         {
           "id": "b",
@@ -128,11 +128,11 @@
         },
         {
           "id": "c",
-          "text": "Таблицы автоматически обновляются при изменении данных"
+          "text": "Асинхронность нужна для поддержки транзакций"
         },
         {
           "id": "d",
-          "text": "Асинхронность нужна для поддержки транзакций"
+          "text": "Таблицы загружаются быстрее за счёт многопоточности"
         }
       ],
       "correctAnswer": "b",

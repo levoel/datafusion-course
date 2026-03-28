@@ -17,13 +17,13 @@ DataFusion занимает уникальную позицию — это не 
 
 <DiagramContainer title="Библиотека vs Фреймворк" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="Библиотека (Embedding)" className="border-blue-500/30">
+    <DataBox label="Библиотека (Embedding)" className="border-blue-500/30" tooltip="DataFusion как библиотека: ваш main() создаёт SessionContext — полный контроль над хранением и сетью">
       <div className="text-xs"><b>Подход:</b> DataFusion встраивается в вашу систему</div>
       <div className="text-xs mt-1"><b>Контроль:</b> вы управляете жизненным циклом, хранением, сетью</div>
       <div className="text-xs mt-1"><b>Примеры:</b> InfluxDB IOx, GreptimeDB, Comet</div>
       <div className="text-xs mt-1 font-mono">SessionContext + TableProvider + OptimizerRule</div>
     </DataBox>
-    <DataBox label="Фреймворк (Extension)" className="border-emerald-500/30">
+    <DataBox label="Фреймворк (Extension)" className="border-emerald-500/30" tooltip="DataFusion как фреймворк: он управляет выполнением, вы подключаете источники и расширения">
       <div className="text-xs"><b>Подход:</b> DataFusion как основа, вы добавляете расширения</div>
       <div className="text-xs mt-1"><b>Контроль:</b> DataFusion управляет выполнением, вы подключаете источники</div>
       <div className="text-xs mt-1"><b>Примеры:</b> GlareDB, Spice AI, Ballista</div>
@@ -239,7 +239,7 @@ impl TableProvider for MongoTableProvider {
 
 <DiagramContainer title="Когда использовать какую точку расширения" className="my-6">
   <Grid columns={1} className="gap-2 text-sm">
-    <DataBox label="Задача → Точка расширения" className="border-gray-500/30">
+    <DataBox label="Задача → Точка расширения" className="border-gray-500/30" tooltip="Матрица выбора: начинайте с TableProvider/UDF, переходите к advanced points по необходимости">
       <div className="text-xs space-y-1">
         <div><b>Новый источник данных</b> → TableProvider (+ CatalogProvider для namespace)</div>
         <div><b>Вычисление по строкам</b> → ScalarUDFImpl</div>

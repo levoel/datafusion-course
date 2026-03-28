@@ -25,20 +25,16 @@ topics: ["Arrow Memory Layout", "Validity Bitmap", "Offset Buffer", "Data Buffer
 
 <DiagramContainer title="Int32 Array: [28, 34, NULL, 41]" className="my-6">
   <FlowColumn className="p-4 gap-3">
-    <Tooltip content="Bit 0=1 (28 valid), Bit 1=1 (34 valid), Bit 2=0 (NULL), Bit 3=1 (41 valid)">
-      <DataBox label="Validity Bitmap (1 байт, 4 бита использовано)" className="border-yellow-500/30 w-80 mx-auto">
+    <DataBox label="Validity Bitmap (1 байт, 4 бита использовано)" tooltip="Битовая маска: бит=1 означает значение присутствует, бит=0 означает NULL. Проверка — побитовая операция O(1)" className="border-yellow-500/30 w-80 mx-auto">
         <div className="text-xs font-mono text-center">[1, 1, 0, 1] — бит 2 = NULL</div>
       </DataBox>
-    </Tooltip>
     <Arrow direction="down" />
-    <Tooltip content="4 значения по 4 байта = 16 байт. Позиция NULL содержит undefined данные (обычно 0).">
-      <DataBox label="Data Buffer (16 байт = 4 x int32)" className="border-blue-500/30 w-80 mx-auto">
+      <DataBox label="Data Buffer (16 байт = 4 x int32)" tooltip="4 значения по 4 байта = 16 байт. Позиция NULL содержит undefined данные (обычно 0)" className="border-blue-500/30 w-80 mx-auto">
         <div className="text-xs font-mono space-y-1">
           <div>[28, 34, 0, 41] — каждое значение 4 байта</div>
           <div>Позиция 2 содержит мусор (NULL по bitmap)</div>
         </div>
       </DataBox>
-    </Tooltip>
   </FlowColumn>
 </DiagramContainer>
 
@@ -54,25 +50,19 @@ Arrow требует, чтобы каждый буфер был выровнен
 
 <DiagramContainer title='Utf8 Array: ["Rust", "Go", NULL, "Python"]' className="my-6">
   <FlowColumn className="p-4 gap-3">
-    <Tooltip content="Bit 0=1, Bit 1=1, Bit 2=0 (NULL), Bit 3=1">
-      <DataBox label="Validity Bitmap" className="border-yellow-500/30 w-80 mx-auto">
+    <DataBox label="Validity Bitmap" tooltip="Битовая маска для строковых данных: бит=0 означает NULL, строка пропущена в data buffer" className="border-yellow-500/30 w-80 mx-auto">
         <div className="text-xs font-mono text-center">[1, 1, 0, 1]</div>
       </DataBox>
-    </Tooltip>
     <Arrow direction="down" />
-    <Tooltip content="5 offsets (N+1 для N значений). Offset[i+1] - Offset[i] = длина i-го значения.">
-      <DataBox label="Offset Buffer (5 x int32 = 20 байт)" className="border-purple-500/30 w-80 mx-auto">
+    <DataBox label="Offset Buffer (5 x int32 = 20 байт)" tooltip="N+1 смещений для N значений. Длина i-го значения = offset[i+1] - offset[i]" className="border-purple-500/30 w-80 mx-auto">
         <div className="text-xs font-mono text-center">[0, 4, 6, 6, 12]</div>
         <div className="text-xs text-center mt-1">Rust=4 байт, Go=2 байт, NULL=0 байт, Python=6 байт</div>
       </DataBox>
-    </Tooltip>
     <Arrow direction="down" />
-    <Tooltip content="Все строки конкатенированы без разделителей. Offset buffer определяет границы.">
-      <DataBox label="Data Buffer (12 байт)" className="border-blue-500/30 w-80 mx-auto">
+    <DataBox label="Data Buffer (12 байт)" tooltip="Все строки конкатенированы без разделителей. Offset buffer определяет границы" className="border-blue-500/30 w-80 mx-auto">
         <div className="text-xs font-mono text-center">RustGoPython</div>
         <div className="text-xs text-center mt-1">Непрерывный блок UTF-8 байтов</div>
       </DataBox>
-    </Tooltip>
   </FlowColumn>
 </DiagramContainer>
 
@@ -115,20 +105,20 @@ let null_count = array.null_count(); // быстрая побитовая опе
 
 <DiagramContainer title="RecordBatch: 3 колонки, 4 строки" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <DataBox label="Schema" className="border-slate-400/30 w-80 mx-auto">
+    <DataBox label="Schema" tooltip="Описание структуры: имена колонок, типы данных и nullable-флаг для каждого поля" className="border-slate-400/30 w-80 mx-auto">
       <div className="text-xs font-mono">
         id: Int32, name: Utf8, salary: Float64
       </div>
     </DataBox>
     <Arrow direction="down" />
     <FlowRow className="gap-3 justify-center flex-wrap">
-      <DataBox label="Column: id (Int32)" className="border-emerald-500/30 w-40">
+      <DataBox label="Column: id (Int32)" tooltip="Целочисленная колонка фиксированного размера — 4 байта на значение, доступ за O(1)" className="border-emerald-500/30 w-40">
         <div className="text-xs font-mono">[1, 2, 3, 4]</div>
       </DataBox>
-      <DataBox label="Column: name (Utf8)" className="border-blue-500/30 w-44">
+      <DataBox label="Column: name (Utf8)" tooltip="Строковая колонка переменной длины: offset buffer + data buffer" className="border-blue-500/30 w-44">
         <div className="text-xs font-mono">["Иван","Мария","Пётр","Анна"]</div>
       </DataBox>
-      <DataBox label="Column: salary (F64)" className="border-purple-500/30 w-40">
+      <DataBox label="Column: salary (F64)" tooltip="Числовая колонка с nullable: позиция 2 = NULL определяется validity bitmap" className="border-purple-500/30 w-40">
         <div className="text-xs font-mono">[80k, 95k, NULL, 72k]</div>
       </DataBox>
     </FlowRow>

@@ -12,7 +12,7 @@
       "options": [
         {
           "id": "a",
-          "text": "SessionContext --- Python-обёртка над Rust SessionContext, предоставляющая доступ к SQL, DataFrame API, чтению файлов и регистрации таблиц"
+          "text": "ArrowContext --- контекст для работы с Apache Arrow таблицами"
         },
         {
           "id": "b",
@@ -24,10 +24,10 @@
         },
         {
           "id": "d",
-          "text": "ArrowContext --- контекст для работы с Apache Arrow таблицами"
+          "text": "SessionContext --- Python-обёртка над Rust SessionContext, предоставляющая доступ к SQL, DataFrame API, чтению файлов и регистрации таблиц"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "SessionContext --- центральный объект DataFusion Python. Через него выполняются SQL-запросы (ctx.sql()), читаются файлы (read_csv, read_parquet), создаются данные из Python-структур (from_pydict) и регистрируются таблицы.",
       "bloomLevel": "conceptual",
       "studyHint": "Запомните: SessionContext = точка входа. Все операции начинаются с создания ctx = SessionContext()."
@@ -39,11 +39,11 @@
       "options": [
         {
           "id": "a",
-          "text": "Стандартный JSON-массив объектов: [{...}, {...}]"
+          "text": "NDJSON (Newline Delimited JSON) --- по одному JSON-объекту на строку"
         },
         {
           "id": "b",
-          "text": "NDJSON (Newline Delimited JSON) --- по одному JSON-объекту на строку"
+          "text": "Стандартный JSON-массив объектов: [{...}, {...}]"
         },
         {
           "id": "c",
@@ -54,7 +54,7 @@
           "text": "Любой валидный JSON-документ, формат определяется автоматически"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "read_json() ожидает формат NDJSON (Newline Delimited JSON) --- по одному JSON-объекту на строку, а не массив JSON. Это потоковый формат, позволяющий читать файл построчно без загрузки всего документа в память.",
       "bloomLevel": "conceptual",
       "studyHint": "NDJSON --- стандарт для потоковой обработки JSON. Каждая строка файла --- отдельный JSON-объект."
@@ -74,11 +74,11 @@
         },
         {
           "id": "c",
-          "text": "read_csv() работает только с локальными файлами; register_csv() поддерживает S3"
+          "text": "Разницы нет --- оба метода делают одно и то же"
         },
         {
           "id": "d",
-          "text": "Разницы нет --- оба метода делают одно и то же"
+          "text": "read_csv() работает только с локальными файлами; register_csv() поддерживает S3"
         }
       ],
       "correctAnswer": "a",
@@ -97,18 +97,18 @@
         },
         {
           "id": "b",
-          "text": "Регистрирует созданный DataFrame как таблицу, доступную для SQL-запросов через ctx.sql()"
+          "text": "Определяет имя схемы в Apache Arrow"
         },
         {
           "id": "c",
-          "text": "Определяет имя схемы в Apache Arrow"
+          "text": "Регистрирует созданный DataFrame как таблицу, доступную для SQL-запросов через ctx.sql()"
         },
         {
           "id": "d",
           "text": "Задаёт имя переменной для автоматического сохранения в контексте Python"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Параметр name в from_pydict()/from_pylist() регистрирует DataFrame как таблицу, доступную для SQL-запросов. Например, ctx.from_pydict(data, name=\"students\") позволяет выполнить ctx.sql(\"SELECT * FROM students\").",
       "bloomLevel": "applied",
       "studyHint": "name делает данные видимыми для SQL. Без name --- только DataFrame API."
@@ -120,7 +120,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Версия 40.0 --- вместе с переходом на Arrow 2.0"
+          "text": "Версия 52.0 --- текущая мажорная версия"
         },
         {
           "id": "b",
@@ -128,7 +128,7 @@
         },
         {
           "id": "c",
-          "text": "Версия 52.0 --- текущая мажорная версия"
+          "text": "Версия 40.0 --- вместе с переходом на Arrow 2.0"
         },
         {
           "id": "d",

@@ -15,26 +15,26 @@ DataFusion — не монолит. Ядро разбито на отдельн�
 
 <DiagramContainer title="DataFusion Crate Dependency Graph" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="output">datafusion (meta-crate)</FlowNode>
+    <FlowNode variant="output" tooltip="Meta-crate: реэкспортирует все под-crate для удобного подключения через одну зависимость">datafusion (meta-crate)</FlowNode>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <FlowNode variant="process">datafusion-sql</FlowNode>
-      <FlowNode variant="process">datafusion-optimizer</FlowNode>
-      <FlowNode variant="process">datafusion-physical-plan</FlowNode>
+      <FlowNode variant="process" tooltip="Трансляция SQL AST в LogicalPlan через SqlToRel и ContextProvider">datafusion-sql</FlowNode>
+      <FlowNode variant="process" tooltip="Цепочка правил оптимизации: filter pushdown, projection pushdown, constant folding">datafusion-optimizer</FlowNode>
+      <FlowNode variant="process" tooltip="Физические операторы: HashJoin, Sort, Aggregate, Repartition и их выполнение">datafusion-physical-plan</FlowNode>
     </FlowRow>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <FlowNode variant="process">datafusion-expr</FlowNode>
-      <FlowNode variant="process">datafusion-physical-expr</FlowNode>
-      <FlowNode variant="process">datafusion-execution</FlowNode>
+      <FlowNode variant="process" tooltip="Логические типы: LogicalPlan, Expr, TableProvider, UDF trait-ы">datafusion-expr</FlowNode>
+      <FlowNode variant="process" tooltip="Физические выражения: вычисления на Arrow данных, PhysicalExpr trait">datafusion-physical-expr</FlowNode>
+      <FlowNode variant="process" tooltip="Runtime: SessionConfig, TaskContext, RuntimeEnv, MemoryPool">datafusion-execution</FlowNode>
     </FlowRow>
     <Arrow direction="down" />
     <FlowRow className="gap-4 justify-center flex-wrap">
-      <FlowNode variant="process">datafusion-functions</FlowNode>
-      <FlowNode variant="process">datafusion-catalog</FlowNode>
+      <FlowNode variant="process" tooltip="~200 встроенных скалярных функций: math, string, datetime, crypto">datafusion-functions</FlowNode>
+      <FlowNode variant="process" tooltip="Система каталогов: CatalogProvider, SchemaProvider, in-memory реализации">datafusion-catalog</FlowNode>
     </FlowRow>
     <Arrow direction="down" />
-    <FlowNode variant="input">datafusion-common (+ arrow-rs)</FlowNode>
+    <FlowNode variant="input" tooltip="Фундаментальные типы: DFSchema, ScalarValue, DataFusionError, Statistics + arrow-rs">datafusion-common (+ arrow-rs)</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 
@@ -104,11 +104,11 @@ pub struct Optimizer {
 pub trait OptimizerRule: Send + Sync {
     fn name(&self) -> &str;
 
-    fn try_optimize(
-        &self,
-        plan: &LogicalPlan,
+    fn rewrite(
+        self,
+        plan: LogicalPlan,
         config: &dyn OptimizerConfig,
-    ) -> Result<Option<LogicalPlan>>;
+    ) -> Result<Transformed<LogicalPlan>>;
 }
 ```
 

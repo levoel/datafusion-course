@@ -30,7 +30,7 @@ topics: ["Window Functions", "ROW_NUMBER", "RANK", "LAG", "LEAD", "Frame Specifi
 <DiagramContainer title="Концепция оконного фрейма" className="my-6">
   <FlowColumn className="p-4 gap-2">
     <FlowRow className="gap-3 justify-center">
-      <DataBox label="Partition: region = 'EU'" className="border-blue-500/30 w-80">
+      <DataBox label="Partition: region = 'EU'" className="border-blue-500/30 w-80" tooltip="Раздел данных — все строки с region='EU', упорядоченные по amount">
         <div className="text-xs font-mono space-y-1">
           <div className="opacity-50">row 1: amount=100</div>
           <div className="opacity-50">row 2: amount=200</div>
@@ -42,7 +42,7 @@ topics: ["Window Functions", "ROW_NUMBER", "RANK", "LAG", "LEAD", "Frame Specifi
     </FlowRow>
     <Arrow direction="down" label="ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING" />
     <FlowRow className="gap-3 justify-center">
-      <DataBox label="Фрейм для row 3" className="border-emerald-500/30 w-80">
+      <DataBox label="Фрейм для row 3" className="border-emerald-500/30 w-80" tooltip="Оконный фрейм — подмножество строк раздела для текущего вычисления">
         <div className="text-xs font-mono space-y-1">
           <div>row 2: amount=200</div>
           <div className="text-emerald-400">row 3: amount=350 (current)</div>
@@ -51,7 +51,7 @@ topics: ["Window Functions", "ROW_NUMBER", "RANK", "LAG", "LEAD", "Frame Specifi
       </DataBox>
     </FlowRow>
     <Arrow direction="down" label="AVG(amount)" />
-    <FlowNode variant="output">316.67</FlowNode>
+    <FlowNode variant="output" tooltip="Результат AVG(amount) по фрейму: (200+350+400)/3 = 316.67">316.67</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

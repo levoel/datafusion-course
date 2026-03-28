@@ -17,17 +17,17 @@ DataFusion реализует три алгоритма соединения. Ф
 
 <DiagramContainer title="Алгоритмы JOIN в DataFusion" className="my-6">
   <Grid columns={3} className="gap-4 text-sm">
-    <DataBox label="HashJoinExec" className="border-blue-500/30">
+    <DataBox label="HashJoinExec" className="border-blue-500/30" tooltip="Hash Join: строит хеш-таблицу по правой (меньшей) стороне, затем сканирует левую — оптимален для equi-join">
       <div className="text-xs">Строит хеш-таблицу по правой стороне, пробирует левой</div>
       <div className="text-xs mt-1 text-emerald-400">Лучший для equi-join без сортировки</div>
       <div className="text-xs mt-1 text-yellow-400">Память: O(правая сторона)</div>
     </DataBox>
-    <DataBox label="SortMergeJoinExec" className="border-emerald-500/30">
+    <DataBox label="SortMergeJoinExec" className="border-emerald-500/30" tooltip="Sort-Merge Join: потоковое слияние двух отсортированных входов — минимальное потребление памяти O(1)">
       <div className="text-xs">Слияние двух отсортированных потоков</div>
       <div className="text-xs mt-1 text-emerald-400">Лучший когда данные уже отсортированы</div>
       <div className="text-xs mt-1 text-yellow-400">Память: O(1) при потоковой обработке</div>
     </DataBox>
-    <DataBox label="NestedLoopJoinExec" className="border-red-500/30">
+    <DataBox label="NestedLoopJoinExec" className="border-red-500/30" tooltip="Nested Loop Join: полный перебор O(N*M) — единственный вариант для non-equi предикатов">
       <div className="text-xs">Декартово произведение с фильтром</div>
       <div className="text-xs mt-1 text-emerald-400">Единственный вариант для non-equi join</div>
       <div className="text-xs mt-1 text-yellow-400">Сложность: O(N * M)</div>

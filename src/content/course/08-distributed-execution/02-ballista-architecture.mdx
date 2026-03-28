@@ -18,41 +18,41 @@ Ballista состоит из трёх компонентов: клиенты, sc
 <DiagramContainer title="Архитектура Ballista" className="my-6">
   <FlowColumn className="gap-4 text-sm">
     <FlowRow className="gap-3 justify-center">
-      <DataBox label="Rust SessionContext" className="border-blue-500/30">
+      <DataBox label="Rust SessionContext" className="border-blue-500/30" tooltip="Нативный Rust-клиент — стандартный DataFusion SessionContext с remote-подключением">
         <div className="text-xs font-mono">SessionContext::remote()</div>
       </DataBox>
-      <DataBox label="PyBallista" className="border-blue-500/30">
+      <DataBox label="PyBallista" className="border-blue-500/30" tooltip="Python-клиент для Ballista — DataFrame и SQL API через BallistaBuilder">
         <div className="text-xs font-mono">BallistaBuilder()</div>
       </DataBox>
-      <DataBox label="Flight SQL / JDBC" className="border-blue-500/30">
+      <DataBox label="Flight SQL / JDBC" className="border-blue-500/30" tooltip="Стандартный Flight SQL протокол — подключение BI-инструментов (Tableau, Superset) без спецдрайверов">
         <div className="text-xs">SQL-клиенты</div>
       </DataBox>
     </FlowRow>
     <Arrow direction="down" label="gRPC / Flight SQL" />
-    <DataBox label="Scheduler" className="border-emerald-500/30 mx-auto">
+    <DataBox label="Scheduler" className="border-emerald-500/30 mx-auto" tooltip="Централизованный планировщик: принимает запросы, строит Execution Graph, распределяет задачи по executor-ам">
       <FlowRow className="gap-3 p-2">
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Job Manager</FlowNode>
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Execution Graph</FlowNode>
-        <FlowNode className="bg-emerald-950/60 text-xs p-1">Task Scheduler</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Управление жизненным циклом Job: создание, статус, отмена">Job Manager</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="DAG query stages — разрезка физического плана по pipeline breakers">Execution Graph</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1" tooltip="Назначение задач executor-ам с учётом locality и ресурсов">Task Scheduler</FlowNode>
       </FlowRow>
     </DataBox>
     <Arrow direction="down" label="gRPC: задачи (protobuf физ. планы)" />
     <FlowRow className="gap-3 justify-center">
-      <DataBox label="Executor 1" className="border-amber-500/30">
+      <DataBox label="Executor 1" className="border-amber-500/30" tooltip="Рабочий процесс с DataFusion runtime — выполняет задачи параллельно в N потоков">
         <div className="text-xs">DataFusion runtime</div>
         <div className="text-xs mt-1 font-mono">N потоков</div>
       </DataBox>
-      <DataBox label="Executor 2" className="border-amber-500/30">
+      <DataBox label="Executor 2" className="border-amber-500/30" tooltip="Каждый executor — отдельный процесс с полноценным DataFusion SessionContext">
         <div className="text-xs">DataFusion runtime</div>
         <div className="text-xs mt-1 font-mono">N потоков</div>
       </DataBox>
-      <DataBox label="Executor N" className="border-amber-500/30">
+      <DataBox label="Executor N" className="border-amber-500/30" tooltip="Кластер масштабируется добавлением executor-ов — scheduler автоматически распределяет задачи">
         <div className="text-xs">DataFusion runtime</div>
         <div className="text-xs mt-1 font-mono">N потоков</div>
       </DataBox>
     </FlowRow>
     <Arrow direction="down" label="Arrow IPC" />
-    <FlowNode className="bg-gray-800/60 text-xs p-2 mx-auto">Shuffle-файлы (Arrow IPC на локальном диске executor-а)</FlowNode>
+    <FlowNode className="bg-gray-800/60 text-xs p-2 mx-auto" tooltip="Промежуточные данные между stage хранятся как Arrow IPC файлы на локальном диске каждого executor-а">Shuffle-файлы (Arrow IPC на локальном диске executor-а)</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 
@@ -127,14 +127,14 @@ Executor — рабочий процесс, выполняющий задачи.
 <DiagramContainer title="Arrow IPC shuffle между stage" className="my-6">
   <FlowColumn className="gap-3 text-sm">
     <FlowRow className="gap-3 justify-center">
-      <FlowNode className="bg-amber-950/60 text-xs p-2">Stage 1, partition 0<br/>→ Arrow IPC файл</FlowNode>
-      <FlowNode className="bg-amber-950/60 text-xs p-2">Stage 1, partition 1<br/>→ Arrow IPC файл</FlowNode>
-      <FlowNode className="bg-amber-950/60 text-xs p-2">Stage 1, partition 2<br/>→ Arrow IPC файл</FlowNode>
+      <FlowNode className="bg-amber-950/60 text-xs p-2" tooltip="Executor записывает Arrow IPC файл для партиции 0 целевого stage">Stage 1, partition 0<br/>→ Arrow IPC файл</FlowNode>
+      <FlowNode className="bg-amber-950/60 text-xs p-2" tooltip="Executor записывает Arrow IPC файл для партиции 1 целевого stage">Stage 1, partition 1<br/>→ Arrow IPC файл</FlowNode>
+      <FlowNode className="bg-amber-950/60 text-xs p-2" tooltip="Executor записывает Arrow IPC файл для партиции 2 целевого stage">Stage 1, partition 2<br/>→ Arrow IPC файл</FlowNode>
     </FlowRow>
     <Arrow direction="down" label="сеть (executor → executor)" />
     <FlowRow className="gap-3 justify-center">
-      <FlowNode className="bg-emerald-950/60 text-xs p-2">Stage 2, partition 0<br/>ShuffleReaderExec</FlowNode>
-      <FlowNode className="bg-emerald-950/60 text-xs p-2">Stage 2, partition 1<br/>ShuffleReaderExec</FlowNode>
+      <FlowNode className="bg-emerald-950/60 text-xs p-2" tooltip="ShuffleReaderExec собирает Arrow IPC файлы от всех executor-ов stage 1 для партиции 0">Stage 2, partition 0<br/>ShuffleReaderExec</FlowNode>
+      <FlowNode className="bg-emerald-950/60 text-xs p-2" tooltip="ShuffleReaderExec собирает файлы для партиции 1 — zero-copy маппинг буферов без построчного декодирования">Stage 2, partition 1<br/>ShuffleReaderExec</FlowNode>
     </FlowRow>
   </FlowColumn>
 </DiagramContainer>

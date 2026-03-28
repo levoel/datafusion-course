@@ -1,19 +1,33 @@
 {
   "lessonSlug": "09-ecosystem/04-contributing-and-future",
   "moduleId": "09-ecosystem",
-  "_meta": { "idPrefix": "df-m09-04" },
+  "_meta": {
+    "idPrefix": "df-m09-04"
+  },
   "questions": [
     {
       "id": "df-m09-04-q1",
       "type": "multiple-choice",
       "question": "Какой принцип Apache governance определяет, как принимаются решения в DataFusion PMC?",
       "options": [
-        { "id": "a", "text": "Lazy consensus: решение принимается, если никто не возразил в течение 72 часов. Коммиттеры и PMC-члены назначаются merit-based — на основе качества и объёма вклада" },
-        { "id": "b", "text": "Решения принимаются голосованием большинства на ежемесячных собраниях" },
-        { "id": "c", "text": "Решения принимает единственный BDFL (Benevolent Dictator For Life)" },
-        { "id": "d", "text": "Решения принимает компания-спонсор проекта" }
+        {
+          "id": "a",
+          "text": "Решения принимает компания-спонсор проекта"
+        },
+        {
+          "id": "b",
+          "text": "Решения принимаются голосованием большинства на ежемесячных собраниях"
+        },
+        {
+          "id": "c",
+          "text": "Lazy consensus: решение принимается, если никто не возразил в течение 72 часов. Коммиттеры и PMC-члены назначаются merit-based — на основе качества и объёма вклада"
+        },
+        {
+          "id": "d",
+          "text": "Решения принимает единственный BDFL (Benevolent Dictator For Life)"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Apache DataFusion использует lazy consensus: решение принимается, если никто не возразил в течение 72 часов. Коммиттеры и PMC-члены назначаются по merit-based принципу — на основе качества и объёма вклада. Все обсуждения публичные (dev@datafusion.apache.org и GitHub). Ни одна компания не контролирует проект — vendor-neutral governance.",
       "bloomLevel": "conceptual",
       "studyHint": "Lazy consensus: 72 часа без возражений = принято. Merit-based: вклад определяет продвижение. Vendor-neutral: нет контролирующей компании."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "Какие направления развития DataFusion являются приоритетами на Q1 2026?",
       "options": [
-        { "id": "a", "text": "Производительность (непрерывный performance monitoring, оптимизация join), SQL-совместимость (коррелированные подзапросы, window function extensions), экосистема (WASM target, Substrait покрытие, Python bindings, стабилизация extensibility API)" },
-        { "id": "b", "text": "Создание облачного сервиса DataFusion Cloud для конкуренции с Snowflake" },
-        { "id": "c", "text": "Полный переход с Rust на C++ для совместимости с LLVM" },
-        { "id": "d", "text": "Только исправление багов — новых функций не планируется" }
+        {
+          "id": "a",
+          "text": "Только исправление багов — новых функций не планируется"
+        },
+        {
+          "id": "b",
+          "text": "Полный переход с Rust на C++ для совместимости с LLVM"
+        },
+        {
+          "id": "c",
+          "text": "Создание облачного сервиса DataFusion Cloud для конкуренции с Snowflake"
+        },
+        {
+          "id": "d",
+          "text": "Производительность (непрерывный performance monitoring, оптимизация join), SQL-совместимость (коррелированные подзапросы, window function extensions), экосистема (WASM target, Substrait покрытие, Python bindings, стабилизация extensibility API)"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Roadmap Q1 2026 включает три направления: производительность (непрерывный performance monitoring, оптимизация join, уменьшение dependency tree), SQL-совместимость (декорреляция коррелированных подзапросов, window function extensions, улучшение DML), экосистема (WASM target, Substrait покрытие, Python bindings паритет с Rust API, стабилизация trait-интерфейсов для external embedders).",
       "bloomLevel": "conceptual",
       "studyHint": "Три направления: performance (monitoring, join), SQL (subqueries, window), экосистема (WASM, Substrait, Python, extensibility API)."
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "Почему vendor-нейтральность DataFusion считается одновременно и преимуществом, и ограничением?",
       "options": [
-        { "id": "a", "text": "Преимущество: нейтральная площадка — любая компания может строить бизнес поверх DataFusion. Ограничение: нет единого roadmap-владельца, приоритеты определяются консенсусом сообщества, а не централизованным планированием" },
-        { "id": "b", "text": "Преимущество: бесплатная поддержка от Apache. Ограничение: медленный релизный цикл" },
-        { "id": "c", "text": "Vendor-нейтральность — только преимущество, без ограничений" },
-        { "id": "d", "text": "Vendor-нейтральность — только ограничение, проект нуждается в корпоративном спонсоре" }
+        {
+          "id": "a",
+          "text": "Преимущество: нейтральная площадка — любая компания может строить бизнес поверх DataFusion. Ограничение: нет единого roadmap-владельца, приоритеты определяются консенсусом сообщества, а не централизованным планированием"
+        },
+        {
+          "id": "b",
+          "text": "Vendor-нейтральность — только ограничение, проект нуждается в корпоративном спонсоре"
+        },
+        {
+          "id": "c",
+          "text": "Преимущество: бесплатная поддержка от Apache. Ограничение: медленный релизный цикл"
+        },
+        {
+          "id": "d",
+          "text": "Vendor-нейтральность — только преимущество, без ограничений"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Сила vendor-нейтральности: нейтральная площадка, любая компания может строить бизнес поверх DataFusion — контрибьюторы из InfluxData, Apple, NVIDIA, Cloudflare, Cube и десятков других. Ограничение: нет единого roadmap-владельца (в отличие от Spark/Databricks, Flink/Confluent, ClickHouse/ClickHouse Inc.), приоритеты определяются консенсусом сообщества. Хочешь функцию быстрее — реализуй сам или поддержи PR ревью.",
@@ -53,10 +91,22 @@
       "type": "multiple-choice",
       "question": "Какой способ contribution в DataFusion «высоко ценится» коммиттерами и может быть путём к получению committer-статуса?",
       "options": [
-        { "id": "a", "text": "Ревью PR других контрибьюторов — качественный review масштабирует пропускную способность проекта, и многие коммиттеры получили статус именно через ревью" },
-        { "id": "b", "text": "Только написание нового кода — ревью и документация не учитываются" },
-        { "id": "c", "text": "Спонсорство проекта — финансовые взносы определяют продвижение" },
-        { "id": "d", "text": "Создание форков с собственными изменениями" }
+        {
+          "id": "a",
+          "text": "Ревью PR других контрибьюторов — качественный review масштабирует пропускную способность проекта, и многие коммиттеры получили статус именно через ревью"
+        },
+        {
+          "id": "b",
+          "text": "Спонсорство проекта — финансовые взносы определяют продвижение"
+        },
+        {
+          "id": "c",
+          "text": "Только написание нового кода — ревью и документация не учитываются"
+        },
+        {
+          "id": "d",
+          "text": "Создание форков с собственными изменениями"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Ревью PR — один из самых ценных вкладов в DataFusion. Качественный review масштабирует пропускную способность проекта. Многие коммиттеры получили статус именно через ревью, а не только через написание кода. Помимо кода и ревью, ценятся: тесты, документация, баг-репорты с минимальным воспроизведением, помощь пользователям в Discussions и Discord.",
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Почему знание DataFusion считается ценным карьерным навыком в области data engineering?",
       "options": [
-        { "id": "a", "text": "Пересечение Rust + Data Engineering (два горячих рынка), понимание query engine internals (редкий навык), знания портативны (LogicalPlan, PhysicalPlan, AnalyzerRule — те же концепции в Spark, Trino, DuckDB), экосистема удваивается каждый год" },
-        { "id": "b", "text": "DataFusion — единственный query engine на рынке, альтернатив нет" },
-        { "id": "c", "text": "Только для тех, кто хочет работать в Apache Software Foundation" },
-        { "id": "d", "text": "DataFusion ценен только в академической среде, не в индустрии" }
+        {
+          "id": "a",
+          "text": "DataFusion ценен только в академической среде, не в индустрии"
+        },
+        {
+          "id": "b",
+          "text": "Пересечение Rust + Data Engineering (два горячих рынка), понимание query engine internals (редкий навык), знания портативны (LogicalPlan, PhysicalPlan, AnalyzerRule — те же концепции в Spark, Trino, DuckDB), экосистема удваивается каждый год"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion — единственный query engine на рынке, альтернатив нет"
+        },
+        {
+          "id": "d",
+          "text": "Только для тех, кто хочет работать в Apache Software Foundation"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Четыре причины: (1) пересечение Rust + Data Engineering — два горячих рынка, (2) понимание query engine internals (планирование, оптимизация, выполнение) — редкий и ценный навык, (3) портативность знаний — LogicalPlan, PhysicalPlan, AnalyzerRule встречаются в Spark, Trino, Presto, DuckDB, (4) экосистема удваивается — спрос на специалистов растёт. Карьерные траектории: Database Engineer, Data Infrastructure, Spark Migration, Open Source.",
       "bloomLevel": "analytical",
       "studyHint": "Rust + Data = горячая ниша. Query engine internals = портативны (Spark, Trino, DuckDB). Экосистема растёт → спрос растёт."

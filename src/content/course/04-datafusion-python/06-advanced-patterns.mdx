@@ -207,16 +207,16 @@ DataFusion используется как движок запросов в не
 
 <DiagramContainer title="Проекты на основе DataFusion" className="my-6">
   <FlowRow className="gap-4 justify-center flex-wrap p-4">
-    <DataBox label="Dask SQL" className="border-blue-500/30 w-48">
+    <DataBox label="Dask SQL" className="border-blue-500/30 w-48" tooltip="SQL-интерфейс для Dask — DataFusion парсит и планирует, Dask выполняет распределённо">
       <div className="text-xs">SQL-интерфейс для Dask. DataFusion --- парсинг и планирование, Dask --- распределённое выполнение.</div>
     </DataBox>
-    <DataBox label="Ballista" className="border-emerald-500/30 w-48">
+    <DataBox label="Ballista" className="border-emerald-500/30 w-48" tooltip="Распределённый DataFusion — кластер из Scheduler и Executor узлов">
       <div className="text-xs">Распределённый DataFusion. Scheduler + Executor кластер для масштабирования.</div>
     </DataBox>
-    <DataBox label="Apache Comet" className="border-yellow-500/30 w-48">
+    <DataBox label="Apache Comet" className="border-yellow-500/30 w-48" tooltip="Нативный ускоритель Spark — DataFusion заменяет JVM-выполнение Rust-операторами">
       <div className="text-xs">Ускоритель Apache Spark. DataFusion заменяет JVM-выполнение на нативный Rust.</div>
     </DataBox>
-    <DataBox label="Delta-rs" className="border-purple-500/30 w-48">
+    <DataBox label="Delta-rs" className="border-purple-500/30 w-48" tooltip="Rust-реализация Delta Lake — DataFusion как движок запросов к Delta-таблицам">
       <div className="text-xs">Rust-реализация Delta Lake. DataFusion --- движок для запросов к Delta-таблицам.</div>
     </DataBox>
   </FlowRow>

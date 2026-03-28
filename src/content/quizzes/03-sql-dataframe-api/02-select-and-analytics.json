@@ -1,17 +1,31 @@
 {
   "lessonSlug": "03-sql-dataframe-api/02-select-and-analytics",
   "moduleId": "03-sql-dataframe-api",
-  "_meta": { "idPrefix": "df-m03-02" },
+  "_meta": {
+    "idPrefix": "df-m03-02"
+  },
   "questions": [
     {
       "id": "df-m03-02-q1",
       "type": "multiple-choice",
       "question": "Какой порядок логической обработки SQL-запроса в DataFusion?",
       "options": [
-        { "id": "a", "text": "SELECT → FROM → WHERE → GROUP BY → HAVING → ORDER BY" },
-        { "id": "b", "text": "FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT" },
-        { "id": "c", "text": "FROM → SELECT → WHERE → GROUP BY → ORDER BY → LIMIT" },
-        { "id": "d", "text": "WHERE → FROM → GROUP BY → SELECT → HAVING → ORDER BY" }
+        {
+          "id": "a",
+          "text": "WHERE → FROM → GROUP BY → SELECT → HAVING → ORDER BY"
+        },
+        {
+          "id": "b",
+          "text": "FROM → WHERE → GROUP BY → HAVING → SELECT → ORDER BY → LIMIT"
+        },
+        {
+          "id": "c",
+          "text": "SELECT → FROM → WHERE → GROUP BY → HAVING → ORDER BY"
+        },
+        {
+          "id": "d",
+          "text": "FROM → SELECT → WHERE → GROUP BY → ORDER BY → LIMIT"
+        }
       ],
       "correctAnswer": "b",
       "explanation": "Логический порядок обработки SQL: FROM (источник) → WHERE (фильтрация строк) → GROUP BY (группировка) → HAVING (фильтрация групп) → SELECT (проекция) → ORDER BY (сортировка) → LIMIT. Этот порядок определяет, какие алиасы доступны на каждом этапе.",
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "В запросе SELECT region, COUNT(*), AVG(amount) FROM orders GROUP BY region HAVING AVG(amount) > 1000 — что произойдёт, если заменить HAVING на WHERE AVG(amount) > 1000?",
       "options": [
-        { "id": "a", "text": "Запрос выполнится идентично — WHERE и HAVING взаимозаменяемы" },
-        { "id": "b", "text": "Ошибка: агрегатные функции нельзя использовать в WHERE, так как WHERE выполняется до GROUP BY" },
-        { "id": "c", "text": "Запрос выполнится, но вернёт другой результат" },
-        { "id": "d", "text": "DataFusion автоматически переместит условие в HAVING" }
+        {
+          "id": "a",
+          "text": "Запрос выполнится идентично — WHERE и HAVING взаимозаменяемы"
+        },
+        {
+          "id": "b",
+          "text": "Запрос выполнится, но вернёт другой результат"
+        },
+        {
+          "id": "c",
+          "text": "Ошибка: агрегатные функции нельзя использовать в WHERE, так как WHERE выполняется до GROUP BY"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion автоматически переместит условие в HAVING"
+        }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "WHERE фильтрует строки до группировки, поэтому агрегатные функции (AVG, COUNT, SUM) в нём недоступны. HAVING фильтрует уже сгруппированные данные, поэтому агрегаты в нём допустимы. DataFusion выдаст ошибку на стадии SqlToRel.",
       "bloomLevel": "applied",
       "studyHint": "Правило: WHERE фильтрует строки (до GROUP BY), HAVING фильтрует группы (после GROUP BY)."
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "Чем рекурсивный CTE (WITH RECURSIVE) отличается от обычного CTE в DataFusion?",
       "options": [
-        { "id": "a", "text": "Обычный CTE — одноразовая подстановка, рекурсивный — итеративно расширяет результат, объединяя базовый и рекурсивный члены через UNION ALL" },
-        { "id": "b", "text": "Рекурсивный CTE работает быстрее, так как кеширует промежуточные результаты" },
-        { "id": "c", "text": "Рекурсивный CTE поддерживает только числовые данные" },
-        { "id": "d", "text": "Нет различий — все CTE в DataFusion рекурсивные по умолчанию" }
+        {
+          "id": "a",
+          "text": "Рекурсивный CTE работает быстрее, так как кеширует промежуточные результаты"
+        },
+        {
+          "id": "b",
+          "text": "Рекурсивный CTE поддерживает только числовые данные"
+        },
+        {
+          "id": "c",
+          "text": "Нет различий — все CTE в DataFusion рекурсивные по умолчанию"
+        },
+        {
+          "id": "d",
+          "text": "Обычный CTE — одноразовая подстановка, рекурсивный — итеративно расширяет результат, объединяя базовый и рекурсивный члены через UNION ALL"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Обычный CTE — это именованное выражение, которое подставляется один раз. Рекурсивный CTE содержит базовый (anchor) член и рекурсивный член, соединённые через UNION ALL. DataFusion итеративно выполняет рекурсивный член, пока он возвращает новые строки.",
       "bloomLevel": "conceptual",
       "studyHint": "Рекурсивный CTE = anchor + step + UNION ALL. Типичное применение — обход иерархий (дерево категорий, граф зависимостей)."
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "Какая разница между UNION ALL и UNION в DataFusion?",
       "options": [
-        { "id": "a", "text": "UNION ALL быстрее, так как не удаляет дубликаты, а UNION выполняет дедупликацию через хеширование" },
-        { "id": "b", "text": "UNION ALL объединяет только две таблицы, UNION — любое количество" },
-        { "id": "c", "text": "UNION ALL требует одинаковые имена колонок, UNION — нет" },
-        { "id": "d", "text": "Нет разницы — DataFusion всегда удаляет дубликаты" }
+        {
+          "id": "a",
+          "text": "UNION ALL объединяет только две таблицы, UNION — любое количество"
+        },
+        {
+          "id": "b",
+          "text": "UNION ALL требует одинаковые имена колонок, UNION — нет"
+        },
+        {
+          "id": "c",
+          "text": "Нет разницы — DataFusion всегда удаляет дубликаты"
+        },
+        {
+          "id": "d",
+          "text": "UNION ALL быстрее, так как не удаляет дубликаты, а UNION выполняет дедупликацию через хеширование"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "UNION ALL возвращает все строки из обоих наборов без дедупликации. UNION выполняет дополнительный шаг — удаление дубликатов (через хеширование или сортировку). Для аналитических запросов UNION ALL предпочтительнее, когда дедупликация не нужна.",
       "bloomLevel": "applied",
       "studyHint": "Используйте UNION ALL по умолчанию. Переключайтесь на UNION только если дедупликация семантически необходима."
@@ -68,10 +118,22 @@
       "type": "multiple-choice",
       "question": "Коррелированный подзапрос в WHERE ссылается на колонку внешнего запроса. Как DataFusion обрабатывает такой запрос?",
       "options": [
-        { "id": "a", "text": "Выполняет подзапрос один раз и кеширует результат" },
-        { "id": "b", "text": "Декоррелирует подзапрос на стадии оптимизации, преобразуя его в JOIN или semi-join" },
-        { "id": "c", "text": "Выполняет подзапрос для каждой строки внешнего запроса (nested loop)" },
-        { "id": "d", "text": "Возвращает ошибку — коррелированные подзапросы не поддерживаются" }
+        {
+          "id": "a",
+          "text": "Возвращает ошибку — коррелированные подзапросы не поддерживаются"
+        },
+        {
+          "id": "b",
+          "text": "Декоррелирует подзапрос на стадии оптимизации, преобразуя его в JOIN или semi-join"
+        },
+        {
+          "id": "c",
+          "text": "Выполняет подзапрос для каждой строки внешнего запроса (nested loop)"
+        },
+        {
+          "id": "d",
+          "text": "Выполняет подзапрос один раз и кеширует результат"
+        }
       ],
       "correctAnswer": "b",
       "explanation": "DataFusion содержит правило декорреляции (DecorrelatePredicateSubquery), которое преобразует коррелированные подзапросы в эквивалентные JOIN или semi-join операции на стадии оптимизации LogicalPlan. Это позволяет избежать поэлементного выполнения.",

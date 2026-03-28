@@ -1,19 +1,33 @@
 {
   "lessonSlug": "07-comet/05-comet-vs-alternatives",
   "moduleId": "07-comet",
-  "_meta": { "idPrefix": "df-m07-05" },
+  "_meta": {
+    "idPrefix": "df-m07-05"
+  },
   "questions": [
     {
       "id": "df-m07-05-q1",
       "type": "multiple-choice",
       "question": "Comet использует собственный protobuf-формат (expr.proto), а Gluten — стандарт Substrait. В чём практическое различие?",
       "options": [
-        { "id": "a", "text": "Protobuf Comet специализирован под DataFusion (меньше abstraction overhead), а Substrait стандартизован для разных backend-ов (Velox, DuckDB), но на практике Gluten тесно связан с Velox" },
-        { "id": "b", "text": "Substrait быстрее в сериализации — Gluten поэтому производительнее" },
-        { "id": "c", "text": "Protobuf устарел — Substrait заменит его во всех проектах" },
-        { "id": "d", "text": "Различий нет — оба формата дают одинаковый результат" }
+        {
+          "id": "a",
+          "text": "Различий нет — оба формата дают одинаковый результат"
+        },
+        {
+          "id": "b",
+          "text": "Protobuf устарел — Substrait заменит его во всех проектах"
+        },
+        {
+          "id": "c",
+          "text": "Protobuf Comet специализирован под DataFusion (меньше abstraction overhead), а Substrait стандартизован для разных backend-ов (Velox, DuckDB), но на практике Gluten тесно связан с Velox"
+        },
+        {
+          "id": "d",
+          "text": "Substrait быстрее в сериализации — Gluten поэтому производительнее"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Comet protobuf (expr.proto) оптимизирован для DataFusion — прямой маппинг операторов и выражений без промежуточных абстракций. Substrait — межпроектный стандарт, теоретически позволяющий подключать разные backend-ы, но на практике Gluten тесно связан с Velox. Выбор Comet: меньше overhead, лучше контроль, но не переносим на другие engine.",
       "bloomLevel": "analytical",
       "studyHint": "Comet protobuf: специализирован, меньше overhead. Substrait: стандарт, но Gluten ≈ Velox-only. Практическая разница минимальна."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "Databricks Photon — проприетарный Spark-ускоритель. Когда однозначно следует выбрать Photon вместо Comet?",
       "options": [
-        { "id": "a", "text": "Когда инфраструктура уже на Databricks — Photon включается одним параметром, глубоко интегрирован с Delta Lake и Databricks Runtime, production-ready с 2021 года" },
-        { "id": "b", "text": "Когда нужна максимальная производительность на open-source Spark" },
-        { "id": "c", "text": "Когда требуется поддержка Iceberg" },
-        { "id": "d", "text": "Всегда — Photon лучше Comet во всех сценариях" }
+        {
+          "id": "a",
+          "text": "Когда требуется поддержка Iceberg"
+        },
+        {
+          "id": "b",
+          "text": "Когда нужна максимальная производительность на open-source Spark"
+        },
+        {
+          "id": "c",
+          "text": "Всегда — Photon лучше Comet во всех сценариях"
+        },
+        {
+          "id": "d",
+          "text": "Когда инфраструктура уже на Databricks — Photon включается одним параметром, глубоко интегрирован с Delta Lake и Databricks Runtime, production-ready с 2021 года"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Photon доступен только в Databricks и не может использоваться с open-source Spark. Если инфраструктура уже на Databricks — Photon включается одним параметром (spark.databricks.photon.enabled=true) с глубокой интеграцией (Delta Lake, caching, adaptive execution). Нет причин использовать Comet в Databricks-окружении.",
       "bloomLevel": "applied",
       "studyHint": "Photon = только Databricks. Если уже на Databricks → Photon. Open-source Spark → Comet или Gluten."
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "Comet позиционируется как более простой в деплое по сравнению с Gluten+Velox. В чём конкретно проще?",
       "options": [
-        { "id": "a", "text": "Comet — единый JAR без C++ зависимостей (Rust компилируется в нативную библиотеку внутри JAR), а Gluten+Velox требует сборки C++ Velox engine с зависимостями" },
-        { "id": "b", "text": "Comet не требует JVM — работает полностью на Rust" },
-        { "id": "c", "text": "Comet работает без Spark — standalone mode" },
-        { "id": "d", "text": "Gluten сложнее только на Windows, на Linux деплой одинаков" }
+        {
+          "id": "a",
+          "text": "Comet — единый JAR без C++ зависимостей (Rust компилируется в нативную библиотеку внутри JAR), а Gluten+Velox требует сборки C++ Velox engine с зависимостями"
+        },
+        {
+          "id": "b",
+          "text": "Comet работает без Spark — standalone mode"
+        },
+        {
+          "id": "c",
+          "text": "Comet не требует JVM — работает полностью на Rust"
+        },
+        {
+          "id": "d",
+          "text": "Gluten сложнее только на Windows, на Linux деплой одинаков"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Comet распространяется как единый JAR (--packages org.apache.datafusion:comet-spark...), содержащий нативную Rust-библиотеку. Gluten+Velox требует сборки C++ Velox engine со всеми зависимостями, что значительно сложнее (1-2 дня vs 1 час на initial setup). Это основной аргумент Comet для быстрого старта.",
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "Компания использует open-source Spark 3.5 на EMR. Аналитические TPC-H-подобные запросы занимают 40% бюджета. Какой Spark-ускоритель даёт лучшее соотношение усилие/результат?",
       "options": [
-        { "id": "a", "text": "Comet — минимальное усилие (JAR + 3 параметра), ожидаемый 2x прирост → ~20% экономия compute. При недостаточном покрытии выражений можно контрибьютить или перейти на Gluten" },
-        { "id": "b", "text": "Gluten+Velox — максимальный прирост оправдывает 1-2 дня на сборку" },
-        { "id": "c", "text": "Photon — миграция на Databricks окупится за месяц" },
-        { "id": "d", "text": "Никакой — лучше оптимизировать SQL-запросы вручную" }
+        {
+          "id": "a",
+          "text": "Gluten+Velox — максимальный прирост оправдывает 1-2 дня на сборку"
+        },
+        {
+          "id": "b",
+          "text": "Photon — миграция на Databricks окупится за месяц"
+        },
+        {
+          "id": "c",
+          "text": "Comet — минимальное усилие (JAR + 3 параметра), ожидаемый 2x прирост → ~20% экономия compute. При недостаточном покрытии выражений можно контрибьютить или перейти на Gluten"
+        },
+        {
+          "id": "d",
+          "text": "Никакой — лучше оптимизировать SQL-запросы вручную"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Для open-source Spark на EMR: Comet даёт лучшее усилие → результат. Добавление JAR + 3 параметра (1 час) даёт ~2x ускорение на TPC-H нагрузках → ~20% экономия на compute. Если покрытие выражений недостаточно — можно контрибьютить новые выражения или перейти на Gluten для более широкого покрытия SQL.",
       "bloomLevel": "analytical",
       "studyHint": "Comet на EMR: 1 час setup → 2x прирост → 20% экономия. Лучшее ROI для начала. Далее — оценить покрытие."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Comet, Gluten+Velox и Photon используют разные форматы данных: Arrow RecordBatch, Velox RowVector и проприетарный columnar. Почему формат данных влияет на экосистемную совместимость?",
       "options": [
-        { "id": "a", "text": "Arrow RecordBatch (Comet) — стандарт межпроцессного обмена, совместим с pandas, Polars, DuckDB. Velox RowVector и Photon columnar — закрытые форматы, не переносимые за пределы своих экосистем" },
-        { "id": "b", "text": "Формат данных не влияет на совместимость — все три конвертируются в InternalRow на выходе" },
-        { "id": "c", "text": "Velox RowVector совместим с Arrow через автоматическую конвертацию" },
-        { "id": "d", "text": "Только Photon columnar совместим с другими инструментами Databricks" }
+        {
+          "id": "a",
+          "text": "Формат данных не влияет на совместимость — все три конвертируются в InternalRow на выходе"
+        },
+        {
+          "id": "b",
+          "text": "Velox RowVector совместим с Arrow через автоматическую конвертацию"
+        },
+        {
+          "id": "c",
+          "text": "Только Photon columnar совместим с другими инструментами Databricks"
+        },
+        {
+          "id": "d",
+          "text": "Arrow RecordBatch (Comet) — стандарт межпроцессного обмена, совместим с pandas, Polars, DuckDB. Velox RowVector и Photon columnar — закрытые форматы, не переносимые за пределы своих экосистем"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Arrow — стандарт межпроцессного обмена данными, совместимый с pandas (PyArrow), Polars, DuckDB, Flight RPC и десятками других инструментов. Comet работает с Arrow RecordBatch на всех этапах, что упрощает интеграцию. Velox RowVector — внутренний формат Meta, Photon — проприетарный. Оба не переносимы за пределы своих экосистем.",
       "bloomLevel": "analytical",
       "studyHint": "Arrow = стандарт (pandas, Polars, DuckDB, Flight). Velox/Photon = закрытые форматы. Arrow → лучшая экосистемная совместимость."

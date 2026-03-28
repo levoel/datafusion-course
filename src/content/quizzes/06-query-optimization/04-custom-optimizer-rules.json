@@ -1,19 +1,33 @@
 {
   "lessonSlug": "06-query-optimization/04-custom-optimizer-rules",
   "moduleId": "06-query-optimization",
-  "_meta": { "idPrefix": "df-m06-04" },
+  "_meta": {
+    "idPrefix": "df-m06-04"
+  },
   "questions": [
     {
       "id": "df-m06-04-q1",
       "type": "multiple-choice",
       "question": "OptimizerRule::rewrite() принимает LogicalPlan по значению (ownership), а не по ссылке. Какое преимущество это даёт?",
       "options": [
-        { "id": "a", "text": "Правило может деконструировать план (move полей) без клонирования, что эффективнее для глубоких деревьев" },
-        { "id": "b", "text": "Передача по значению предотвращает data races в многопоточном окружении" },
-        { "id": "c", "text": "Rust требует ownership для любого метода trait — передача по ссылке невозможна" },
-        { "id": "d", "text": "Это позволяет оптимизатору автоматически освобождать память после применения правила" }
+        {
+          "id": "a",
+          "text": "Передача по значению предотвращает data races в многопоточном окружении"
+        },
+        {
+          "id": "b",
+          "text": "Rust требует ownership для любого метода trait — передача по ссылке невозможна"
+        },
+        {
+          "id": "c",
+          "text": "Правило может деконструировать план (move полей) без клонирования, что эффективнее для глубоких деревьев"
+        },
+        {
+          "id": "d",
+          "text": "Это позволяет оптимизатору автоматически освобождать память после применения правила"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Ownership transfer позволяет правилу move-ить внутренние поля плана (inputs, expressions) без аллокации. Например, при удалении Filter-узла можно взять filter.input по значению, а не clone(). Для глубоких деревьев это значительно сокращает аллокации в hot path оптимизации.",
       "bloomLevel": "analytical",
       "studyHint": "Ownership → move вместо clone. rewrite(plan) → деконструировать → собрать новый план из частей без копирования."
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "TreeNode API предоставляет transform_down и transform_up. Для правила, которое удаляет тривиальные Filter (WHERE true), какой метод эффективнее?",
       "options": [
-        { "id": "a", "text": "transform_down — удаление родительского Filter сверху вниз сразу сокращает дерево, дочерние узлы не обходятся повторно" },
-        { "id": "b", "text": "transform_up — удаление снизу вверх гарантирует, что вложенные фильтры обработаны первыми" },
-        { "id": "c", "text": "Оба одинаково эффективны для удаления узлов" },
-        { "id": "d", "text": "Ни один — для удаления узлов нужен метод remove_node()" }
+        {
+          "id": "a",
+          "text": "Оба одинаково эффективны для удаления узлов"
+        },
+        {
+          "id": "b",
+          "text": "transform_up — удаление снизу вверх гарантирует, что вложенные фильтры обработаны первыми"
+        },
+        {
+          "id": "c",
+          "text": "transform_down — удаление родительского Filter сверху вниз сразу сокращает дерево, дочерние узлы не обходятся повторно"
+        },
+        {
+          "id": "d",
+          "text": "Ни один — для удаления узлов нужен метод remove_node()"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "transform_down обрабатывает узлы от корня к листьям. Удаление Filter сверху сразу сокращает дерево — дочерние узлы удалённого Filter не пересматриваются. transform_up сначала обошёл бы всё поддерево фильтра и только потом удалил его — лишняя работа.",
       "bloomLevel": "applied",
       "studyHint": "transform_down для удаления узлов (сокращает дерево сверху). transform_up для объединения/модификации дочерних узлов."
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "Правило AddOneInliner заменяет add_one(x) на x + 1. Почему после его применения SimplifyExpressions может свернуть add_one(5) в 6?",
       "options": [
-        { "id": "a", "text": "Инлайнинг превращает add_one(5) в 5 + 1 — константное выражение, которое SimplifyExpressions вычислит через constant folding" },
-        { "id": "b", "text": "SimplifyExpressions знает о add_one и оптимизирует его напрямую" },
-        { "id": "c", "text": "Constant folding работает только с встроенными функциями, не с UDF" },
-        { "id": "d", "text": "SimplifyExpressions запускается до AddOneInliner и не видит результат инлайнинга" }
+        {
+          "id": "a",
+          "text": "Инлайнинг превращает add_one(5) в 5 + 1 — константное выражение, которое SimplifyExpressions вычислит через constant folding"
+        },
+        {
+          "id": "b",
+          "text": "Constant folding работает только с встроенными функциями, не с UDF"
+        },
+        {
+          "id": "c",
+          "text": "SimplifyExpressions знает о add_one и оптимизирует его напрямую"
+        },
+        {
+          "id": "d",
+          "text": "SimplifyExpressions запускается до AddOneInliner и не видит результат инлайнинга"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Multi-pass делает цепочку возможной: AddOneInliner преобразует add_one(5) в 5 + 1. На следующем проходе SimplifyExpressions видит константное выражение 5 + 1 и вычисляет его в 6 (constant folding). Без инлайнинга оптимизатор не может заглянуть внутрь UDF.",
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "TenantIsolationRule добавляет WHERE tenant_id = ? к каждому TableScan через transform_down. Почему используется transform_down, а не transform_up?",
       "options": [
-        { "id": "a", "text": "transform_down обрабатывает план сверху вниз — Filter вставляется над каждым TableScan при первом посещении. С transform_up Filter был бы вставлен после обхода дочерних узлов scan, что семантически верно, но менее интуитивно для вставки над узлом" },
-        { "id": "b", "text": "transform_up не может добавлять новые узлы в дерево" },
-        { "id": "c", "text": "transform_down исключает повторную вставку фильтра в подзапросы" },
-        { "id": "d", "text": "transform_up вызвал бы бесконечный цикл при вставке Filter" }
+        {
+          "id": "a",
+          "text": "transform_down исключает повторную вставку фильтра в подзапросы"
+        },
+        {
+          "id": "b",
+          "text": "transform_up не может добавлять новые узлы в дерево"
+        },
+        {
+          "id": "c",
+          "text": "transform_down обрабатывает план сверху вниз — Filter вставляется над каждым TableScan при первом посещении. С transform_up Filter был бы вставлен после обхода дочерних узлов scan, что семантически верно, но менее интуитивно для вставки над узлом"
+        },
+        {
+          "id": "d",
+          "text": "transform_up вызвал бы бесконечный цикл при вставке Filter"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "При вставке Filter над TableScan: transform_down встречает TableScan, заменяет его на Filter(TableScan) — дочерние узлы нового Filter (т.е. сам TableScan) уже обработаны. С transform_up результат тот же, но менее интуитивен: TableScan обрабатывается снизу, заменяется на Filter(TableScan). Для данного паттерна оба работают, но transform_down более прямолинейный.",
       "bloomLevel": "applied",
       "studyHint": "Вставка Filter над узлом: transform_down — встретил TableScan → вернул Filter(TableScan). Прямолинейный паттерн."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "При тестировании кастомного правила через Optimizer::with_rules(vec![Arc::new(MyRule)]) вы передаёте observer callback. Зачем?",
       "options": [
-        { "id": "a", "text": "Убедиться, что правило действительно применилось — observer вызывается с именем правила, что подтверждает его выполнение" },
-        { "id": "b", "text": "Observer обязателен — без него Optimizer::optimize() вернёт ошибку" },
-        { "id": "c", "text": "Observer автоматически проверяет корректность трансформации" },
-        { "id": "d", "text": "Observer записывает метрики производительности правила" }
+        {
+          "id": "a",
+          "text": "Observer записывает метрики производительности правила"
+        },
+        {
+          "id": "b",
+          "text": "Убедиться, что правило действительно применилось — observer вызывается с именем правила, что подтверждает его выполнение"
+        },
+        {
+          "id": "c",
+          "text": "Observer обязателен — без него Optimizer::optimize() вернёт ошибку"
+        },
+        {
+          "id": "d",
+          "text": "Observer автоматически проверяет корректность трансформации"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "В тестах observer подтверждает, что правило было вызвано (rule.name() == 'my_rule'). Без observer вы проверяете только конечный результат, но не знаете, применилось ли именно ваше правило или результат случайно совпал из-за другого правила. Минимальный observer: |_, _| {} (no-op).",
       "bloomLevel": "applied",
       "studyHint": "Тестовый observer: проверяет, что rule.name() == ваше правило → оно действительно применилось, а не совпадение."

@@ -151,15 +151,15 @@ result.show()
 
 <DiagramContainer title="SQL + DataFrame: комбинированный pipeline" className="my-6">
   <FlowColumn className="p-4 gap-2">
-    <FlowNode variant="input">ctx.sql("SELECT ... FROM orders WHERE ...")</FlowNode>
+    <FlowNode variant="input" tooltip="SQL-запрос через ctx.sql() — возвращает ленивый DataFrame, а не результат">ctx.sql("SELECT ... FROM orders WHERE ...")</FlowNode>
     <Arrow direction="down" label="DataFrame" />
-    <FlowNode variant="process">.filter(col("status").eq(lit("completed")))</FlowNode>
+    <FlowNode variant="process" tooltip="Дополнительная фильтрация через DataFrame API поверх SQL-результата">.filter(col("status").eq(lit("completed")))</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">.aggregate([...], [...])</FlowNode>
+    <FlowNode variant="process" tooltip="Агрегация — программное добавление GROUP BY к SQL-плану">.aggregate([...], [...])</FlowNode>
     <Arrow direction="down" />
-    <FlowNode variant="process">.sort(...).limit(10)</FlowNode>
+    <FlowNode variant="process" tooltip="Сортировка и ограничение — финальные трансформации плана">.sort(...).limit(10)</FlowNode>
     <Arrow direction="down" label=".show()" />
-    <FlowNode variant="output">Результат</FlowNode>
+    <FlowNode variant="output" tooltip="Вывод результата — терминальная операция запускает выполнение всего плана">Результат</FlowNode>
   </FlowColumn>
 </DiagramContainer>
 

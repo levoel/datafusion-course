@@ -12,7 +12,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Для подключения произвольных источников данных (API, базы данных, потоки) --- DataFusion вызывает провайдер при обращении к таблице"
+          "text": "Для оптимизации чтения Parquet-файлов"
         },
         {
           "id": "b",
@@ -20,14 +20,14 @@
         },
         {
           "id": "c",
-          "text": "Для оптимизации чтения Parquet-файлов"
+          "text": "Для настройки прав доступа к таблицам"
         },
         {
           "id": "d",
-          "text": "Для настройки прав доступа к таблицам"
+          "text": "Для подключения произвольных источников данных (API, базы данных, потоки) --- DataFusion вызывает провайдер при обращении к таблице"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Custom TableProvider --- интерфейс для подключения произвольных источников данных. Реализуя Python-класс с нужными методами, вы позволяете DataFusion обращаться к API, базам данных или потокам как к обычным таблицам в SQL-запросах.",
       "bloomLevel": "conceptual",
       "studyHint": "TableProvider = адаптер для любого источника данных. SQL видит таблицу, провайдер знает, откуда брать данные."
@@ -39,7 +39,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Формат хранения данных, альтернативный Parquet"
+          "text": "Библиотека для оптимизации SQL-запросов"
         },
         {
           "id": "b",
@@ -47,11 +47,11 @@
         },
         {
           "id": "c",
-          "text": "Протокол для распределённого выполнения запросов"
+          "text": "Формат хранения данных, альтернативный Parquet"
         },
         {
           "id": "d",
-          "text": "Библиотека для оптимизации SQL-запросов"
+          "text": "Протокол для распределённого выполнения запросов"
         }
       ],
       "correctAnswer": "b",
@@ -66,22 +66,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Для установки зависимостей и настройки Python-окружения"
-        },
-        {
-          "id": "b",
-          "text": "Для конфигурации runtime-окружения: пул памяти, дисковый менеджер, количество target partitions"
-        },
-        {
-          "id": "c",
           "text": "Для создания виртуального окружения (venv) для DataFusion"
         },
         {
-          "id": "d",
+          "id": "b",
+          "text": "Для установки зависимостей и настройки Python-окружения"
+        },
+        {
+          "id": "c",
           "text": "Для настройки сетевого подключения к удалённому кластеру"
+        },
+        {
+          "id": "d",
+          "text": "Для конфигурации runtime-окружения: пул памяти, дисковый менеджер, количество target partitions"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "RuntimeEnvBuilder конфигурирует runtime-окружение DataFusion: пул памяти, дисковый менеджер для spill-to-disk, количество target partitions для параллелизма. Используется совместно с SessionConfig при создании SessionContext.",
       "bloomLevel": "applied",
       "studyHint": "RuntimeEnvBuilder = низкоуровневые ресурсы (память, диск). SessionConfig = настройки запросов (партиции)."
@@ -93,11 +93,11 @@
       "options": [
         {
           "id": "a",
-          "text": "RuntimeConfig удалён --- заменён на RuntimeEnvBuilder"
+          "text": "Ничего не удалялось --- все классы сохранены для обратной совместимости"
         },
         {
           "id": "b",
-          "text": "ExecutionConfig удалён --- заменён на SessionConfig"
+          "text": "RuntimeConfig удалён --- заменён на RuntimeEnvBuilder"
         },
         {
           "id": "c",
@@ -105,10 +105,10 @@
         },
         {
           "id": "d",
-          "text": "Ничего не удалялось --- все классы сохранены для обратной совместимости"
+          "text": "ExecutionConfig удалён --- заменён на SessionConfig"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Начиная с версии 44.0, устаревший класс для конфигурации runtime удалён и заменён на RuntimeEnvBuilder. При миграции со старых версий необходимо обновить импорты и вызовы конструктора.",
       "bloomLevel": "applied",
       "studyHint": "Версия 44.0 --- точка миграции. RuntimeEnvBuilder --- актуальный API."
@@ -124,7 +124,7 @@
         },
         {
           "id": "b",
-          "text": "RuntimeEnvBuilder (пул памяти, ограничение), SessionConfig (партиционирование), Object Store (доступ к S3)"
+          "text": "Python-декоратор @production над функцией pipeline"
         },
         {
           "id": "c",
@@ -132,10 +132,10 @@
         },
         {
           "id": "d",
-          "text": "Python-декоратор @production над функцией pipeline"
+          "text": "RuntimeEnvBuilder (пул памяти, ограничение), SessionConfig (партиционирование), Object Store (доступ к S3)"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Production-pipeline требует трёх компонентов: RuntimeEnvBuilder для ограничения памяти и конфигурации дискового менеджера, SessionConfig для настройки target partitions, Object Store для чтения с S3/GCS/Azure. Все три передаются при создании SessionContext.",
       "bloomLevel": "analytical",
       "studyHint": "Production = RuntimeEnvBuilder + SessionConfig + Object Store. Три слоя конфигурации."

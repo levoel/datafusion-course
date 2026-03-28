@@ -14,22 +14,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Filter pushdown (status = 'paid' передаётся ближе к scan orders) + projection pushdown (users читает только id и name, orders — id, user_id, amount, status) + двухфазная агрегация (Partial в каждой партиции → Final)"
-        },
-        {
-          "id": "b",
-          "text": "Только projection pushdown — фильтры не оптимизируются"
-        },
-        {
-          "id": "c",
           "text": "JIT-компиляция запроса в native код"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Кеширование результата предыдущего выполнения этого запроса"
+        },
+        {
+          "id": "c",
+          "text": "Только projection pushdown — фильтры не оптимизируются"
+        },
+        {
+          "id": "d",
+          "text": "Filter pushdown (status = 'paid' передаётся ближе к scan orders) + projection pushdown (users читает только id и name, orders — id, user_id, amount, status) + двухфазная агрегация (Partial в каждой партиции → Final)"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "DataFusion комбинирует оптимизации: filter pushdown перемещает WHERE status = 'paid' ниже Join (ближе к scan orders, где Parquet может пропустить row groups по статистике). Projection pushdown сужает чтение до нужных колонок. Двухфазная агрегация (Partial → Final) распараллеливает GROUP BY. Физический планировщик также выберет HashJoin, если orders помещается в память.",
       "studyHint": "Повторите уроки 1 (pipeline), 2 (filter/projection pushdown) и 3 (двухфазная агрегация).",
       "bloomLevel": "analytical"
@@ -41,22 +41,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Ошибка в планировщике — должен быть один AggregateExec"
-        },
-        {
-          "id": "b",
-          "text": "Физический планировщик разделил агрегацию для параллелизма: Partial вычисляет промежуточные аккумуляторы в каждой партиции параллельно, CoalescePartitionsExec сводит партиции, Final объединяет результаты"
-        },
-        {
-          "id": "c",
           "text": "Один AggregateExec для GROUP BY, другой для HAVING"
         },
         {
-          "id": "d",
+          "id": "b",
+          "text": "Ошибка в планировщике — должен быть один AggregateExec"
+        },
+        {
+          "id": "c",
           "text": "CoalescePartitionsExec дублирует агрегацию для проверки корректности"
+        },
+        {
+          "id": "d",
+          "text": "Физический планировщик разделил агрегацию для параллелизма: Partial вычисляет промежуточные аккумуляторы в каждой партиции параллельно, CoalescePartitionsExec сводит партиции, Final объединяет результаты"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Физический план содержит детали, отсутствующие в логическом: двухфазная агрегация (Partial → Final) и обменные операторы. Partial AggregateExec работает в каждой партиции параллельно. CoalescePartitionsExec сводит N партиций в одну. Final AggregateExec объединяет промежуточные аккумуляторы в итоговый результат.",
       "studyHint": "Повторите урок 3: физический план добавляет Partial/Final + обменные операторы.",
       "bloomLevel": "analytical"
@@ -68,22 +68,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Игнорировать — DataFusion сам применит фильтры и проекцию после получения данных"
-        },
-        {
-          "id": "b",
-          "text": "Передать фильтр в API запрос (?status=active) и запросить только поля id и email. Вернуть ExecutionPlan, который при execute() вызовет API с этими параметрами"
-        },
-        {
-          "id": "c",
           "text": "Сохранить параметры в лог и вернуть все данные"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Выбросить ошибку, если не все фильтры поддерживаются"
+        },
+        {
+          "id": "c",
+          "text": "Игнорировать — DataFusion сам применит фильтры и проекцию после получения данных"
+        },
+        {
+          "id": "d",
+          "text": "Передать фильтр в API запрос (?status=active) и запросить только поля id и email. Вернуть ExecutionPlan, который при execute() вызовет API с этими параметрами"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "Pushdown в scan() — возможность оптимизировать на уровне источника. API TableProvider может преобразовать filters в query-параметры (?status=active), projection — в список полей. Метод supports_filters_pushdown() сообщает оптимизатору, какие фильтры источник обработает сам. Для необработанных фильтров DataFusion добавит FilterExec выше.",
       "studyHint": "Повторите урок 4: TableProvider::scan() + supports_filters_pushdown().",
       "bloomLevel": "applied"
@@ -95,7 +95,7 @@
       "options": [
         {
           "id": "a",
-          "text": "OOM kill — 100 GB не помещается в 4 GB"
+          "text": "Запрос будет отклонён до выполнения из-за оценки размера данных"
         },
         {
           "id": "b",
@@ -103,11 +103,11 @@
         },
         {
           "id": "c",
-          "text": "DataFusion автоматически добавит LIMIT 1000 для экономии памяти"
+          "text": "OOM kill — 100 GB не помещается в 4 GB"
         },
         {
           "id": "d",
-          "text": "Запрос будет отклонён до выполнения из-за оценки размера данных"
+          "text": "DataFusion автоматически добавит LIMIT 1000 для экономии памяти"
         }
       ],
       "correctAnswer": "b",
@@ -122,7 +122,7 @@
       "options": [
         {
           "id": "a",
-          "text": "datafusion-common, datafusion-physical-plan, datafusion-execution — без datafusion-sql и datafusion-optimizer"
+          "text": "Только datafusion-common — он содержит ExecutionPlan"
         },
         {
           "id": "b",
@@ -134,10 +134,10 @@
         },
         {
           "id": "d",
-          "text": "Только datafusion-common — он содержит ExecutionPlan"
+          "text": "datafusion-common, datafusion-physical-plan, datafusion-execution — без datafusion-sql и datafusion-optimizer"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Модульная crate-архитектура позволяет: datafusion-common (типы), datafusion-physical-plan (ExecutionPlan, физические операторы), datafusion-execution (RuntimeEnv, TaskContext). Без datafusion-sql (парсинг не нужен — план получен извне) и datafusion-optimizer (оптимизация выполнена внешним планировщиком).",
       "studyHint": "Повторите урок 6: три паттерна зависимости — полный, только логический, только выполнение.",
       "bloomLevel": "applied"
@@ -149,22 +149,22 @@
       "options": [
         {
           "id": "a",
-          "text": "orders (500 млн) — большая таблица строит более полную hash table"
-        },
-        {
-          "id": "b",
           "text": "users (10 млн) — меньшая таблица строит hash table в памяти. orders (500 млн) сканирует таблицу, ища совпадения в hash table (probe). Hash table из 10 млн записей помещается в память, из 500 млн — нет"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "Обе таблицы строят hash table одновременно"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Не имеет значения — результат одинаков"
+        },
+        {
+          "id": "d",
+          "text": "orders (500 млн) — большая таблица строит более полную hash table"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Build-сторона создаёт hash table в памяти, probe-сторона сканирует и ищет совпадения. Меньшая таблица (users, 10 млн) идёт в build: hash table ~500 MB помещается в память. Hash table из orders (500 млн, ~25 GB) потребовала бы spill или SortMergeJoin. DataFusion выбирает build-сторону автоматически по статистике.",
       "studyHint": "Повторите урок 3: HashJoinExec — build vs probe side.",
       "bloomLevel": "analytical"
@@ -176,7 +176,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Подзапрос внутри Filter с вложенным планом"
+          "text": "Два отдельных запроса, результаты которых пересекаются"
         },
         {
           "id": "b",
@@ -188,7 +188,7 @@
         },
         {
           "id": "d",
-          "text": "Два отдельных запроса, результаты которых пересекаются"
+          "text": "Подзапрос внутри Filter с вложенным планом"
         }
       ],
       "correctAnswer": "b",
@@ -203,22 +203,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Пришлось бы создать массив из N копий 1.2 (по одной на каждую строку batch), аллоцировать буфер и заполнить его одинаковыми значениями — лишняя аллокация и потеря cache locality"
-        },
-        {
-          "id": "b",
           "text": "Литерал 1.2 был бы проигнорирован"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "Вычисление происходило бы на GPU вместо CPU"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Разницы не было бы — массив и скаляр обрабатываются одинаково"
+        },
+        {
+          "id": "d",
+          "text": "Пришлось бы создать массив из N копий 1.2 (по одной на каждую строку batch), аллоцировать буфер и заполнить его одинаковыми значениями — лишняя аллокация и потеря cache locality"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Без ColumnarValue::Scalar для price * 1.2 пришлось бы создать Float64Array из N одинаковых 1.2 — лишняя аллокация O(N) и потеря cache space. Scalar broadcast применяет 1.2 поэлементно к массиву price без промежуточного массива. Для batch из 8192 строк это экономит 64 KB на каждом выражении с литералом.",
       "studyHint": "Повторите урок 3: ColumnarValue::Array vs ColumnarValue::Scalar.",
       "bloomLevel": "analytical"
@@ -230,22 +230,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Partition pruning: ListingTable пропустит директории year=2023/, year=2022/ и month=01/, month=02/ — прочитает файлы только из year=2024/month=03/"
-        },
-        {
-          "id": "b",
           "text": "ListingTable загрузит все файлы и отфильтрует на уровне RecordBatch"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "Hive-style partitioning не поддерживается для S3"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "ListingTable создаст индекс по year и month для ускорения"
+        },
+        {
+          "id": "d",
+          "text": "Partition pruning: ListingTable пропустит директории year=2023/, year=2022/ и month=01/, month=02/ — прочитает файлы только из year=2024/month=03/"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "ListingTable поддерживает partition pruning: предикаты на partition-колонках (year, month) используются для пропуска целых директорий. WHERE year = 2024 AND month = 3 означает, что из S3 будут прочитаны файлы только из year=2024/month=03/. Для Parquet-файлов внутри директории дополнительно работает row group pruning по статистике.",
       "studyHint": "Повторите урок 4: ListingTable — partition pruning + predicate pushdown.",
       "bloomLevel": "applied"
@@ -284,22 +284,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Поиск файла orders.parquet в текущей директории"
+          "text": "Прямое чтение данных из памяти по имени"
         },
         {
           "id": "b",
-          "text": "Разрешение имени через catalog.schema.table → SchemaProvider::table() для получения TableProvider → чтение schema() для построения DFSchema → создание узла LogicalPlan::TableScan"
+          "text": "Поиск файла orders.parquet в текущей директории"
         },
         {
           "id": "c",
-          "text": "Прямое чтение данных из памяти по имени"
+          "text": "Разрешение имени через catalog.schema.table → SchemaProvider::table() для получения TableProvider → чтение schema() для построения DFSchema → создание узла LogicalPlan::TableScan"
         },
         {
           "id": "d",
           "text": "Поиск в глобальном реестре всех доступных сессий"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "SqlToRel: 1) разрешает orders как datafusion.public.orders (catalog.schema.table с учётом search path), 2) вызывает SchemaProvider::table(\"orders\") для получения TableProvider, 3) читает TableProvider::schema() для построения DFSchema с qualifier, 4) создаёт TableScan с ссылкой на TableProvider. scan() вызывается позже, при физическом планировании.",
       "studyHint": "Повторите урок 4: трёхуровневый каталог и разрешение имён.",
       "bloomLevel": "applied"
@@ -311,23 +311,23 @@
       "options": [
         {
           "id": "a",
-          "text": "OptimizerRule в datafusion-optimizer. Правило реализует try_optimize(), которое трансформирует LogicalPlan. Регистрируется через SessionContext без fork DataFusion"
+          "text": "OptimizerRule в datafusion-optimizer. Правило реализует rewrite(), которое трансформирует LogicalPlan. Регистрируется через SessionContext без fork DataFusion"
         },
         {
           "id": "b",
-          "text": "OptimizerRule в datafusion-physical-plan. Правило модифицирует ExecutionPlan напрямую"
-        },
-        {
-          "id": "c",
           "text": "Нужно форкнуть DataFusion и модифицировать исходный код оптимизатора"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "OptimizerRule в datafusion-sql. Правило перехватывает AST до построения LogicalPlan"
+        },
+        {
+          "id": "d",
+          "text": "OptimizerRule в datafusion-physical-plan. Правило модифицирует ExecutionPlan напрямую"
         }
       ],
       "correctAnswer": "a",
-      "explanation": "OptimizerRule trait в datafusion-optimizer: try_optimize() принимает LogicalPlan и возвращает Option<LogicalPlan> (None = без изменений). Правило может найти Filter с LIKE и заменить на Extension node с custom full-text search. Регистрация через SessionState — fork не нужен. Каждая точка расширения — trait.",
+      "explanation": "OptimizerRule trait в datafusion-optimizer: rewrite() принимает LogicalPlan и возвращает Transformed<LogicalPlan>. Правило может найти Filter с LIKE и заменить на Extension node с custom full-text search. Регистрация через SessionState — fork не нужен. Каждая точка расширения — trait.",
       "studyHint": "Повторите урок 6: точки расширения по crate — TableProvider, OptimizerRule, ExecutionPlan.",
       "bloomLevel": "analytical"
     }

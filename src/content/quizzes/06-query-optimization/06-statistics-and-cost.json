@@ -1,17 +1,31 @@
 {
   "lessonSlug": "06-query-optimization/06-statistics-and-cost",
   "moduleId": "06-query-optimization",
-  "_meta": { "idPrefix": "df-m06-06" },
+  "_meta": {
+    "idPrefix": "df-m06-06"
+  },
   "questions": [
     {
       "id": "df-m06-06-q1",
       "type": "multiple-choice",
       "question": "Precision<T> в Statistics имеет три уровня: Exact, Inexact, Absent. Parquet footer содержит точное количество строк. Какой уровень использует DataFusion для num_rows из Parquet?",
       "options": [
-        { "id": "a", "text": "Precision::Exact — Parquet footer содержит точный подсчёт строк, метаданные формата гарантируют корректность" },
-        { "id": "b", "text": "Precision::Inexact — DataFusion не доверяет метаданным стороннего формата" },
-        { "id": "c", "text": "Precision::Absent — num_rows не извлекается из footer" },
-        { "id": "d", "text": "Parquet не хранит количество строк в footer" }
+        {
+          "id": "a",
+          "text": "Precision::Exact — Parquet footer содержит точный подсчёт строк, метаданные формата гарантируют корректность"
+        },
+        {
+          "id": "b",
+          "text": "Precision::Absent — num_rows не извлекается из footer"
+        },
+        {
+          "id": "c",
+          "text": "Parquet не хранит количество строк в footer"
+        },
+        {
+          "id": "d",
+          "text": "Precision::Inexact — DataFusion не доверяет метаданным стороннего формата"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Parquet footer содержит точные метаданные: количество строк, min/max по колонкам для каждого row group. DataFusion использует Precision::Exact для этих значений. Для CSV-файлов без предварительного скана — Precision::Absent, для оценок после фильтрации — Precision::Inexact.",
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "TableProvider::statistics() возвращает num_rows для двух таблиц: orders (10M) и customers (100K). Как это влияет на выбор build side в HashJoin?",
       "options": [
-        { "id": "a", "text": "customers (100K) выбирается как build side — хеш-таблица строится по меньшей стороне для экономии памяти" },
-        { "id": "b", "text": "orders (10M) выбирается как build side — HashJoin требует большую сторону для построения" },
-        { "id": "c", "text": "Build side выбирается случайно — статистика не влияет на HashJoin" },
-        { "id": "d", "text": "Обе стороны строят хеш-таблицу одновременно" }
+        {
+          "id": "a",
+          "text": "Обе стороны строят хеш-таблицу одновременно"
+        },
+        {
+          "id": "b",
+          "text": "customers (100K) выбирается как build side — хеш-таблица строится по меньшей стороне для экономии памяти"
+        },
+        {
+          "id": "c",
+          "text": "orders (10M) выбирается как build side — HashJoin требует большую сторону для построения"
+        },
+        {
+          "id": "d",
+          "text": "Build side выбирается случайно — статистика не влияет на HashJoin"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Оптимизатор выбирает меньшую таблицу как build side, потому что хеш-таблица занимает память пропорционально размеру. 100K строк customers vs 10M строк orders — customers как build side требует ~100x меньше памяти. Без статистики оптимизатор не знает размеры и использует менее эффективный Partitioned mode.",
       "bloomLevel": "applied",
       "studyHint": "Build side = меньшая таблица. Без num_rows → оптимизатор работает вслепую. Статистика = ключ к правильному выбору."
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "EXPLAIN ANALYZE показывает row_groups_pruned=3, row_groups_matched=13 для ParquetExec с фильтром age > 30. Что означает pruned=3?",
       "options": [
-        { "id": "a", "text": "3 row groups пропущены без чтения — их max_value(age) ≤ 30, значит ни одна строка в них не удовлетворяет фильтру" },
-        { "id": "b", "text": "3 row groups содержат ошибки и были исключены" },
-        { "id": "c", "text": "3 row groups прочитаны частично — только строки с age > 30" },
-        { "id": "d", "text": "3 row groups удалены из файла для оптимизации" }
+        {
+          "id": "a",
+          "text": "3 row groups удалены из файла для оптимизации"
+        },
+        {
+          "id": "b",
+          "text": "3 row groups содержат ошибки и были исключены"
+        },
+        {
+          "id": "c",
+          "text": "3 row groups прочитаны частично — только строки с age > 30"
+        },
+        {
+          "id": "d",
+          "text": "3 row groups пропущены без чтения — их max_value(age) ≤ 30, значит ни одна строка в них не удовлетворяет фильтру"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Min/max pruning: Parquet row group хранит min и max значения каждой колонки. Если max_value(age) = 25 в row group, а фильтр age > 30, весь row group гарантированно не содержит подходящих строк и пропускается без чтения. 3 pruned = 3 row groups × тысячи строк не прочитаны.",
       "bloomLevel": "applied",
       "studyHint": "row_groups_pruned = пропущены через min/max. Если pruned=0 → данные не отсортированы по колонке фильтра."
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "EXPLAIN ANALYZE показывает spill_count=5 для SortExec. Какая проблема и какое решение?",
       "options": [
-        { "id": "a", "text": "Нехватка памяти — sort записал данные на диск 5 раз. Решение: увеличить memory pool, уменьшить объём данных фильтрацией до sort, или использовать TopK (LIMIT)" },
-        { "id": "b", "text": "Данные повреждены — 5 строк не удалось отсортировать" },
-        { "id": "c", "text": "5 партиций не содержали данных — нормальное поведение" },
-        { "id": "d", "text": "SortExec перезапускался 5 раз из-за ошибок — требуется увеличить retry count" }
+        {
+          "id": "a",
+          "text": "5 партиций не содержали данных — нормальное поведение"
+        },
+        {
+          "id": "b",
+          "text": "SortExec перезапускался 5 раз из-за ошибок — требуется увеличить retry count"
+        },
+        {
+          "id": "c",
+          "text": "Нехватка памяти — sort записал данные на диск 5 раз. Решение: увеличить memory pool, уменьшить объём данных фильтрацией до sort, или использовать TopK (LIMIT)"
+        },
+        {
+          "id": "d",
+          "text": "Данные повреждены — 5 строк не удалось отсортировать"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "spill_count > 0 означает, что оператор не уместил все данные в памяти и записал промежуточные результаты на диск (spill-to-disk). Это значительно замедляет выполнение из-за I/O. Решения: увеличить memory pool, добавить LIMIT для TopK, или отфильтровать данные до сортировки.",
       "bloomLevel": "analytical",
       "studyHint": "spill_count > 0 = данные не поместились в RAM → записаны на диск → замедление. Ищите способ уменьшить объём перед sort."
@@ -68,10 +118,22 @@
       "type": "multiple-choice",
       "question": "Тест проверяет свойства плана: assert!(plan_str.contains(\"TopK\")); assert!(!plan_str.contains(\"NestedLoopJoin\")). Почему тестировать свойства лучше, чем точное текстовое представление плана?",
       "options": [
-        { "id": "a", "text": "Точный текст плана меняется при обновлении DataFusion (переименование операторов, изменение формата). Свойства (тип join, наличие pushdown, TopK) стабильны и проверяют семантику оптимизации" },
-        { "id": "b", "text": "Текстовое представление не содержит информации об алгоритмах" },
-        { "id": "c", "text": "Свойства проверяются быстрее — string matching медленный" },
-        { "id": "d", "text": "DataFusion не гарантирует стабильный текстовый формат для EXPLAIN" }
+        {
+          "id": "a",
+          "text": "Точный текст плана меняется при обновлении DataFusion (переименование операторов, изменение формата). Свойства (тип join, наличие pushdown, TopK) стабильны и проверяют семантику оптимизации"
+        },
+        {
+          "id": "b",
+          "text": "Свойства проверяются быстрее — string matching медленный"
+        },
+        {
+          "id": "c",
+          "text": "Текстовое представление не содержит информации об алгоритмах"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не гарантирует стабильный текстовый формат для EXPLAIN"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Тесты на точный текст хрупкие — ломаются при каждом обновлении DataFusion (новые поля, переименования). Тесты свойств (contains TopK, !contains NestedLoop, contains filter=) проверяют, что оптимизатор принял правильные решения, и переживают minor/patch обновления.",

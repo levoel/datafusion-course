@@ -12,22 +12,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Список строк результата в виде Python-словарей"
-        },
-        {
-          "id": "b",
-          "text": "DataFrame --- ленивый объект, запрос выполняется только при вызове terminal-операции (collect, show)"
-        },
-        {
-          "id": "c",
           "text": "PyArrow Table с результатами запроса"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Pandas DataFrame с данными"
+        },
+        {
+          "id": "c",
+          "text": "Список строк результата в виде Python-словарей"
+        },
+        {
+          "id": "d",
+          "text": "DataFrame --- ленивый объект, запрос выполняется только при вызове terminal-операции (collect, show)"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "ctx.sql() возвращает DataFrame, а не результат. Запрос не выполняется до вызова terminal-операции (collect(), show(), to_pandas()). Это позволяет дополнительно обрабатывать результат через DataFrame API.",
       "bloomLevel": "conceptual",
       "studyHint": "ctx.sql() = план. collect()/show() = выполнение. DataFrame --- мост между SQL и DataFrame API."
@@ -39,7 +39,7 @@
       "options": [
         {
           "id": "a",
-          "text": "ctx.register_dataframe(\"name\", df) --- прямая регистрация DataFrame"
+          "text": "ctx.add_table(\"name\", df) --- добавление таблицы в каталог"
         },
         {
           "id": "b",
@@ -47,7 +47,7 @@
         },
         {
           "id": "c",
-          "text": "ctx.add_table(\"name\", df) --- добавление таблицы в каталог"
+          "text": "ctx.register_dataframe(\"name\", df) --- прямая регистрация DataFrame"
         },
         {
           "id": "d",
@@ -66,22 +66,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Список зарегистрированных таблиц, их колонки, типы данных --- инспекция каталога через SQL"
-        },
-        {
-          "id": "b",
-          "text": "Статистику выполнения запросов и метрики производительности"
-        },
-        {
-          "id": "c",
           "text": "Информацию об установленных расширениях и плагинах"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Историю выполненных SQL-запросов и их планы"
+        },
+        {
+          "id": "c",
+          "text": "Список зарегистрированных таблиц, их колонки, типы данных --- инспекция каталога через SQL"
+        },
+        {
+          "id": "d",
+          "text": "Статистику выполнения запросов и метрики производительности"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "INFORMATION_SCHEMA позволяет инспектировать каталог DataFusion через SQL: SELECT table_name FROM information_schema.tables показывает зарегистрированные таблицы, а information_schema.columns --- их колонки и типы.",
       "bloomLevel": "conceptual",
       "studyHint": "INFORMATION_SCHEMA --- стандартный SQL-механизм метаданных. Полезен для отладки: какие таблицы доступны?"
@@ -93,7 +93,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Это невозможно --- нужно выбрать либо SQL, либо DataFrame API для всего pipeline"
+          "text": "df.filter(...).to_sql(\"SELECT ...\") --- прямой вызов SQL на DataFrame"
         },
         {
           "id": "b",
@@ -101,11 +101,11 @@
         },
         {
           "id": "c",
-          "text": "df.filter(...).to_sql(\"SELECT ...\") --- прямой вызов SQL на DataFrame"
+          "text": "Сохранить промежуточный результат в файл, затем зарегистрировать и выполнить SQL"
         },
         {
           "id": "d",
-          "text": "Сохранить промежуточный результат в файл, затем зарегистрировать и выполнить SQL"
+          "text": "Это невозможно --- нужно выбрать либо SQL, либо DataFrame API для всего pipeline"
         }
       ],
       "correctAnswer": "b",
@@ -120,7 +120,7 @@
       "options": [
         {
           "id": "a",
-          "text": "register_csv(), register_parquet(), register_json() --- каждый для своего формата файлов"
+          "text": "register_file() с автоопределением формата по расширению"
         },
         {
           "id": "b",
@@ -132,10 +132,10 @@
         },
         {
           "id": "d",
-          "text": "register_file() с автоопределением формата по расширению"
+          "text": "register_csv(), register_parquet(), register_json() --- каждый для своего формата файлов"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "SessionContext предоставляет отдельные методы регистрации для каждого формата: register_csv(), register_parquet(), register_json(). Каждый принимает имя таблицы и путь к файлу. После регистрации таблица доступна в SQL-запросах.",
       "bloomLevel": "applied",
       "studyHint": "register_csv/parquet/json + имя = таблица для SQL. Паттерн одинаков для всех форматов."

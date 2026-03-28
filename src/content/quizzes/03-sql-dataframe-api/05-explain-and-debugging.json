@@ -1,19 +1,33 @@
 {
   "lessonSlug": "03-sql-dataframe-api/05-explain-and-debugging",
   "moduleId": "03-sql-dataframe-api",
-  "_meta": { "idPrefix": "df-m03-05" },
+  "_meta": {
+    "idPrefix": "df-m03-05"
+  },
   "questions": [
     {
       "id": "df-m03-05-q1",
       "type": "multiple-choice",
       "question": "Чем EXPLAIN ANALYZE отличается от EXPLAIN в DataFusion?",
       "options": [
-        { "id": "a", "text": "EXPLAIN показывает план без выполнения; EXPLAIN ANALYZE выполняет запрос и добавляет реальные метрики (время, количество строк, байты)" },
-        { "id": "b", "text": "EXPLAIN показывает LogicalPlan, EXPLAIN ANALYZE — PhysicalPlan" },
-        { "id": "c", "text": "EXPLAIN ANALYZE работает быстрее, так как пропускает оптимизацию" },
-        { "id": "d", "text": "Нет различий — это синонимы" }
+        {
+          "id": "a",
+          "text": "EXPLAIN показывает LogicalPlan, EXPLAIN ANALYZE — PhysicalPlan"
+        },
+        {
+          "id": "b",
+          "text": "EXPLAIN ANALYZE работает быстрее, так как пропускает оптимизацию"
+        },
+        {
+          "id": "c",
+          "text": "EXPLAIN показывает план без выполнения; EXPLAIN ANALYZE выполняет запрос и добавляет реальные метрики (время, количество строк, байты)"
+        },
+        {
+          "id": "d",
+          "text": "Нет различий — это синонимы"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "EXPLAIN выводит оптимизированный LogicalPlan и PhysicalPlan без выполнения запроса. EXPLAIN ANALYZE запускает запрос и добавляет к каждому узлу плана реальные метрики: elapsed_compute, output_rows, bytes_scanned. Это позволяет найти узкие места.",
       "bloomLevel": "conceptual",
       "studyHint": "EXPLAIN = что планирует делать. EXPLAIN ANALYZE = что реально произошло. Для диагностики производительности нужен ANALYZE."
@@ -23,10 +37,22 @@
       "type": "multiple-choice",
       "question": "В выводе EXPLAIN ANALYZE метрика output_rows у CoalesceBatchesExec значительно меньше, чем у дочернего FilterExec. О чём это говорит?",
       "options": [
-        { "id": "a", "text": "CoalesceBatches потерял данные из-за ошибки" },
-        { "id": "b", "text": "Это нормально: CoalesceBatches объединяет мелкие батчи в крупные, количество строк не меняется — проверьте другие узлы" },
-        { "id": "c", "text": "FilterExec пропустил строки, которые не соответствуют условию" },
-        { "id": "d", "text": "Запрос следует переписать для устранения CoalesceBatches" }
+        {
+          "id": "a",
+          "text": "Запрос следует переписать для устранения CoalesceBatches"
+        },
+        {
+          "id": "b",
+          "text": "Это нормально: CoalesceBatches объединяет мелкие батчи в крупные, количество строк не меняется — проверьте другие узлы"
+        },
+        {
+          "id": "c",
+          "text": "CoalesceBatches потерял данные из-за ошибки"
+        },
+        {
+          "id": "d",
+          "text": "FilterExec пропустил строки, которые не соответствуют условию"
+        }
       ],
       "correctAnswer": "b",
       "explanation": "CoalesceBatchesExec объединяет мелкие RecordBatch в более крупные для эффективности последующих операторов. Количество строк на входе и выходе должно совпадать. Если output_rows отличается — это повод проверить, не путаете ли вы метрики разных узлов.",
@@ -38,10 +64,22 @@
       "type": "multiple-choice",
       "question": "Какую информацию можно получить из INFORMATION_SCHEMA.COLUMNS в DataFusion?",
       "options": [
-        { "id": "a", "text": "Статистику выполнения запросов (время, количество вызовов)" },
-        { "id": "b", "text": "Метаданные колонок: имя таблицы, имя колонки, тип данных, допустимость NULL" },
-        { "id": "c", "text": "Список оптимизационных правил и их эффективность" },
-        { "id": "d", "text": "Историю изменений схемы таблиц" }
+        {
+          "id": "a",
+          "text": "Историю изменений схемы таблиц"
+        },
+        {
+          "id": "b",
+          "text": "Метаданные колонок: имя таблицы, имя колонки, тип данных, допустимость NULL"
+        },
+        {
+          "id": "c",
+          "text": "Список оптимизационных правил и их эффективность"
+        },
+        {
+          "id": "d",
+          "text": "Статистику выполнения запросов (время, количество вызовов)"
+        }
       ],
       "correctAnswer": "b",
       "explanation": "INFORMATION_SCHEMA.COLUMNS — стандартная системная таблица, содержащая метаданные колонок: table_catalog, table_schema, table_name, column_name, data_type, is_nullable. Это полезно для инспекции схемы зарегистрированных таблиц без чтения данных.",
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "Запрос EXPLAIN ANALYZE показывает, что ParquetExec читает 10 миллионов строк, а FilterExec пропускает только 1000. Какая оптимизация может уменьшить количество прочитанных строк?",
       "options": [
-        { "id": "a", "text": "Добавить индекс на фильтруемую колонку" },
-        { "id": "b", "text": "Проверить, применяется ли predicate pushdown к ParquetExec — фильтр должен опускаться до уровня чтения файла" },
-        { "id": "c", "text": "Увеличить размер target_batch_size для ускорения чтения" },
-        { "id": "d", "text": "Использовать EXPLAIN вместо EXPLAIN ANALYZE для ускорения" }
+        {
+          "id": "a",
+          "text": "Добавить индекс на фильтруемую колонку"
+        },
+        {
+          "id": "b",
+          "text": "Использовать EXPLAIN вместо EXPLAIN ANALYZE для ускорения"
+        },
+        {
+          "id": "c",
+          "text": "Проверить, применяется ли predicate pushdown к ParquetExec — фильтр должен опускаться до уровня чтения файла"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить размер target_batch_size для ускорения чтения"
+        }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Если фильтр применяется только в FilterExec после полного чтения файла, это значит, что predicate pushdown не сработал. Нужно проверить: поддерживает ли тип данных pushdown, корректен ли формат фильтра, есть ли статистики в Parquet-файле. При работающем pushdown ParquetExec пропускает целые row groups.",
       "bloomLevel": "analytical",
       "studyHint": "Если ParquetExec читает в разы больше, чем проходит через фильтр — ищите причину сбоя predicate pushdown."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "Как программно получить LogicalPlan из DataFrame для инспекции в коде?",
       "options": [
-        { "id": "a", "text": "df.logical_plan() возвращает ссылку на LogicalPlan, который можно отобразить через display_indent()" },
-        { "id": "b", "text": "df.explain() выполняет запрос и возвращает строку с планом" },
-        { "id": "c", "text": "df.to_sql() конвертирует план обратно в SQL-текст" },
-        { "id": "d", "text": "DataFrame не предоставляет доступ к плану — используйте только EXPLAIN SQL" }
+        {
+          "id": "a",
+          "text": "df.explain() выполняет запрос и возвращает строку с планом"
+        },
+        {
+          "id": "b",
+          "text": "df.logical_plan() возвращает ссылку на LogicalPlan, который можно отобразить через display_indent()"
+        },
+        {
+          "id": "c",
+          "text": "DataFrame не предоставляет доступ к плану — используйте только EXPLAIN SQL"
+        },
+        {
+          "id": "d",
+          "text": "df.to_sql() конвертирует план обратно в SQL-текст"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Метод logical_plan() возвращает &LogicalPlan — ссылку на текущий логический план DataFrame. Через display_indent() можно получить текстовое представление дерева плана. Это полезно для программной инспекции и тестирования трансформаций.",
       "bloomLevel": "applied",
       "studyHint": "df.logical_plan() — для кода, EXPLAIN — для интерактивных запросов. Оба показывают одну структуру."

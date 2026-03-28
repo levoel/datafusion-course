@@ -12,7 +12,7 @@
       "options": [
         {
           "id": "a",
-          "text": "datafusion-expr"
+          "text": "datafusion (meta-crate)"
         },
         {
           "id": "b",
@@ -20,11 +20,11 @@
         },
         {
           "id": "c",
-          "text": "datafusion-execution"
+          "text": "datafusion-expr"
         },
         {
           "id": "d",
-          "text": "datafusion (meta-crate)"
+          "text": "datafusion-execution"
         }
       ],
       "correctAnswer": "b",
@@ -47,11 +47,11 @@
         },
         {
           "id": "c",
-          "text": "Только datafusion-sql — он содержит всё необходимое"
+          "text": "datafusion-physical-plan и datafusion-execution"
         },
         {
           "id": "d",
-          "text": "datafusion-physical-plan и datafusion-execution"
+          "text": "Только datafusion-sql — он содержит всё необходимое"
         }
       ],
       "correctAnswer": "b",
@@ -66,22 +66,22 @@
       "options": [
         {
           "id": "a",
-          "text": "LogicalPlan описывает ЧТО вычислить, но не содержит кода выполнения. Это дерево операций, не привязанное к конкретным алгоритмам или hardware"
-        },
-        {
-          "id": "b",
           "text": "Потому что все типы помечены #[derive(Debug)] — декларативный стиль Rust"
         },
         {
-          "id": "c",
+          "id": "b",
           "text": "Потому что crate содержит только макросы"
+        },
+        {
+          "id": "c",
+          "text": "LogicalPlan описывает ЧТО вычислить, но не содержит кода выполнения. Это дерево операций, не привязанное к конкретным алгоритмам или hardware"
         },
         {
           "id": "d",
           "text": "Потому что LogicalPlan описывается в YAML, не в Rust"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "datafusion-expr — декларативный уровень: LogicalPlan описывает, что вычислить (Projection, Filter, Join), Expr описывает выражения. Никакого кода выполнения: нет hash table для join, нет сортировки, нет I/O. Код выполнения живёт в datafusion-physical-plan и datafusion-physical-expr.",
       "bloomLevel": "conceptual",
       "studyHint": "Декларативный = описание. Императивный = выполнение. LogicalPlan = описание, ExecutionPlan = выполнение."
@@ -93,22 +93,22 @@
       "options": [
         {
           "id": "a",
-          "text": "Синхронный релиз: не нужно подбирать совместимые версии между crate — datafusion-common 52.3 гарантированно совместим с datafusion-expr 52.3"
-        },
-        {
-          "id": "b",
-          "text": "Semver-совместимость: код, написанный для 52.x, работает с 52.y без изменений"
-        },
-        {
-          "id": "c",
           "text": "Все crate содержат идентичный код, отличаются только feature flags"
         },
         {
-          "id": "d",
+          "id": "b",
           "text": "Номер версии не имеет значения — crate совместимы всегда"
+        },
+        {
+          "id": "c",
+          "text": "Semver-совместимость: код, написанный для 52.x, работает с 52.y без изменений"
+        },
+        {
+          "id": "d",
+          "text": "Синхронный релиз: не нужно подбирать совместимые версии между crate — datafusion-common 52.3 гарантированно совместим с datafusion-expr 52.3"
         }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Синхронное версионирование упрощает управление зависимостями: все crate DataFusion используют один номер версии. DataFusion пока не обещает semver-совместимость на уровне API — breaking changes возможны между minor-версиями. Релизы выходят ежемесячно.",
       "bloomLevel": "conceptual",
       "studyHint": "Синхронный номер версии = простота. Но breaking changes возможны — DataFusion ещё не на semver."
@@ -120,23 +120,23 @@
       "options": [
         {
           "id": "a",
-          "text": "datafusion-expr"
-        },
-        {
-          "id": "b",
-          "text": "datafusion-common"
-        },
-        {
-          "id": "c",
           "text": "datafusion-optimizer"
         },
         {
-          "id": "d",
+          "id": "b",
+          "text": "datafusion-expr"
+        },
+        {
+          "id": "c",
           "text": "datafusion-physical-plan"
+        },
+        {
+          "id": "d",
+          "text": "datafusion-common"
         }
       ],
-      "correctAnswer": "c",
-      "explanation": "datafusion-optimizer содержит Optimizer (цепочку правил) и trait OptimizerRule. Каждое правило реализует try_optimize(), которое трансформирует LogicalPlan. Встроенные правила: FilterPushdown, ProjectionPushdown, ConstantFolding и десятки других. Вы можете добавить свои правила или отключить встроенные.",
+      "correctAnswer": "a",
+      "explanation": "datafusion-optimizer содержит Optimizer (цепочку правил) и trait OptimizerRule. Каждое правило реализует rewrite(), которое трансформирует LogicalPlan. Встроенные правила: FilterPushdown, ProjectionPushdown, ConstantFolding и десятки других. Вы можете добавить свои правила или отключить встроенные.",
       "bloomLevel": "applied",
       "studyHint": "Точки расширения по crate: TableProvider в expr, OptimizerRule в optimizer, ExecutionPlan в physical-plan."
     }

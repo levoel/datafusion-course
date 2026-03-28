@@ -3,19 +3,33 @@
   "moduleId": "08-distributed-execution",
   "examTitle": "Экзамен: Распределённое выполнение",
   "passThreshold": 70,
-  "_meta": { "idPrefix": "df-m08-exam" },
+  "_meta": {
+    "idPrefix": "df-m08-exam"
+  },
   "questions": [
     {
       "id": "df-m08-exam-q1",
       "type": "multiple-choice",
       "question": "Физический план содержит SELECT dept, SUM(salary) FROM employees JOIN departments ON employees.dept_id = departments.id GROUP BY dept. EnforceDistribution вставляет два RepartitionExec. Сколько query stages создаст Ballista?",
       "options": [
-        { "id": "a", "text": "3 stage: Stage 1 (scan employees → ShuffleWriter Hash(dept_id)), Stage 2 (scan departments → ShuffleWriter Hash(id)), Stage 3 (ShuffleReader + HashJoin + Aggregate) — параллельные scan, затем join после обоих shuffle" },
-        { "id": "b", "text": "2 stage: один для scan, один для join+aggregate" },
-        { "id": "c", "text": "1 stage: весь план выполняется на одном executor" },
-        { "id": "d", "text": "5 stage: отдельный stage для каждого оператора" }
+        {
+          "id": "a",
+          "text": "5 stage: отдельный stage для каждого оператора"
+        },
+        {
+          "id": "b",
+          "text": "1 stage: весь план выполняется на одном executor"
+        },
+        {
+          "id": "c",
+          "text": "3 stage: Stage 1 (scan employees → ShuffleWriter Hash(dept_id)), Stage 2 (scan departments → ShuffleWriter Hash(id)), Stage 3 (ShuffleReader + HashJoin + Aggregate) — параллельные scan, затем join после обоих shuffle"
+        },
+        {
+          "id": "d",
+          "text": "2 stage: один для scan, один для join+aggregate"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Два RepartitionExec создают два разреза плана → 3 query stages. Stage 1 и 2 (scan + shuffle write) выполняются параллельно на разных executor-ах. Stage 3 (shuffle read + HashJoin + Aggregate) ждёт завершения обоих. DAG: Stage 1 + Stage 2 → Stage 3.",
       "bloomLevel": "analytical",
       "studyHint": "N RepartitionExec → N+1 stages (обычно). Leaf stages параллельны, join/agg stage ждёт всех входных."
@@ -25,12 +39,24 @@
       "type": "multiple-choice",
       "question": "Команда мигрирует с BallistaContext на SessionContext в Ballista 43.0.0. Запрос использует кастомный ClickHouseProvider. Что необходимо для работы в распределённом режиме помимо TableProvider?",
       "options": [
-        { "id": "a", "text": "PhysicalExtensionCodec — кастомный ExecutionPlan (ClickHouseScanExec) должен быть сериализуем в protobuf для передачи от scheduler к executor через gRPC" },
-        { "id": "b", "text": "Достаточно только TableProvider — Ballista сериализует любой ExecutionPlan автоматически" },
-        { "id": "c", "text": "Кастомные TableProvider не поддерживаются в Ballista 43.0.0" },
-        { "id": "d", "text": "Нужен отдельный gRPC-сервис для ClickHouse — Ballista не передаёт кастомные планы" }
+        {
+          "id": "a",
+          "text": "Достаточно только TableProvider — Ballista сериализует любой ExecutionPlan автоматически"
+        },
+        {
+          "id": "b",
+          "text": "Нужен отдельный gRPC-сервис для ClickHouse — Ballista не передаёт кастомные планы"
+        },
+        {
+          "id": "c",
+          "text": "Кастомные TableProvider не поддерживаются в Ballista 43.0.0"
+        },
+        {
+          "id": "d",
+          "text": "PhysicalExtensionCodec — кастомный ExecutionPlan (ClickHouseScanExec) должен быть сериализуем в protobuf для передачи от scheduler к executor через gRPC"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Scheduler сериализует физический план в protobuf и отправляет executor-у. Стандартные DataFusion операторы (FilterExec, ProjectionExec) имеют встроенную сериализацию. Кастомный ClickHouseScanExec — нет. Нужен PhysicalExtensionCodec для сериализации/десериализации кастомных ExecutionPlan узлов.",
       "bloomLevel": "analytical",
       "studyHint": "Стандартные ExecutionPlan → встроенная protobuf-сериализация. Кастомные → PhysicalExtensionCodec."
@@ -40,12 +66,24 @@
       "type": "multiple-choice",
       "question": "DataFusion Ray записывает shuffle-файлы на shared filesystem. Ballista — на локальные диски executor-ов. Какое архитектурное следствие этого различия?",
       "options": [
-        { "id": "a", "text": "DataFusion Ray не нуждается в протоколе передачи данных между worker-ами (все читают с одного пути), но добавляет зависимость от shared storage. Ballista независим от внешнего хранилища, но требует сетевой протокол для передачи shuffle-файлов между executor-ами" },
-        { "id": "b", "text": "DataFusion Ray быстрее, потому что shared filesystem всегда быстрее сети" },
-        { "id": "c", "text": "Ballista не может масштабироваться из-за локальных дисков" },
-        { "id": "d", "text": "Различие не влияет на архитектуру — оба подхода эквивалентны" }
+        {
+          "id": "a",
+          "text": "Различие не влияет на архитектуру — оба подхода эквивалентны"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion Ray быстрее, потому что shared filesystem всегда быстрее сети"
+        },
+        {
+          "id": "c",
+          "text": "Ballista не может масштабироваться из-за локальных дисков"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion Ray не нуждается в протоколе передачи данных между worker-ами (все читают с одного пути), но добавляет зависимость от shared storage. Ballista независим от внешнего хранилища, но требует сетевой протокол для передачи shuffle-файлов между executor-ами"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Архитектурный трейдофф: DataFusion Ray упрощает межузловую передачу (нет протокола executor↔executor), но зависит от shared filesystem (NFS/HDFS — точка отказа и потенциальный bottleneck). Ballista не зависит от внешнего хранилища (shuffle на локальных дисках), но реализует сетевой протокол для передачи файлов.",
       "bloomLevel": "analytical",
       "studyHint": "Ray: shared FS → проще, но зависимость. Ballista: локальные диски → сложнее, но автономность."
@@ -55,10 +93,22 @@
       "type": "multiple-choice",
       "question": "В Ballista executor при выполнении Stage 2 (ShuffleReader + HashJoin) обнаруживает, что один из Arrow IPC файлов от Stage 1 повреждён. Что произойдёт?",
       "options": [
-        { "id": "a", "text": "Executor сообщает scheduler об ошибке. Scheduler может перепланировать задачу Stage 1 для повреждённой партиции на другой executor, затем перезапустить затронутую задачу Stage 2" },
-        { "id": "b", "text": "Весь запрос автоматически завершается с ошибкой без возможности retry" },
-        { "id": "c", "text": "Executor игнорирует повреждённый файл и продолжает с неполными данными" },
-        { "id": "d", "text": "Ballista не поддерживает обнаружение повреждённых файлов" }
+        {
+          "id": "a",
+          "text": "Executor сообщает scheduler об ошибке. Scheduler может перепланировать задачу Stage 1 для повреждённой партиции на другой executor, затем перезапустить затронутую задачу Stage 2"
+        },
+        {
+          "id": "b",
+          "text": "Весь запрос автоматически завершается с ошибкой без возможности retry"
+        },
+        {
+          "id": "c",
+          "text": "Ballista не поддерживает обнаружение повреждённых файлов"
+        },
+        {
+          "id": "d",
+          "text": "Executor игнорирует повреждённый файл и продолжает с неполными данными"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Scheduler мониторит статус каждой задачи. При сбое executor-а или повреждении данных scheduler решает: перезапустить задачу Stage 1 (для пересоздания shuffle-файла) на другом executor-е, затем перезапустить Stage 2. Это task-level retry — одно из преимуществ централизованного scheduler-а.",
@@ -70,12 +120,24 @@
       "type": "multiple-choice",
       "question": "InfluxDB IOx и GreptimeDB используют DataFusion как библиотеку для распределённого выполнения. Какой ключевой механизм DataFusion позволяет им реализовать domain-specific оптимизации (например, time-series дедупликацию)?",
       "options": [
-        { "id": "a", "text": "Кастомные PhysicalOptimizerRule и ExtensionPlanner — позволяют вставлять domain-specific операторы (DeduplicateExec) в физический план без модификации ядра DataFusion" },
-        { "id": "b", "text": "Модификация исходного кода DataFusion — каждый проект форкает репозиторий" },
-        { "id": "c", "text": "SQL-расширения — специальный синтаксис для time-series операций" },
-        { "id": "d", "text": "DataFusion не позволяет domain-specific оптимизации — используется as-is" }
+        {
+          "id": "a",
+          "text": "SQL-расширения — специальный синтаксис для time-series операций"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion не позволяет domain-specific оптимизации — используется as-is"
+        },
+        {
+          "id": "c",
+          "text": "Кастомные PhysicalOptimizerRule и ExtensionPlanner — позволяют вставлять domain-specific операторы (DeduplicateExec) в физический план без модификации ядра DataFusion"
+        },
+        {
+          "id": "d",
+          "text": "Модификация исходного кода DataFusion — каждый проект форкает репозиторий"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "DataFusion предоставляет точки расширения: PhysicalOptimizerRule для domain-specific оптимизаций (InfluxDB IOx: time-series дедупликация через DeduplicateExec), ExtensionPlanner для кастомных ExecutionPlan (GreptimeDB: распределённое выполнение). Кастомный TableProvider для доступа к внутреннему хранилищу. Без форков ядра.",
       "bloomLevel": "analytical",
       "studyHint": "PhysicalOptimizerRule + ExtensionPlanner = domain-specific без форков. DataFusion как библиотека = максимальная расширяемость."
@@ -85,12 +147,24 @@
       "type": "multiple-choice",
       "question": "DataFusion Ray использует execute_query_stage как Ray remote-функцию. Driver строит DAG зависимостей и запускает stage. Какую роль при этом выполняет Ray?",
       "options": [
-        { "id": "a", "text": "Ray управляет планированием задач по worker-ам, ресурсами и retry — заменяя необходимость в кастомном scheduler-е, который реализует Ballista" },
-        { "id": "b", "text": "Ray выполняет SQL-парсинг и построение логического плана" },
-        { "id": "c", "text": "Ray заменяет DataFusion ExecutionPlan своими операторами" },
-        { "id": "d", "text": "Ray используется только для хранения данных — вычисления на DataFusion" }
+        {
+          "id": "a",
+          "text": "Ray выполняет SQL-парсинг и построение логического плана"
+        },
+        {
+          "id": "b",
+          "text": "Ray заменяет DataFusion ExecutionPlan своими операторами"
+        },
+        {
+          "id": "c",
+          "text": "Ray управляет планированием задач по worker-ам, ресурсами и retry — заменяя необходимость в кастомном scheduler-е, который реализует Ballista"
+        },
+        {
+          "id": "d",
+          "text": "Ray используется только для хранения данных — вычисления на DataFusion"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Ray выступает платформой оркестрации: планирование задач по worker-ам (scheduling), управление ресурсами (CPU/memory), retry при сбоях. Это заменяет кастомный scheduler Ballista. DataFusion отвечает за query planning и execution внутри каждого worker-а. Ray = оркестрация, DataFusion = вычисления.",
       "bloomLevel": "analytical",
       "studyHint": "Ray = оркестрация (scheduling, ресурсы, retry). DataFusion = query planning + execution. Ballista пишет свой scheduler, Ray предоставляет готовый."
@@ -100,12 +174,24 @@
       "type": "multiple-choice",
       "question": "Ballista демонстрирует 2.9x ускорение vs Apache Spark на TPC-H SF100. Какие факторы обеспечивают это преимущество?",
       "options": [
-        { "id": "a", "text": "Arrow columnar формат на всём пути (без row→column→row), zero-copy Arrow IPC shuffle, Rust runtime (без JVM GC, предсказуемая задержка) и DataFusion оптимизатор" },
-        { "id": "b", "text": "Ballista использует GPU для ускорения вычислений" },
-        { "id": "c", "text": "Ballista обрабатывает меньше данных, пропуская некоторые строки" },
-        { "id": "d", "text": "Преимущество объясняется только более эффективным SQL-парсером" }
+        {
+          "id": "a",
+          "text": "Ballista использует GPU для ускорения вычислений"
+        },
+        {
+          "id": "b",
+          "text": "Преимущество объясняется только более эффективным SQL-парсером"
+        },
+        {
+          "id": "c",
+          "text": "Ballista обрабатывает меньше данных, пропуская некоторые строки"
+        },
+        {
+          "id": "d",
+          "text": "Arrow columnar формат на всём пути (без row→column→row), zero-copy Arrow IPC shuffle, Rust runtime (без JVM GC, предсказуемая задержка) и DataFusion оптимизатор"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "Четыре фактора: (1) Arrow columnar на всём пути — без row→column→row конвертаций (Spark использует UnsafeRow для shuffle), (2) Arrow IPC shuffle — zero-copy маппинг буферов, (3) Rust runtime — нет JVM GC, предсказуемая задержка, низкий memory overhead, (4) DataFusion оптимизатор — те же правила, что в однопроцессном DataFusion.",
       "bloomLevel": "applied",
       "studyHint": "4 фактора Ballista: Arrow columnar, zero-copy shuffle, Rust (без GC), DataFusion оптимизатор. 2.9x на TPC-H SF100."
@@ -115,10 +201,22 @@
       "type": "multiple-choice",
       "question": "Компания строит федеративный аналитический движок, объединяющий PostgreSQL, ClickHouse и S3 Parquet. Нужна маршрутизация запросов и pushdown к удалённым источникам. Какой подход к распределению оптимален?",
       "options": [
-        { "id": "a", "text": "Кастомное решение (DataFusion как библиотека): кастомные TableProvider для каждого источника с filter/projection pushdown + OptimizerRule для federation-aware планирования — как делает Spice AI" },
-        { "id": "b", "text": "Ballista — автоматически поддерживает federation из нескольких источников" },
-        { "id": "c", "text": "Comet — ускоряет федеративные запросы через нативное исполнение" },
-        { "id": "d", "text": "DataFusion Ray — Python-first подход упрощает интеграцию с любыми источниками" }
+        {
+          "id": "a",
+          "text": "Кастомное решение (DataFusion как библиотека): кастомные TableProvider для каждого источника с filter/projection pushdown + OptimizerRule для federation-aware планирования — как делает Spice AI"
+        },
+        {
+          "id": "b",
+          "text": "Comet — ускоряет федеративные запросы через нативное исполнение"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion Ray — Python-first подход упрощает интеграцию с любыми источниками"
+        },
+        {
+          "id": "d",
+          "text": "Ballista — автоматически поддерживает federation из нескольких источников"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "Federation-aware планирование — domain-specific задача. Кастомное решение: кастомный TableProvider для каждого источника (PostgreSQL, ClickHouse, S3) с filter/projection pushdown + кастомный OptimizerRule для маршрутизации подзапросов к нужному источнику. Spice AI использует именно этот паттерн. Ballista/Ray — generic distributed SQL без federation logic.",
@@ -130,10 +228,22 @@
       "type": "multiple-choice",
       "question": "Ballista 43.0.0 удалила KV stores (etcd, sled). Как scheduler хранит состояние Execution Graph?",
       "options": [
-        { "id": "a", "text": "In-memory — scheduler хранит Execution Graph, статусы задач и метаданные job-ов в оперативной памяти. При перезапуске scheduler-а состояние теряется" },
-        { "id": "b", "text": "На диске в формате SQLite — персистентное хранение" },
-        { "id": "c", "text": "В Arrow IPC файлах рядом с shuffle-данными" },
-        { "id": "d", "text": "Scheduler не хранит состояние — каждый executor отслеживает свои задачи" }
+        {
+          "id": "a",
+          "text": "In-memory — scheduler хранит Execution Graph, статусы задач и метаданные job-ов в оперативной памяти. При перезапуске scheduler-а состояние теряется"
+        },
+        {
+          "id": "b",
+          "text": "Scheduler не хранит состояние — каждый executor отслеживает свои задачи"
+        },
+        {
+          "id": "c",
+          "text": "На диске в формате SQLite — персистентное хранение"
+        },
+        {
+          "id": "d",
+          "text": "В Arrow IPC файлах рядом с shuffle-данными"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "После удаления KV stores (etcd, sled) в 43.0.0, scheduler хранит состояние in-memory. Execution Graph, статусы задач и метаданные job-ов находятся в памяти scheduler-процесса. Следствие: при перезапуске scheduler-а выполняющиеся job-ы теряются. Это упрощение — вместо сложного distributed state через KV store.",
@@ -145,12 +255,24 @@
       "type": "multiple-choice",
       "question": "Команда развёртывает Ballista в Kubernetes. Какой инструмент используется для автоскейлинга executor-ов по метрикам pending задач?",
       "options": [
-        { "id": "a", "text": "KEDA (Kubernetes Event-Driven Autoscaling) — масштабирует executor Deployment по количеству pending задач в scheduler" },
-        { "id": "b", "text": "Kubernetes HPA по CPU — стандартный autoscaler достаточен" },
-        { "id": "c", "text": "Ballista имеет встроенный autoscaler — внешние инструменты не нужны" },
-        { "id": "d", "text": "Автоскейлинг невозможен — количество executor-ов фиксируется при развёртывании" }
+        {
+          "id": "a",
+          "text": "Ballista имеет встроенный autoscaler — внешние инструменты не нужны"
+        },
+        {
+          "id": "b",
+          "text": "Автоскейлинг невозможен — количество executor-ов фиксируется при развёртывании"
+        },
+        {
+          "id": "c",
+          "text": "Kubernetes HPA по CPU — стандартный autoscaler достаточен"
+        },
+        {
+          "id": "d",
+          "text": "KEDA (Kubernetes Event-Driven Autoscaling) — масштабирует executor Deployment по количеству pending задач в scheduler"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "KEDA (Kubernetes Event-Driven Autoscaling) масштабирует executor Deployment по кастомным метрикам — например, количеству pending задач в scheduler. В отличие от HPA по CPU, KEDA реагирует на фактическую нагрузку планировщика. Scheduler — Deployment с одной репликой, executor-ы — Deployment с KEDA autoscaling.",
       "bloomLevel": "applied",
       "studyHint": "KEDA = event-driven autoscaling по метрикам scheduler-а (pending tasks). Scheduler: 1 реплика. Executors: KEDA autoscaling."
@@ -160,10 +282,22 @@
       "type": "multiple-choice",
       "question": "Однопроцессный DataFusion использует target_partitions=16 и RepartitionExec для параллелизма. В распределённой системе pipeline breaker (RepartitionExec) становится сетевым shuffle. Какое следствие это имеет для производительности?",
       "options": [
-        { "id": "a", "text": "Сеть становится главным bottleneck — передача данных по сети на порядки медленнее crossbeam-каналов в памяти. Минимизация количества shuffle (reduce stage) и объёма передаваемых данных (partial aggregation) критична для производительности" },
-        { "id": "b", "text": "Производительность не меняется — Arrow IPC компенсирует сетевую задержку" },
-        { "id": "c", "text": "Сеть ускоряет выполнение — данные передаются быстрее, чем через каналы в памяти" },
-        { "id": "d", "text": "Shuffle не влияет на производительность — bottleneck всегда в I/O дисков" }
+        {
+          "id": "a",
+          "text": "Сеть становится главным bottleneck — передача данных по сети на порядки медленнее crossbeam-каналов в памяти. Минимизация количества shuffle (reduce stage) и объёма передаваемых данных (partial aggregation) критична для производительности"
+        },
+        {
+          "id": "b",
+          "text": "Производительность не меняется — Arrow IPC компенсирует сетевую задержку"
+        },
+        {
+          "id": "c",
+          "text": "Сеть ускоряет выполнение — данные передаются быстрее, чем через каналы в памяти"
+        },
+        {
+          "id": "d",
+          "text": "Shuffle не влияет на производительность — bottleneck всегда в I/O дисков"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "В однопроцессном DataFusion RepartitionExec перемещает данные через crossbeam-каналы (наносекунды). В распределённой системе — сериализация Arrow IPC + сеть + десериализация (миллисекунды). Разница — 3-6 порядков. Оптимизация: partial aggregation перед shuffle (уменьшает объём), минимизация числа shuffle stage.",
@@ -175,12 +309,24 @@
       "type": "multiple-choice",
       "question": "Все подходы к распределению DataFusion (Ballista, DataFusion Ray, Comet, кастомные решения) используют query stages как единицу распределения. Что определяет границы query stage в физическом плане DataFusion?",
       "options": [
-        { "id": "a", "text": "EnforceDistribution вставляет RepartitionExec (pipeline breakers) — каждый RepartitionExec становится границей между stage. Фрагменты плана между pipeline breakers выполняются как независимые единицы" },
-        { "id": "b", "text": "Каждый отдельный оператор (Filter, Project, Scan) — это отдельный stage" },
-        { "id": "c", "text": "Границы определяются пользователем через SQL-аннотации" },
-        { "id": "d", "text": "Scheduler произвольно делит план на равные по стоимости части" }
+        {
+          "id": "a",
+          "text": "Каждый отдельный оператор (Filter, Project, Scan) — это отдельный stage"
+        },
+        {
+          "id": "b",
+          "text": "Границы определяются пользователем через SQL-аннотации"
+        },
+        {
+          "id": "c",
+          "text": "EnforceDistribution вставляет RepartitionExec (pipeline breakers) — каждый RepartitionExec становится границей между stage. Фрагменты плана между pipeline breakers выполняются как независимые единицы"
+        },
+        {
+          "id": "d",
+          "text": "Scheduler произвольно делит план на равные по стоимости части"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Физический оптимизатор DataFusion (EnforceDistribution) вставляет RepartitionExec для обеспечения co-location данных. В распределённых системах каждый RepartitionExec → граница query stage. Ballista заменяет на ShuffleWriter/Reader, DataFusion Ray — на свои ShuffleWriter/Reader, Comet работает внутри Spark-stage. Один механизм DataFusion — три реализации распределения.",
       "bloomLevel": "analytical",
       "studyHint": "EnforceDistribution → RepartitionExec → границы stage. Одинаковый механизм, разные реализации shuffle (Ballista/Ray/Comet)."

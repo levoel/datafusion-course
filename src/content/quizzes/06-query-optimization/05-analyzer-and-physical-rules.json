@@ -1,17 +1,31 @@
 {
   "lessonSlug": "06-query-optimization/05-analyzer-and-physical-rules",
   "moduleId": "06-query-optimization",
-  "_meta": { "idPrefix": "df-m06-05" },
+  "_meta": {
+    "idPrefix": "df-m06-05"
+  },
   "questions": [
     {
       "id": "df-m06-05-q1",
       "type": "multiple-choice",
       "question": "Чем AnalyzerRule::analyze() отличается от OptimizerRule::rewrite() по возвращаемому типу?",
       "options": [
-        { "id": "a", "text": "analyze() возвращает Result<LogicalPlan> (нет multi-pass), rewrite() возвращает Result<Transformed<LogicalPlan>> (сигнал для multi-pass)" },
-        { "id": "b", "text": "analyze() возвращает Transformed<LogicalPlan>, rewrite() — Result<LogicalPlan>" },
-        { "id": "c", "text": "Оба возвращают Result<Transformed<LogicalPlan>>, но analyze работает с другим планом" },
-        { "id": "d", "text": "Различий нет — оба trait используют одинаковую сигнатуру" }
+        {
+          "id": "a",
+          "text": "analyze() возвращает Result<LogicalPlan> (нет multi-pass), rewrite() возвращает Result<Transformed<LogicalPlan>> (сигнал для multi-pass)"
+        },
+        {
+          "id": "b",
+          "text": "Различий нет — оба trait используют одинаковую сигнатуру"
+        },
+        {
+          "id": "c",
+          "text": "analyze() возвращает Transformed<LogicalPlan>, rewrite() — Result<LogicalPlan>"
+        },
+        {
+          "id": "d",
+          "text": "Оба возвращают Result<Transformed<LogicalPlan>>, но analyze работает с другим планом"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "AnalyzerRule::analyze() возвращает Result<LogicalPlan> без Transformed-обёртки. Это означает, что Analyzer применяет каждое правило однократно, без multi-pass. OptimizerRule::rewrite() возвращает Transformed, который сигнализирует (yes/no), нужен ли повторный проход.",
@@ -23,12 +37,24 @@
       "type": "multiple-choice",
       "question": "AnalyzerRule может вернуть ошибку, запретив выполнение запроса. Почему это свойство есть у Analyzer, но не у OptimizerRule?",
       "options": [
-        { "id": "a", "text": "Analyzer выполняет семантическую валидацию и policy enforcement — запрет на full scan, проверка прав. OptimizerRule только трансформирует план, сохраняя семантику" },
-        { "id": "b", "text": "OptimizerRule тоже может вернуть ошибку — оба trait имеют Result<>" },
-        { "id": "c", "text": "Analyzer работает до парсинга, поэтому может проверить синтаксис" },
-        { "id": "d", "text": "Это ограничение Rust — trait с Transformed не поддерживает ошибки" }
+        {
+          "id": "a",
+          "text": "Analyzer работает до парсинга, поэтому может проверить синтаксис"
+        },
+        {
+          "id": "b",
+          "text": "Это ограничение Rust — trait с Transformed не поддерживает ошибки"
+        },
+        {
+          "id": "c",
+          "text": "Analyzer выполняет семантическую валидацию и policy enforcement — запрет на full scan, проверка прав. OptimizerRule только трансформирует план, сохраняя семантику"
+        },
+        {
+          "id": "d",
+          "text": "OptimizerRule тоже может вернуть ошибку — оба trait имеют Result<>"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Оба возвращают Result, но роли разные. Analyzer — правильное место для policy enforcement (запрет full scan, проверка tenant isolation). OptimizerRule не должен отклонять запросы — только трансформировать план, сохраняя семантику. Ошибка в OptimizerRule — это баг правила, не policy decision.",
       "bloomLevel": "analytical",
       "studyHint": "Analyzer = валидация + policy. Optimizer = трансформация без изменения семантики. Запрет запроса → AnalyzerRule."
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "EnforceDistribution вставляет RepartitionExec перед HashJoinExec. Какая стратегия партиционирования используется для join?",
       "options": [
-        { "id": "a", "text": "Hash — перераспределение по хешу ключа join, чтобы строки с одинаковым ключом попали в одну партицию" },
-        { "id": "b", "text": "RoundRobin — равномерное распределение для максимального параллелизма" },
-        { "id": "c", "text": "Range — разделение по диапазонам ключа join" },
-        { "id": "d", "text": "Random — случайное распределение для балансировки нагрузки" }
+        {
+          "id": "a",
+          "text": "Range — разделение по диапазонам ключа join"
+        },
+        {
+          "id": "b",
+          "text": "Hash — перераспределение по хешу ключа join, чтобы строки с одинаковым ключом попали в одну партицию"
+        },
+        {
+          "id": "c",
+          "text": "Random — случайное распределение для балансировки нагрузки"
+        },
+        {
+          "id": "d",
+          "text": "RoundRobin — равномерное распределение для максимального параллелизма"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "b",
       "explanation": "Для HashJoin требуется Hash-партиционирование по ключу join. Строки с одинаковым значением ключа (например, customer_id=42) из обеих сторон попадают в одну партицию. Каждая партиция строит свою хеш-таблицу и выполняет join независимо. RoundRobin используется для параллелизма без привязки к ключу.",
       "bloomLevel": "applied",
       "studyHint": "HashJoin → Hash-перераспределение по ключу join. RoundRobin → для параллелизма без привязки к конкретной колонке."
@@ -53,12 +91,24 @@
       "type": "multiple-choice",
       "question": "PhysicalOptimizerRule::optimize() принимает Arc<dyn ExecutionPlan>, а не LogicalPlan. Какой шаблон используется для рекурсивного обхода дочерних узлов?",
       "options": [
-        { "id": "a", "text": "Вызвать children() для получения дочерних узлов, оптимизировать каждый рекурсивно, затем with_new_children() для создания обновлённого узла" },
-        { "id": "b", "text": "Использовать transform_down() как для LogicalPlan — TreeNode API работает одинаково" },
-        { "id": "c", "text": "Физические правила не обходят дочерние узлы — работают только с корнем" },
-        { "id": "d", "text": "Использовать downcast_ref для каждого типа оператора и вызвать optimize на каждом" }
+        {
+          "id": "a",
+          "text": "Использовать downcast_ref для каждого типа оператора и вызвать optimize на каждом"
+        },
+        {
+          "id": "b",
+          "text": "Использовать transform_down() как для LogicalPlan — TreeNode API работает одинаково"
+        },
+        {
+          "id": "c",
+          "text": "Вызвать children() для получения дочерних узлов, оптимизировать каждый рекурсивно, затем with_new_children() для создания обновлённого узла"
+        },
+        {
+          "id": "d",
+          "text": "Физические правила не обходят дочерние узлы — работают только с корнем"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Физические правила рекурсивно обходят дерево: plan.children() → оптимизировать каждый дочерний Arc → plan.with_new_children(optimized_children). Это ручной обход, в отличие от логических правил, где TreeNode API (transform_down/up) автоматизирует рекурсию.",
       "bloomLevel": "applied",
       "studyHint": "Физический обход: children() → рекурсия → with_new_children(). Логический: transform_down/up автоматизирует."
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "EnforceSorting обнаружил, что Parquet-файлы уже отсортированы по timestamp. Запрос содержит ORDER BY timestamp. Что делает EnforceSorting?",
       "options": [
-        { "id": "a", "text": "Не вставляет SortExec — данные уже в нужном порядке, лишняя сортировка удаляется" },
-        { "id": "b", "text": "Вставляет SortExec для подтверждения порядка — даже если данные отсортированы" },
-        { "id": "c", "text": "Заменяет ParquetExec на SortedExec для указания порядка" },
-        { "id": "d", "text": "Вставляет SortExec с fetch=∞ для потоковой проверки порядка" }
+        {
+          "id": "a",
+          "text": "Вставляет SortExec с fetch=∞ для потоковой проверки порядка"
+        },
+        {
+          "id": "b",
+          "text": "Заменяет ParquetExec на SortedExec для указания порядка"
+        },
+        {
+          "id": "c",
+          "text": "Вставляет SortExec для подтверждения порядка — даже если данные отсортированы"
+        },
+        {
+          "id": "d",
+          "text": "Не вставляет SortExec — данные уже в нужном порядке, лишняя сортировка удаляется"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "EnforceSorting учитывает порядок, обеспечиваемый источниками. Если Parquet-файлы отсортированы по timestamp и запрос требует ORDER BY timestamp, SortExec не вставляется — данные уже в правильном порядке. Это экономит полную сортировку O(N log N).",
       "bloomLevel": "applied",
       "studyHint": "EnforceSorting: проверяет имеющийся порядок → не вставляет SortExec если данные уже отсортированы. Удаляет дублирующие Sort."

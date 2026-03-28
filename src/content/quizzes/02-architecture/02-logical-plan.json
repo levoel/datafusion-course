@@ -43,18 +43,18 @@
         },
         {
           "id": "b",
-          "text": "Узел Filter, размещённый НАД узлом Aggregate — HAVING становится обычной фильтрацией по результатам агрегации"
-        },
-        {
-          "id": "c",
           "text": "Дополнительный предикат внутри узла Aggregate"
         },
         {
-          "id": "d",
+          "id": "c",
           "text": "Отдельная стадия оптимизации после построения плана"
+        },
+        {
+          "id": "d",
+          "text": "Узел Filter, размещённый НАД узлом Aggregate — HAVING становится обычной фильтрацией по результатам агрегации"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "d",
       "explanation": "HAVING не является отдельным узлом LogicalPlan. SQL-конструкции транслируются в унифицированные логические операции: HAVING становится Filter, размещённым над Aggregate. Это упрощает оптимизатор — он работает с одним типом фильтрации вместо двух.",
       "bloomLevel": "conceptual",
       "studyHint": "Ключевой принцип: SQL-конструкции отображаются в унифицированные узлы. HAVING → Filter, EXISTS → Semi Join."
@@ -70,18 +70,18 @@
         },
         {
           "id": "b",
-          "text": "BinaryExpr(Gt) с left: BinaryExpr(Multiply, Column(price), Column(quantity)) и right: Literal(Float64(1000.0))"
+          "text": "Скалярную функцию multiply_and_compare(price, quantity, 1000.0)"
         },
         {
           "id": "c",
-          "text": "Три отдельных узла Filter для каждой части выражения"
+          "text": "BinaryExpr(Gt) с left: BinaryExpr(Multiply, Column(price), Column(quantity)) и right: Literal(Float64(1000.0))"
         },
         {
           "id": "d",
-          "text": "Скалярную функцию multiply_and_compare(price, quantity, 1000.0)"
+          "text": "Три отдельных узла Filter для каждой части выражения"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "c",
       "explanation": "Expr — дерево выражений. price * quantity > 1000.0 разбирается как BinaryExpr(Gt), где left — BinaryExpr(Multiply, Column(price), Column(quantity)), right — Literal(Float64(1000.0)). Каждый Expr знает свой выходной тип, что позволяет проверять корректность на этапе планирования.",
       "bloomLevel": "applied",
       "studyHint": "Представьте Expr как AST для отдельных выражений внутри узлов плана."
@@ -93,7 +93,7 @@
       "options": [
         {
           "id": "a",
-          "text": "Filter удаляет колонки, не упомянутые в предикате"
+          "text": "Filter добавляет boolean-колонку с результатом предиката"
         },
         {
           "id": "b",
@@ -101,11 +101,11 @@
         },
         {
           "id": "c",
-          "text": "Filter добавляет boolean-колонку с результатом предиката"
+          "text": "Filter создаёт новую схему с колонками из WHERE-условия"
         },
         {
           "id": "d",
-          "text": "Filter создаёт новую схему с колонками из WHERE-условия"
+          "text": "Filter удаляет колонки, не упомянутые в предикате"
         }
       ],
       "correctAnswer": "b",
@@ -120,11 +120,11 @@
       "options": [
         {
           "id": "a",
-          "text": "LogicalPlanBuilder::scan(\"users\", source, None)?.project(vec![col(\"name\")])?.filter(col(\"active\").eq(lit(true)))?.build()"
+          "text": "LogicalPlanBuilder::scan(\"users\", source, None)?.filter(col(\"active\").eq(lit(true)))?.project(vec![col(\"name\")])?.build()"
         },
         {
           "id": "b",
-          "text": "LogicalPlanBuilder::scan(\"users\", source, None)?.filter(col(\"active\").eq(lit(true)))?.project(vec![col(\"name\")])?.build()"
+          "text": "LogicalPlanBuilder::scan(\"users\", source, None)?.project(vec![col(\"name\")])?.filter(col(\"active\").eq(lit(true)))?.build()"
         },
         {
           "id": "c",
@@ -135,7 +135,7 @@
           "text": "Порядок вызовов не имеет значения — builder сам расставляет операции"
         }
       ],
-      "correctAnswer": "b",
+      "correctAnswer": "a",
       "explanation": "Порядок вызовов в builder определяет порядок узлов в дереве. Сначала scan (TableScan), затем filter (WHERE), затем project (SELECT) — снизу вверх. Вариант (a) ставит Projection ниже Filter, что неверно: сначала нужно отфильтровать строки, потом выбрать колонки. DataFrame API — обёртка над LogicalPlanBuilder.",
       "bloomLevel": "applied",
       "studyHint": "Builder добавляет узлы снизу вверх. Порядок вызовов определяет структуру дерева."

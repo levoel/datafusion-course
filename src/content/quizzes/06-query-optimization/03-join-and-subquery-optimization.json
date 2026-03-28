@@ -1,19 +1,33 @@
 {
   "lessonSlug": "06-query-optimization/03-join-and-subquery-optimization",
   "moduleId": "06-query-optimization",
-  "_meta": { "idPrefix": "df-m06-03" },
+  "_meta": {
+    "idPrefix": "df-m06-03"
+  },
   "questions": [
     {
       "id": "df-m06-03-q1",
       "type": "multiple-choice",
       "question": "При equi-join двух больших таблиц DataFusion по умолчанию выбирает HashJoinExec в mode=Partitioned. Что делает RepartitionExec перед join?",
       "options": [
-        { "id": "a", "text": "Перераспределяет обе стороны по хешу ключа join — строки с одинаковым ключом попадают в одну партицию, что позволяет параллельный join" },
-        { "id": "b", "text": "Сортирует обе стороны по ключу join для merge-соединения" },
-        { "id": "c", "text": "Копирует правую сторону в каждую партицию для broadcast join" },
-        { "id": "d", "text": "Сжимает данные для уменьшения объёма перед соединением" }
+        {
+          "id": "a",
+          "text": "Сортирует обе стороны по ключу join для merge-соединения"
+        },
+        {
+          "id": "b",
+          "text": "Сжимает данные для уменьшения объёма перед соединением"
+        },
+        {
+          "id": "c",
+          "text": "Копирует правую сторону в каждую партицию для broadcast join"
+        },
+        {
+          "id": "d",
+          "text": "Перераспределяет обе стороны по хешу ключа join — строки с одинаковым ключом попадают в одну партицию, что позволяет параллельный join"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "d",
       "explanation": "В Partitioned mode RepartitionExec с Hash-стратегией перераспределяет данные по хешу ключа join. Строки с одинаковым customer_id из orders и id из customers попадают в одну партицию. Каждая партиция строит свою хеш-таблицу и выполняет join независимо — параллелизм без координации.",
       "bloomLevel": "conceptual",
       "studyHint": "Partitioned = Hash-перераспределение по ключу join → каждая партиция работает независимо."
@@ -23,10 +37,22 @@
       "type": "multiple-choice",
       "question": "Запрос содержит WHERE EXISTS (SELECT 1 FROM orders WHERE customer_id = c.id AND amount > 1000). Во что декоррелирует DataFusion этот подзапрос?",
       "options": [
-        { "id": "a", "text": "LeftSemiJoin между customers и отфильтрованным orders — один проход по обеим таблицам вместо вложенного цикла" },
-        { "id": "b", "text": "LeftOuterJoin с проверкой NULL — менее эффективный, но семантически верный" },
-        { "id": "c", "text": "Подзапрос остаётся коррелированным — DataFusion не декоррелирует EXISTS" },
-        { "id": "d", "text": "CROSS JOIN с последующим фильтром на amount > 1000" }
+        {
+          "id": "a",
+          "text": "LeftSemiJoin между customers и отфильтрованным orders — один проход по обеим таблицам вместо вложенного цикла"
+        },
+        {
+          "id": "b",
+          "text": "LeftOuterJoin с проверкой NULL — менее эффективный, но семантически верный"
+        },
+        {
+          "id": "c",
+          "text": "CROSS JOIN с последующим фильтром на amount > 1000"
+        },
+        {
+          "id": "d",
+          "text": "Подзапрос остаётся коррелированным — DataFusion не декоррелирует EXISTS"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "EXISTS с коррелированным equi-предикатом (customer_id = c.id) декоррелируется в LeftSemiJoin. Semi-join возвращает строку из customers, если хотя бы одно совпадение найдено в orders (с фильтром amount > 1000). Это один проход вместо N выполнений подзапроса.",
@@ -38,12 +64,24 @@
       "type": "multiple-choice",
       "question": "Три таблицы: orders (10M), customers (100K), regions (50). Как оптимизатор изменит порядок JOIN для минимизации промежуточных данных?",
       "options": [
-        { "id": "a", "text": "customers JOIN regions (100K промежуточно) → JOIN orders — маленькие таблицы соединяются первыми" },
-        { "id": "b", "text": "orders JOIN customers (10M промежуточно) → JOIN regions — порядок как написано" },
-        { "id": "c", "text": "orders JOIN regions → JOIN customers — самая большая таблица первой" },
-        { "id": "d", "text": "Оптимизатор не меняет порядок — он всегда соединяет в порядке FROM" }
+        {
+          "id": "a",
+          "text": "orders JOIN customers (10M промежуточно) → JOIN regions — порядок как написано"
+        },
+        {
+          "id": "b",
+          "text": "Оптимизатор не меняет порядок — он всегда соединяет в порядке FROM"
+        },
+        {
+          "id": "c",
+          "text": "customers JOIN regions (100K промежуточно) → JOIN orders — маленькие таблицы соединяются первыми"
+        },
+        {
+          "id": "d",
+          "text": "orders JOIN regions → JOIN customers — самая большая таблица первой"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "Join reordering минимизирует размер промежуточных результатов. customers (100K) JOIN regions (50) даёт ~100K строк. Затем JOIN orders (10M) — промежуточный результат значительно меньше, чем при наивном orders JOIN customers (10M строк промежуточно).",
       "bloomLevel": "analytical",
       "studyHint": "Маленькие таблицы первыми. Промежуточный результат = главная метрика при выборе порядка join."
@@ -53,10 +91,22 @@
       "type": "multiple-choice",
       "question": "SortExec с fetch=10 в EXPLAIN — признак какой оптимизации?",
       "options": [
-        { "id": "a", "text": "TopK — bounded heap из 10 элементов вместо полной сортировки, O(N log K) вместо O(N log N)" },
-        { "id": "b", "text": "Limit pushdown — прекращение чтения после 10 строк из источника" },
-        { "id": "c", "text": "Predicate pushdown — фильтрация первых 10 строк в scan" },
-        { "id": "d", "text": "Partial sort — сортировка только 10 первых колонок" }
+        {
+          "id": "a",
+          "text": "TopK — bounded heap из 10 элементов вместо полной сортировки, O(N log K) вместо O(N log N)"
+        },
+        {
+          "id": "b",
+          "text": "Limit pushdown — прекращение чтения после 10 строк из источника"
+        },
+        {
+          "id": "c",
+          "text": "Partial sort — сортировка только 10 первых колонок"
+        },
+        {
+          "id": "d",
+          "text": "Predicate pushdown — фильтрация первых 10 строк в scan"
+        }
       ],
       "correctAnswer": "a",
       "explanation": "fetch=10 в SortExec означает TopK-оптимизацию: вместо полной сортировки всех строк поддерживается bounded heap из 10 элементов. Сложность O(N log 10) ≈ O(N) вместо O(N log N), и не нужно хранить весь набор данных в памяти.",
@@ -68,12 +118,24 @@
       "type": "multiple-choice",
       "question": "NestedLoopJoinExec выбран для соединения events (5M строк) с severity (10 строк) по ON e.level BETWEEN s.min_level AND s.max_level. Почему HashJoinExec невозможен?",
       "options": [
-        { "id": "a", "text": "BETWEEN — non-equi предикат (нет оператора =). HashJoin требует equi-предикат для построения хеш-таблицы по ключу" },
-        { "id": "b", "text": "HashJoin не поддерживает таблицы разного размера" },
-        { "id": "c", "text": "BETWEEN всегда приводит к NestedLoop независимо от типа предиката" },
-        { "id": "d", "text": "HashJoin возможен, но оптимизатор ошибочно выбирает NestedLoop" }
+        {
+          "id": "a",
+          "text": "BETWEEN всегда приводит к NestedLoop независимо от типа предиката"
+        },
+        {
+          "id": "b",
+          "text": "HashJoin не поддерживает таблицы разного размера"
+        },
+        {
+          "id": "c",
+          "text": "BETWEEN — non-equi предикат (нет оператора =). HashJoin требует equi-предикат для построения хеш-таблицы по ключу"
+        },
+        {
+          "id": "d",
+          "text": "HashJoin возможен, но оптимизатор ошибочно выбирает NestedLoop"
+        }
       ],
-      "correctAnswer": "a",
+      "correctAnswer": "c",
       "explanation": "HashJoin строит хеш-таблицу по ключу equi-предиката (=). Для BETWEEN (диапазонный предикат) хеширование не работает — нельзя найти совпадение по хешу диапазона. Единственный вариант — NestedLoop, который проверяет каждую пару строк. В данном случае severity мала (10 строк), поэтому O(5M × 10) = 50M проверок — терпимо.",
       "bloomLevel": "analytical",
       "studyHint": "Equi-предикат (=) → HashJoin/SortMergeJoin. Non-equi (BETWEEN, >, <) → NestedLoop. Малая сторона = терпимо."
