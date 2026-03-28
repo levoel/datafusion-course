@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "04-datafusion-python/06-advanced-patterns",
+  "moduleId": "04-datafusion-python",
+  "_meta": {
+    "idPrefix": "df-m04-06"
+  },
+  "questions": [
+    {
+      "id": "df-m04-06-q1",
+      "type": "multiple-choice",
+      "question": "Для чего используется Custom TableProvider в DataFusion Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Для подключения произвольных источников данных (API, базы данных, потоки) --- DataFusion вызывает провайдер при обращении к таблице"
+        },
+        {
+          "id": "b",
+          "text": "Для создания временных таблиц в памяти"
+        },
+        {
+          "id": "c",
+          "text": "Для оптимизации чтения Parquet-файлов"
+        },
+        {
+          "id": "d",
+          "text": "Для настройки прав доступа к таблицам"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Custom TableProvider --- интерфейс для подключения произвольных источников данных. Реализуя Python-класс с нужными методами, вы позволяете DataFusion обращаться к API, базам данных или потокам как к обычным таблицам в SQL-запросах.",
+      "bloomLevel": "conceptual",
+      "studyHint": "TableProvider = адаптер для любого источника данных. SQL видит таблицу, провайдер знает, откуда брать данные."
+    },
+    {
+      "id": "df-m04-06-q2",
+      "type": "multiple-choice",
+      "question": "Что такое Substrait в контексте DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Формат хранения данных, альтернативный Parquet"
+        },
+        {
+          "id": "b",
+          "text": "Открытый стандарт для сериализации планов запросов --- позволяет передавать LogicalPlan между движками"
+        },
+        {
+          "id": "c",
+          "text": "Протокол для распределённого выполнения запросов"
+        },
+        {
+          "id": "d",
+          "text": "Библиотека для оптимизации SQL-запросов"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Substrait --- открытый стандарт для сериализации планов запросов. DataFusion может конвертировать LogicalPlan в Substrait (бинарный формат) и обратно. Это позволяет передавать планы между разными движками, сохранять планы на диск, строить распределённые pipeline.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Substrait = универсальный формат планов. Как Protocol Buffers, но для SQL-планов."
+    },
+    {
+      "id": "df-m04-06-q3",
+      "type": "multiple-choice",
+      "question": "Для чего используется RuntimeEnvBuilder в DataFusion Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Для установки зависимостей и настройки Python-окружения"
+        },
+        {
+          "id": "b",
+          "text": "Для конфигурации runtime-окружения: пул памяти, дисковый менеджер, количество target partitions"
+        },
+        {
+          "id": "c",
+          "text": "Для создания виртуального окружения (venv) для DataFusion"
+        },
+        {
+          "id": "d",
+          "text": "Для настройки сетевого подключения к удалённому кластеру"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "RuntimeEnvBuilder конфигурирует runtime-окружение DataFusion: пул памяти, дисковый менеджер для spill-to-disk, количество target partitions для параллелизма. Используется совместно с SessionConfig при создании SessionContext.",
+      "bloomLevel": "applied",
+      "studyHint": "RuntimeEnvBuilder = низкоуровневые ресурсы (память, диск). SessionConfig = настройки запросов (партиции)."
+    },
+    {
+      "id": "df-m04-06-q4",
+      "type": "multiple-choice",
+      "question": "Какой класс для конфигурации runtime был удалён начиная с версии 44.0 и чем заменён?",
+      "options": [
+        {
+          "id": "a",
+          "text": "RuntimeConfig удалён --- заменён на RuntimeEnvBuilder"
+        },
+        {
+          "id": "b",
+          "text": "ExecutionConfig удалён --- заменён на SessionConfig"
+        },
+        {
+          "id": "c",
+          "text": "QueryConfig удалён --- заменён на RuntimeEnvBuilder"
+        },
+        {
+          "id": "d",
+          "text": "Ничего не удалялось --- все классы сохранены для обратной совместимости"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Начиная с версии 44.0, устаревший класс для конфигурации runtime удалён и заменён на RuntimeEnvBuilder. При миграции со старых версий необходимо обновить импорты и вызовы конструктора.",
+      "bloomLevel": "applied",
+      "studyHint": "Версия 44.0 --- точка миграции. RuntimeEnvBuilder --- актуальный API."
+    },
+    {
+      "id": "df-m04-06-q5",
+      "type": "multiple-choice",
+      "question": "Вы проектируете production-pipeline: чтение с S3, SQL-аналитика, ограничение памяти. Какие компоненты DataFusion нужно сконфигурировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только SessionContext --- он автоматически настраивает все ресурсы"
+        },
+        {
+          "id": "b",
+          "text": "RuntimeEnvBuilder (пул памяти, ограничение), SessionConfig (партиционирование), Object Store (доступ к S3)"
+        },
+        {
+          "id": "c",
+          "text": "Только Object Store для S3 --- остальное работает по умолчанию"
+        },
+        {
+          "id": "d",
+          "text": "Python-декоратор @production над функцией pipeline"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Production-pipeline требует трёх компонентов: RuntimeEnvBuilder для ограничения памяти и конфигурации дискового менеджера, SessionConfig для настройки target partitions, Object Store для чтения с S3/GCS/Azure. Все три передаются при создании SessionContext.",
+      "bloomLevel": "analytical",
+      "studyHint": "Production = RuntimeEnvBuilder + SessionConfig + Object Store. Три слоя конфигурации."
+    }
+  ]
+}

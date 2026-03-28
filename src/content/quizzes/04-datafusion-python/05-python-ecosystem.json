@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "04-datafusion-python/05-python-ecosystem",
+  "moduleId": "04-datafusion-python",
+  "_meta": {
+    "idPrefix": "df-m04-05"
+  },
+  "questions": [
+    {
+      "id": "df-m04-05-q1",
+      "type": "multiple-choice",
+      "question": "Как DataFusion Python передаёт данные между Rust и Python без копирования?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Через Apache Arrow C data interface --- Rust и Python смотрят на одну область памяти, конвертация O(1)"
+        },
+        {
+          "id": "b",
+          "text": "Через JSON-сериализацию --- данные конвертируются в текст и обратно"
+        },
+        {
+          "id": "c",
+          "text": "Через pickle --- стандартный механизм сериализации Python"
+        },
+        {
+          "id": "d",
+          "text": "Через shared memory (mmap) --- файл отображается в память обоих процессов"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Apache Arrow C data interface позволяет передавать данные между Rust (DataFusion) и Python (PyArrow) без копирования. Структуры ArrowArray и ArrowSchema описывают буферы в памяти, и обе стороны работают с одними и теми же данными. Конвертация практически бесплатна --- O(1) по памяти и времени.",
+      "bloomLevel": "conceptual",
+      "studyHint": "C data interface = zero-copy. Ключ: ArrowArray + ArrowSchema описывают память, не копируют её."
+    },
+    {
+      "id": "df-m04-05-q2",
+      "type": "multiple-choice",
+      "question": "Почему конвертация DataFusion результатов в Pandas (to_pandas()) создаёт копию данных, в отличие от PyArrow?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pandas использует собственный формат хранения (NumPy-backed), несовместимый с Arrow --- данные копируются при конвертации"
+        },
+        {
+          "id": "b",
+          "text": "Pandas требует данные в формате JSON, а Arrow хранит бинарные данные"
+        },
+        {
+          "id": "c",
+          "text": "Pandas работает только с данными в оперативной памяти, а Arrow --- на диске"
+        },
+        {
+          "id": "d",
+          "text": "to_pandas() всегда создаёт копию для безопасности --- это настройка по умолчанию, которую можно отключить"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Pandas использует NumPy-backed формат хранения, который отличается от Arrow columnar format. При вызове to_pandas() данные копируются из Arrow-буферов в NumPy-массивы. Для больших данных предпочтительнее оставаться в Arrow-формате (to_arrow_table()).",
+      "bloomLevel": "analytical",
+      "studyHint": "Arrow → PyArrow = zero-copy. Arrow → Pandas = copy. Причина: разные форматы хранения в памяти."
+    },
+    {
+      "id": "df-m04-05-q3",
+      "type": "multiple-choice",
+      "question": "Какой формат данных возвращает collect() в DataFusion Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pandas DataFrame"
+        },
+        {
+          "id": "b",
+          "text": "List[pa.RecordBatch] --- список PyArrow RecordBatch"
+        },
+        {
+          "id": "c",
+          "text": "PyArrow Table"
+        },
+        {
+          "id": "d",
+          "text": "Список Python-словарей"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "collect() возвращает List[pa.RecordBatch] --- это нативный формат результата DataFusion. RecordBatch --- это набор колонок в Arrow-формате. Для получения единой Table используйте to_arrow_table(), для Pandas --- to_pandas().",
+      "bloomLevel": "conceptual",
+      "studyHint": "collect() = List[RecordBatch]. Это базовый формат, из которого получаются все остальные."
+    },
+    {
+      "id": "df-m04-05-q4",
+      "type": "multiple-choice",
+      "question": "Как передать данные из Polars DataFrame в DataFusion для SQL-обработки?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ctx.register_polars(\"name\", polars_df) --- прямая регистрация Polars DataFrame"
+        },
+        {
+          "id": "b",
+          "text": "Конвертировать в Arrow Table (polars_df.to_arrow()) и зарегистрировать через register_record_batches()"
+        },
+        {
+          "id": "c",
+          "text": "Сохранить в CSV и прочитать через register_csv()"
+        },
+        {
+          "id": "d",
+          "text": "Polars и DataFusion несовместимы --- нужно использовать Pandas как промежуточный формат"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Polars поддерживает Apache Arrow как формат хранения. Данные конвертируются через polars_df.to_arrow(), затем регистрируются в DataFusion через register_record_batches(). Обратный путь: DataFusion → to_arrow_table() → pl.from_arrow().",
+      "bloomLevel": "applied",
+      "studyHint": "Arrow --- lingua franca. Polars → to_arrow() → DataFusion. DataFusion → to_arrow_table() → pl.from_arrow()."
+    },
+    {
+      "id": "df-m04-05-q5",
+      "type": "multiple-choice",
+      "question": "В каком случае DataFusion Python является лучшим выбором по сравнению с чистым Pandas или Polars?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Всегда --- DataFusion быстрее любых альтернатив"
+        },
+        {
+          "id": "b",
+          "text": "Когда нужны сложные SQL-запросы, расширяемость через UDF/UDAF и интеграция с Arrow-экосистемой для аналитических pipeline"
+        },
+        {
+          "id": "c",
+          "text": "Только для чтения Parquet-файлов --- в остальном Pandas лучше"
+        },
+        {
+          "id": "d",
+          "text": "Только для обработки данных размером более 100 ГБ"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion Python оптимален, когда: нужен SQL-интерфейс для аналитики, требуется расширяемость (UDF/UDAF/TableProvider), важна интеграция с Arrow-экосистемой. Для простых операций Pandas проще, для чистой скорости Polars может быть быстрее.",
+      "bloomLevel": "analytical",
+      "studyHint": "DataFusion = SQL + расширяемость + Arrow. Pandas = простота. Polars = скорость. Выбирайте по задаче."
+    }
+  ]
+}

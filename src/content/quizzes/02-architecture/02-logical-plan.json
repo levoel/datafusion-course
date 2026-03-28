@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "02-architecture/02-logical-plan",
+  "moduleId": "02-architecture",
+  "_meta": {
+    "idPrefix": "df-m02-02"
+  },
+  "questions": [
+    {
+      "id": "df-m02-02-q1",
+      "type": "multiple-choice",
+      "question": "LogicalPlan в DataFusion реализован как Rust enum. Какие из перечисленных вариантов являются узлами LogicalPlan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Projection, Filter, Aggregate, Join, TableScan, Sort, Limit"
+        },
+        {
+          "id": "b",
+          "text": "HashJoinExec, SortExec, FilterExec, ParquetExec"
+        },
+        {
+          "id": "c",
+          "text": "RecordBatch, ArrayRef, SchemaRef"
+        },
+        {
+          "id": "d",
+          "text": "SessionContext, RuntimeEnv, TaskContext"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "LogicalPlan — enum с вариантами Projection, Filter, Aggregate, Join, TableScan, Sort, Limit, Union, Distinct, Window и другими. Варианты из (b) — физические операторы (ExecutionPlan). (c) — типы Arrow-данных. (d) — компоненты сессии.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Логические узлы описывают ЧТО вычислить, физические — КАК. Запомните ключевые варианты LogicalPlan."
+    },
+    {
+      "id": "df-m02-02-q2",
+      "type": "multiple-choice",
+      "question": "SQL-конструкция HAVING COUNT(o.id) > 5 транслируется в LogicalPlan как:",
+      "options": [
+        {
+          "id": "a",
+          "text": "Отдельный узел HavingPlan, специфичный для HAVING"
+        },
+        {
+          "id": "b",
+          "text": "Узел Filter, размещённый НАД узлом Aggregate — HAVING становится обычной фильтрацией по результатам агрегации"
+        },
+        {
+          "id": "c",
+          "text": "Дополнительный предикат внутри узла Aggregate"
+        },
+        {
+          "id": "d",
+          "text": "Отдельная стадия оптимизации после построения плана"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "HAVING не является отдельным узлом LogicalPlan. SQL-конструкции транслируются в унифицированные логические операции: HAVING становится Filter, размещённым над Aggregate. Это упрощает оптимизатор — он работает с одним типом фильтрации вместо двух.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Ключевой принцип: SQL-конструкции отображаются в унифицированные узлы. HAVING → Filter, EXISTS → Semi Join."
+    },
+    {
+      "id": "df-m02-02-q3",
+      "type": "multiple-choice",
+      "question": "Expr-дерево для SQL-выражения price * quantity > 1000.0 содержит:",
+      "options": [
+        {
+          "id": "a",
+          "text": "Один узел BinaryExpr со строковым представлением всего выражения"
+        },
+        {
+          "id": "b",
+          "text": "BinaryExpr(Gt) с left: BinaryExpr(Multiply, Column(price), Column(quantity)) и right: Literal(Float64(1000.0))"
+        },
+        {
+          "id": "c",
+          "text": "Три отдельных узла Filter для каждой части выражения"
+        },
+        {
+          "id": "d",
+          "text": "Скалярную функцию multiply_and_compare(price, quantity, 1000.0)"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Expr — дерево выражений. price * quantity > 1000.0 разбирается как BinaryExpr(Gt), где left — BinaryExpr(Multiply, Column(price), Column(quantity)), right — Literal(Float64(1000.0)). Каждый Expr знает свой выходной тип, что позволяет проверять корректность на этапе планирования.",
+      "bloomLevel": "applied",
+      "studyHint": "Представьте Expr как AST для отдельных выражений внутри узлов плана."
+    },
+    {
+      "id": "df-m02-02-q4",
+      "type": "multiple-choice",
+      "question": "Каждый узел LogicalPlan знает свою выходную схему до начала выполнения. Как Filter влияет на схему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Filter удаляет колонки, не упомянутые в предикате"
+        },
+        {
+          "id": "b",
+          "text": "Filter не меняет схему — он только фильтрует строки, оставляя набор и типы колонок входного плана"
+        },
+        {
+          "id": "c",
+          "text": "Filter добавляет boolean-колонку с результатом предиката"
+        },
+        {
+          "id": "d",
+          "text": "Filter создаёт новую схему с колонками из WHERE-условия"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Filter не меняет схему: его output_schema идентична схеме входного плана. Filter только отбирает строки, удовлетворяющие предикату. В отличие от Filter, Aggregate создаёт новую схему (из group-by ключей и агрегатов), а Projection выбирает и переименовывает колонки.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Сравните поведение Filter, Aggregate и Projection по отношению к схеме."
+    },
+    {
+      "id": "df-m02-02-q5",
+      "type": "multiple-choice",
+      "question": "LogicalPlanBuilder позволяет строить планы программно. Какой вариант эквивалентен SQL SELECT name FROM users WHERE active = true?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LogicalPlanBuilder::scan(\"users\", source, None)?.project(vec![col(\"name\")])?.filter(col(\"active\").eq(lit(true)))?.build()"
+        },
+        {
+          "id": "b",
+          "text": "LogicalPlanBuilder::scan(\"users\", source, None)?.filter(col(\"active\").eq(lit(true)))?.project(vec![col(\"name\")])?.build()"
+        },
+        {
+          "id": "c",
+          "text": "LogicalPlanBuilder::new().add_table(\"users\").add_where(\"active = true\").add_select(\"name\").build()"
+        },
+        {
+          "id": "d",
+          "text": "Порядок вызовов не имеет значения — builder сам расставляет операции"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Порядок вызовов в builder определяет порядок узлов в дереве. Сначала scan (TableScan), затем filter (WHERE), затем project (SELECT) — снизу вверх. Вариант (a) ставит Projection ниже Filter, что неверно: сначала нужно отфильтровать строки, потом выбрать колонки. DataFrame API — обёртка над LogicalPlanBuilder.",
+      "bloomLevel": "applied",
+      "studyHint": "Builder добавляет узлы снизу вверх. Порядок вызовов определяет структуру дерева."
+    }
+  ]
+}

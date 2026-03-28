@@ -1,0 +1,73 @@
+---
+title: "Что такое Apache DataFusion"
+description: "Apache DataFusion: расширяемый query engine на Rust и Apache Arrow, экосистема и сравнение с аналогами"
+order: 2
+difficulty: "beginner"
+estimatedTime: 15
+---
+
+# Что такое Apache DataFusion
+
+**Apache DataFusion** — это расширяемый query engine, написанный на Rust, использующий Apache Arrow как in-memory формат данных. DataFusion стал Top-Level Project (TLP) Apache Software Foundation в апреле 2024 года.
+
+Ключевое отличие: DataFusion — **библиотека для построения аналитических систем**, а не готовая база данных. Вы встраиваете его в своё приложение и расширяете под свои задачи.
+
+## Текущие версии
+
+| Компонент | Версия | Назначение |
+|-----------|--------|------------|
+| DataFusion Core (Rust) | v52.3.0 | Ядро query engine |
+| DataFusion Python | v52.3.0 | Python-биндинги (`pip install datafusion`) |
+| Apache Comet | v0.12.0 | Ускоритель Apache Spark через DataFusion |
+| Ballista | v48.0.0 | Распределённое выполнение запросов |
+
+## Архитектура в двух словах
+
+DataFusion принимает SQL-запрос или DataFrame-операцию и проводит её через pipeline обработки:
+
+1. **Парсинг** — SQL превращается в Abstract Syntax Tree (AST)
+2. **Логический план** — AST трансформируется в дерево логических операций
+3. **Оптимизация** — серия правил (projection pushdown, filter pushdown, join reordering) преобразует план
+4. **Физический план** — логические операции заменяются конкретными алгоритмами (HashJoin, SortMergeJoin)
+5. **Выполнение** — физический план исполняется потоково через Arrow RecordBatch
+
+На каждом этапе DataFusion предоставляет точки расширения: собственные источники данных, функции, правила оптимизации и физические операторы.
+
+## Экосистема DataFusion
+
+DataFusion используется как фундамент для нескольких production-систем:
+
+- **InfluxDB** — time-series база данных, использует DataFusion как query engine для InfluxDB 3.0
+- **Apache Comet** (v0.12.0) — транслирует планы выполнения Apache Spark в планы DataFusion, ускоряя Spark-задачи без изменения пользовательского кода
+- **Ballista** (v48.0.0) — распределённый query engine с архитектурой scheduler/executor, аналог Spark на базе DataFusion
+- **Dask SQL** — SQL-интерфейс для Dask, использующий DataFusion для парсинга и оптимизации запросов
+- **DataFusion Python** (v52.3.0) — полноценные Python-биндинги для аналитики и прототипирования
+
+## Сравнение с аналогами
+
+| Характеристика | DataFusion | Apache Spark | DuckDB | Polars |
+|---------------|------------|-------------|--------|--------|
+| **Позиционирование** | Библиотека для построения движков | Платформа распределённых вычислений | Встроенная OLAP-база | Библиотека обработки DataFrame |
+| **Язык ядра** | Rust | Scala/Java | C++ | Rust |
+| **In-memory формат** | Apache Arrow | Tungsten (custom) | Proprietary | Apache Arrow |
+| **Расширяемость** | Высокая: данные, функции, оптимизатор, операторы | Средняя: UDF, data sources | Низкая: UDF, extensions | Низкая: expressions, plugins |
+| **Распределённость** | Через Ballista или custom | Встроенная | Нет (single-node) | Нет (single-node) |
+| **Типичное применение** | Встраивание в custom аналитику | Batch/streaming обработка | Локальная аналитика | DataFrame-операции |
+
+<Callout type="tip">
+**DataFusion vs остальные**
+
+DataFusion не конкурирует напрямую с Spark или DuckDB — он решает другую задачу. Spark — готовая платформа для обработки данных. DuckDB — встроенная база. DataFusion — **конструктор**, из которого вы собираете своё решение. Если вам нужен query engine с нестандартным источником данных или специфической логикой оптимизации — DataFusion даёт инструменты для этого.
+</Callout>
+
+## Почему DataFusion важен
+
+DataFusion представляет тренд в data-инженерии: **модульные, composable компоненты** вместо монолитных платформ. Вместо «один инструмент для всего» — набор библиотек, которые вы комбинируете под свою задачу.
+
+Понимание внутреннего устройства query engine — навык, который применим далеко за пределами DataFusion:
+
+- **Оптимизация запросов** — те же принципы работают в PostgreSQL, Spark, Presto
+- **Расширяемость** — паттерны extensible architecture применимы в любых системах
+- **Arrow как lingua franca** — понимание Arrow открывает двери в экосистему (Polars, DuckDB, Flight)
+
+В следующем уроке — обзор всех модулей курса и рекомендации по прохождению.

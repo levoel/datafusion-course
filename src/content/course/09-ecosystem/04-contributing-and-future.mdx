@@ -1,0 +1,244 @@
+---
+title: "Участие в проекте и будущее DataFusion"
+description: "Структура сообщества DataFusion (PMC, коммиттеры, GSoC), процесс contribution, roadmap Q1 2026, DataFusion как навык карьерного роста"
+order: 4
+difficulty: "beginner"
+estimatedTime: 12
+topics: ["community", "contributing", "PMC", "GSoC", "roadmap", "career", "open source"]
+---
+
+# Участие в проекте и будущее DataFusion
+
+На протяжении курса мы рассмотрели DataFusion как технологию: Arrow-основы, SQL и DataFrame API, расширяемость, оптимизацию, распределённое выполнение, экосистему. В заключительном уроке модуля — как устроено сообщество, как начать контрибьютить и куда движется проект.
+
+## Структура сообщества Apache DataFusion
+
+Как top-level проект ASF (Apache Software Foundation), DataFusion следует Apache governance model:
+
+<DiagramContainer title="Структура управления DataFusion" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <DataBox label="Apache Software Foundation (ASF)" className="border-gray-500/30 mx-auto w-72">
+      <div className="text-xs">Юридическое лицо, лицензия, инфраструктура</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="PMC (Project Management Committee)" className="border-emerald-500/30 mx-auto w-72">
+      <div className="text-xs">Принятие решений: релизы, новые коммиттеры, направление проекта</div>
+      <div className="text-xs mt-1">Голосование по Apache rules (lazy consensus)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Committers" className="border-blue-500/30 mx-auto w-72">
+      <div className="text-xs">Право на merge PR, review, release management</div>
+      <div className="text-xs mt-1">Назначаются PMC на основе вклада</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Contributors" className="border-amber-500/30 mx-auto w-72">
+      <div className="text-xs">Любой участник: PR, issues, documentation, review</div>
+      <div className="text-xs mt-1">206 контрибьюторов за 6 месяцев (v40–v45)</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+### Ключевые принципы Apache governance
+
+- **Lazy consensus**: решение принимается, если никто не возразил в течение 72 часов
+- **Merit-based advancement**: коммиттеры и PMC-члены назначаются на основе качества и объёма вклада
+- **Vendor-neutral**: ни одна компания не контролирует проект — контрибьюторы из InfluxData, Apple, NVIDIA, Cloudflare, Cube и десятков других
+- **Public communication**: все обсуждения на dev@datafusion.apache.org и GitHub
+
+<Callout type="tip">
+Vendor-нейтральность — одна из причин, почему столько компаний строят бизнес на DataFusion. В отличие от проектов, управляемых одной компанией (CockroachDB — Cockroach Labs, ClickHouse — ClickHouse Inc.), DataFusion гарантирует, что правила одинаковы для всех.
+</Callout>
+
+## Как начать контрибьютить
+
+### Шаг 1: выбрать задачу
+
+DataFusion использует GitHub Issues для трекинга задач. Метки для входа:
+
+<DiagramContainer title="Метки для новых контрибьюторов" className="my-6">
+  <Grid columns={2} className="gap-3 text-sm">
+    <DataBox label="good first issue" className="border-emerald-500/30">
+      <div className="text-xs">Небольшие, чётко описанные задачи</div>
+      <div className="text-xs mt-1">Обычно: исправление ошибки, добавление теста, улучшение документации</div>
+      <div className="text-xs mt-1">Ожидаемое время: 2–8 часов</div>
+    </DataBox>
+    <DataBox label="help wanted" className="border-blue-500/30">
+      <div className="text-xs">Более крупные задачи, требующие знания кодовой базы</div>
+      <div className="text-xs mt-1">Обычно: новая функция, рефакторинг, оптимизация</div>
+      <div className="text-xs mt-1">Ожидаемое время: 1–5 дней</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+### Шаг 2: локальная настройка
+
+```bash
+# Клонирование и сборка
+git clone https://github.com/apache/datafusion.git
+cd datafusion
+cargo build
+
+# Запуск тестов
+cargo test
+
+# Запуск конкретного теста
+cargo test -p datafusion --test sql_integration -- test_name
+
+# Проверка форматирования и clippy
+cargo fmt --all -- --check
+cargo clippy --all-targets --all-features -- -D warnings
+```
+
+<Callout type="note">
+DataFusion — крупный Rust-проект. Первая полная сборка занимает 5–15 минут в зависимости от машины. Последующие инкрементальные сборки — секунды. Рекомендуемый минимум: 16 GB RAM, SSD.
+</Callout>
+
+### Шаг 3: workflow
+
+```
+1. Найти issue → оставить комментарий "I'd like to work on this"
+2. Fork → branch → implement
+3. Написать тесты (обязательно!)
+4. cargo fmt && cargo clippy
+5. Открыть PR с описанием: What / Why / How
+6. Code review от коммиттера (обычно 1–3 дня)
+7. Address feedback → merge
+```
+
+### Категории вклада
+
+Код — не единственный способ контрибьютить:
+
+| Категория | Примеры |
+|----------|---------|
+| **Код** | Новые функции, исправления, оптимизации, рефакторинг |
+| **Тесты** | Покрытие edge cases, regression тесты, бенчмарки |
+| **Документация** | Улучшение user guide, examples, API-документация |
+| **Review** | Ревью PR других контрибьюторов (высоко ценится!) |
+| **Issues** | Баг-репорты с минимальным воспроизведением, feature requests |
+| **Помощь пользователям** | Ответы на вопросы в GitHub Discussions, Discord, mailing list |
+
+<Callout type="tip">
+Ревью PR — один из самых ценных вкладов, особенно для коммиттеров. Если вы разобрались в части кодовой базы, ваш review помогает масштабировать пропускную способность проекта. Многие коммиттеры получили статус именно через качественные ревью.
+</Callout>
+
+## Google Summer of Code (GSoC)
+
+DataFusion участвует в GSoC — программе Google для студентов, работающих над open-source проектами. Темы GSoC 2025 отражают стратегические направления развития:
+
+<DiagramContainer title="GSoC 2025: направления" className="my-6">
+  <Grid columns={2} className="gap-3 text-sm">
+    <DataBox label="Performance Monitoring" className="border-blue-500/30">
+      <div className="text-xs">Инфраструктура для непрерывного мониторинга производительности</div>
+      <div className="text-xs mt-1">Автоматические бенчмарки, regression detection</div>
+    </DataBox>
+    <DataBox label="WASM Compilation" className="border-emerald-500/30">
+      <div className="text-xs">Компиляция DataFusion в WebAssembly</div>
+      <div className="text-xs mt-1">Браузер, Edge-функции, sandboxed execution</div>
+    </DataBox>
+    <DataBox label="Correlated Subqueries" className="border-amber-500/30">
+      <div className="text-xs">Улучшение поддержки коррелированных подзапросов</div>
+      <div className="text-xs mt-1">Декорреляция, оптимизация вложенных запросов</div>
+    </DataBox>
+    <DataBox label="Python Bindings" className="border-purple-500/30">
+      <div className="text-xs">Расширение DataFusion Python API</div>
+      <div className="text-xs mt-1">Новые UDF, улучшенная DataFrame API</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+GSoC — отличный вход в проект для студентов: менторство от коммиттеров, чёткие deliverables, оплата от Google.
+
+## Roadmap: куда движется DataFusion
+
+DataFusion не имеет формального roadmap одной компании. Вместо этого — обсуждения на GitHub (EPIC issues) и рассылке. Основные темы Q1 2026:
+
+### Производительность
+
+- **Непрерывный performance monitoring** — автоматические бенчмарки на каждый PR
+- **Оптимизация join-ов** — улучшение hash join для больших таблиц
+- **Reduce dependency tree** — уменьшение числа зависимостей для быстрой компиляции и меньшего бинарника
+
+### SQL-совместимость
+
+- **Коррелированные подзапросы** — декорреляция `EXISTS`, `IN`, scalar subqueries
+- **Window function extensions** — RANGE frames, GROUPS mode
+- **DML** — улучшение INSERT INTO, COPY TO
+
+### Экосистема
+
+- **WASM target** — компиляция в wasm32-wasi
+- **Substrait** — расширение покрытия операторов
+- **Python bindings** — паритет с Rust API для ключевых операций
+- **Улучшение extensibility API** — стабилизация trait-интерфейсов для external embedders
+
+<Callout type="note">
+Roadmap DataFusion — живой документ. Приоритеты определяются тем, что контрибьюторы реально реализуют, а не централизованным планированием. Если вам важна конкретная функция — лучший способ ускорить её появление — реализовать самостоятельно или поддержать существующий PR ревью.
+</Callout>
+
+## DataFusion как навык карьерного роста
+
+DataFusion занимает уникальную нишу на рынке: это не просто инструмент, а фундаментальный компонент, из которого строятся десятки продуктов. Знание DataFusion открывает несколько карьерных траекторий:
+
+<DiagramContainer title="Карьерные траектории с DataFusion" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="Database Engineer" className="border-blue-500/30">
+      <div className="text-xs"><b>Что делаете:</b> строите СУБД / аналитический движок поверх DataFusion</div>
+      <div className="text-xs mt-1"><b>Компании:</b> InfluxData, Greptime, GlareDB, Cube</div>
+      <div className="text-xs mt-1"><b>Навыки:</b> Rust, query optimization, storage systems</div>
+    </DataBox>
+    <DataBox label="Data Infrastructure Engineer" className="border-emerald-500/30">
+      <div className="text-xs"><b>Что делаете:</b> строите data pipelines и analytics на DataFusion</div>
+      <div className="text-xs mt-1"><b>Компании:</b> стартапы, data-intensive компании</div>
+      <div className="text-xs mt-1"><b>Навыки:</b> Rust/Python, Arrow, Parquet, distributed systems</div>
+    </DataBox>
+    <DataBox label="Spark Migration Specialist" className="border-amber-500/30">
+      <div className="text-xs"><b>Что делаете:</b> ускоряете Spark через Comet / мигрируете на DataFusion</div>
+      <div className="text-xs mt-1"><b>Компании:</b> enterprise с Spark-инфраструктурой</div>
+      <div className="text-xs mt-1"><b>Навыки:</b> Spark, Comet, JVM-Rust interop, benchmarking</div>
+    </DataBox>
+    <DataBox label="Open Source Contributor" className="border-purple-500/30">
+      <div className="text-xs"><b>Что делаете:</b> вкладываетесь в ядро DataFusion / подпроекты</div>
+      <div className="text-xs mt-1"><b>Путь:</b> contributor → committer → PMC</div>
+      <div className="text-xs mt-1"><b>Навыки:</b> Rust, query engine internals, community skills</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+### Почему DataFusion ценен как навык
+
+1. **Рост экосистемы**: количество проектов на DataFusion удваивается каждый год — спрос на специалистов растёт
+2. **Rust + Data Engineering**: пересечение двух горячих областей рынка
+3. **Глубина**: понимание query engine internals (планирование, оптимизация, выполнение) — редкий и ценный навык
+4. **Портативность**: знания переносимы — те же концепции (LogicalPlan, PhysicalPlan, AnalyzerRule) встречаются в Spark, Trino, Presto, DuckDB
+
+### Как продолжить обучение после курса
+
+| Направление | Следующий шаг |
+|-------------|--------------|
+| **Rust и DataFusion core** | Реализовать кастомный TableProvider для реального источника данных |
+| **Python и DataFusion** | Построить аналитический pipeline на DataFusion Python ([модуль 4](/course/04-datafusion-python/01-installation-and-context)) |
+| **Distributed systems** | Развернуть Ballista кластер, прогнать TPC-H ([модуль 8](/course/08-distributed-execution/02-ballista-architecture)) |
+| **Spark ускорение** | Настроить Comet в Spark-кластере, сравнить с нативным выполнением ([модуль 7](/course/07-comet/01-comet-overview)) |
+| **Open Source** | Найти `good first issue` на GitHub, отправить первый PR |
+
+## Ресурсы сообщества
+
+| Ресурс | Описание |
+|--------|---------|
+| `github.com/apache/datafusion` | Основной репозиторий, issues, PR, discussions |
+| `datafusion.apache.org` | Документация, user guide, contributor guide |
+| `dev@datafusion.apache.org` | Рассылка разработчиков (design decisions, releases) |
+| Discord | Канал `#datafusion` в Apache Arrow Discord сервере |
+| `datafusion.apache.org/blog` | Блог с release notes и техническими статьями |
+
+## Итоги модуля
+
+В этом модуле мы рассмотрели DataFusion в контексте экосистемы:
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> FDAP-стек и позиция DataFusion как «LLVM аналитики» — библиотека, не СУБД
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Проекты экосистемы: от СУБД (InfluxDB, GreptimeDB, HoraeDB) до стриминга (Arroyo) и observability (OpenObserve)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Инструменты: datafusion-dft (CLI/TUI), dbt Fusion, Substrait, WASM, contrib-экосистема
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Сообщество Apache: PMC, коммиттеры, vendor-neutral governance, GSoC
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Contribution workflow: issues → fork → PR → review → merge
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion как карьерный навык: database engineering, data infrastructure, Spark migration, open source

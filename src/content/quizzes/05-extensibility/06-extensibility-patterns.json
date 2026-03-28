@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "05-extensibility/06-extensibility-patterns",
+  "moduleId": "05-extensibility",
+  "_meta": { "idPrefix": "df-m05-06" },
+  "questions": [
+    {
+      "id": "df-m05-06-q1",
+      "type": "multiple-choice",
+      "question": "В чём ключевая разница между использованием DataFusion как библиотеки (embedding) и как фреймворка (extension)?",
+      "options": [
+        { "id": "a", "text": "Библиотека: ваш main() создаёт SessionContext и управляет жизненным циклом. Фреймворк: DataFusion — основной runtime, вы подключаете расширения" },
+        { "id": "b", "text": "Библиотека поддерживает только SQL, фреймворк — только DataFrame API" },
+        { "id": "c", "text": "Библиотека работает только с локальными файлами, фреймворк — с удалёнными" },
+        { "id": "d", "text": "Различий нет — это синонимы для одного подхода" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Библиотека (embedding): ваш код управляет всем — хранением, сетью, жизненным циклом SessionContext (InfluxDB, GreptimeDB). Фреймворк (extension): DataFusion — основной runtime, вы регистрируете UDF, каталоги, источники (GlareDB, Spice AI). Точка сборки определяет паттерн.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Кто вызывает кого? Библиотека: вы вызываете DataFusion. Фреймворк: DataFusion вызывает ваш код через traits."
+    },
+    {
+      "id": "df-m05-06-q2",
+      "type": "multiple-choice",
+      "question": "Spice AI реализует federation pushdown через кастомное OptimizerRule. Какую оптимизацию это даёт?",
+      "options": [
+        { "id": "a", "text": "Перенос агрегаций и фильтров в удалённый источник вместо загрузки всех данных в DataFusion" },
+        { "id": "b", "text": "Параллельное выполнение запросов к нескольким источникам одновременно" },
+        { "id": "c", "text": "Кэширование результатов запросов между сессиями" },
+        { "id": "d", "text": "Автоматическое шардирование данных между источниками" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Federation pushdown переносит операции (агрегации, фильтры, проекции) в удалённый источник. Вместо Scan(postgres) → Filter → Aggregate → 1 млн строк по сети, получаем RemoteAggregate(postgres) → 10 строк результата. Критично для производительности федеративных запросов.",
+      "bloomLevel": "analytical",
+      "studyHint": "Federation pushdown = выполнить как можно больше операций на стороне источника, передать по сети только результат."
+    },
+    {
+      "id": "df-m05-06-q3",
+      "type": "multiple-choice",
+      "question": "InfluxDB IOx добавляет DeduplicateExec — кастомный физический оператор. Почему нельзя использовать встроенный DISTINCT?",
+      "options": [
+        { "id": "a", "text": "Дедупликация по primary key + timestamp с учётом нескольких уровней compaction требует специфичной merge-логики, недоступной в стандартном DISTINCT" },
+        { "id": "b", "text": "DISTINCT работает только со строками, а InfluxDB хранит числовые метрики" },
+        { "id": "c", "text": "DISTINCT не поддерживается в DataFusion для распределённых запросов" },
+        { "id": "d", "text": "Производительность DISTINCT недостаточна для time-series данных" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "InfluxDB хранит данные в нескольких уровнях compaction. Одна и та же точка (primary key + timestamp) может дублироваться между уровнями. DeduplicateExec выполняет merge с правильным приоритетом уровней — логика, которую стандартный DISTINCT не умеет.",
+      "bloomLevel": "analytical",
+      "studyHint": "Кастомные операторы нужны, когда domain-specific семантика не выражается стандартными SQL-операторами."
+    },
+    {
+      "id": "df-m05-06-q4",
+      "type": "multiple-choice",
+      "question": "GlareDB транслирует DataFusion Expr в MongoDB BSON-фильтры. Если трансляция невозможна для конкретного фильтра, что возвращает supports_filters_pushdown?",
+      "options": [
+        { "id": "a", "text": "Unsupported — DataFusion применит фильтр после получения данных из MongoDB" },
+        { "id": "b", "text": "Exact — MongoDB обработает фильтр как $regex" },
+        { "id": "c", "text": "Ошибку — запрос не может быть выполнен" },
+        { "id": "d", "text": "Inexact — MongoDB вернёт все данные, а DataFusion перепроверит" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Если DataFusion Expr нельзя транслировать в MongoDB query (например, сложные подзапросы), возвращается Unsupported. DataFusion получит все строки из MongoDB и применит фильтр самостоятельно. Для транслируемых фильтров (equality, comparison) — Exact.",
+      "bloomLevel": "applied",
+      "studyHint": "Федеративный pushdown — best effort: что можно — pushdown (Exact), что нельзя — Unsupported (DataFusion фильтрует)."
+    },
+    {
+      "id": "df-m05-06-q5",
+      "type": "multiple-choice",
+      "question": "Зачем рекомендуется создавать абстракцию (собственный trait MyQueryEngine) поверх DataFusion SessionContext?",
+      "options": [
+        { "id": "a", "text": "DataFusion не гарантирует стабильность API между мажорными версиями — абстракция изолирует остальной код от breaking changes" },
+        { "id": "b", "text": "Для поддержки нескольких query-engine одновременно (DataFusion + DuckDB)" },
+        { "id": "c", "text": "SessionContext не поддерживает async — обёртка добавляет асинхронность" },
+        { "id": "d", "text": "Для соблюдения принципа единственной ответственности (SRP)" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion до версии 1.0 выпускает мажорные релизы каждые 1–2 месяца с potential breaking changes (переименование методов, новые параметры trait). Абстракция через собственный trait позволяет обновлять DataFusion, меняя только адаптер, не затрагивая остальной код.",
+      "bloomLevel": "analytical",
+      "studyHint": "Собственный trait = anti-corruption layer. При обновлении DataFusion меняется только адаптер, а не 100 мест в коде."
+    }
+  ]
+}

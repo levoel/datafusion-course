@@ -1,0 +1,137 @@
+---
+title: "Колоночный формат: почему аналитика требует другой памяти"
+description: "Row vs columnar storage, преимущества колоночного формата для OLAP, Apache Arrow как универсальный in-memory стандарт"
+order: 1
+difficulty: "beginner"
+estimatedTime: 12
+topics: ["Columnar Format", "Row Format", "OLAP", "Apache Arrow", "Zero-Copy"]
+---
+
+# Колоночный формат: почему аналитика требует другой памяти
+
+## Проблема строчного хранения
+
+Традиционные OLTP-базы (PostgreSQL, MySQL) хранят данные **по строкам**. Каждая строка таблицы лежит в памяти непрерывным блоком: все поля одной записи рядом.
+
+Для транзакционных операций это идеально: `INSERT`, `UPDATE`, `DELETE` работают с целой строкой, и все её поля доступны за одно обращение к памяти.
+
+Но аналитический запрос устроен иначе. `SELECT AVG(salary) FROM employees` читает **одну колонку** из десятка. При строчном хранении процессор загружает все поля каждой строки, чтобы извлечь единственное нужное значение. На таблице с 10 колонками 90% прочитанных байт выбрасываются.
+
+<DiagramContainer title="Row Storage vs Column Storage" className="my-6">
+  <FlowRow className="gap-6 justify-center flex-wrap">
+    <DataBox label="Row Storage (OLTP)" className="border-red-500/30 w-56">
+      <div className="text-xs space-y-1 font-mono">
+        <div>[id=1, name="Иван", salary=80000]</div>
+        <div>[id=2, name="Мария", salary=95000]</div>
+        <div>[id=3, name="Пётр", salary=72000]</div>
+      </div>
+    </DataBox>
+    <DataBox label="Column Storage (OLAP)" className="border-emerald-500/30 w-56">
+      <div className="text-xs space-y-1 font-mono">
+        <div>id:     [1, 2, 3]</div>
+        <div>name:   ["Иван", "Мария", "Пётр"]</div>
+        <div>salary: [80000, 95000, 72000]</div>
+      </div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+## Четыре преимущества колоночного формата
+
+### 1. Column Pruning
+
+При `SELECT salary, age FROM employees` колоночный движок читает ровно 2 буфера из 10. Строчный движок читает все 10 полей каждой строки и отбрасывает 8.
+
+### 2. SIMD-векторизация
+
+Значения одной колонки лежат в памяти последовательно (contiguous). Процессор обрабатывает 4-8 значений за одну SIMD-инструкцию (AVX2 / AVX-512 / NEON). При строчном хранении значения одного поля разбросаны через всю ширину строки -- векторизация невозможна.
+
+### 3. Компрессия
+
+Однотипные значения в одной колонке сжимаются эффективнее. Run-Length Encoding для колонки `department` с повторяющимися "IT", "HR", "Sales" даёт 10-50x сжатие. Dictionary Encoding для low-cardinality строк заменяет строки индексами.
+
+### 4. Cache Locality
+
+CPU cache line -- 64 байт. Для `int64` колонки это 8 значений за одну загрузку. При строчном хранении каждое следующее значение `salary` отделено полной шириной строки -- cache miss на каждом обращении.
+
+## Apache Arrow: универсальный in-memory стандарт
+
+**Apache Arrow** -- спецификация колоночного формата данных в оперативной памяти. Не библиотека, не движок, а именно спецификация byte layout.
+
+<Callout type="note">
+**Arrow vs Parquet**: Parquet -- формат хранения **на диске** (row groups, page compression). Arrow -- формат обработки **в RAM** (буферы фиксированного размера, мгновенный произвольный доступ). Parquet оптимизирован для I/O, Arrow -- для CPU.
+</Callout>
+
+Arrow определяет точный побайтовый layout для каждого типа данных. Это означает:
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Данные в Arrow в Python, Rust, Java, C++, Go занимают **одни и те же байты**
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Передача между языками -- передача указателя, не сериализация
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Нет overhead конвертации при смене runtime
+
+### Zero-Copy: ключевое свойство
+
+Zero-copy означает, что данные **не копируются** при передаче между компонентами. Python-процесс может передать Arrow-буфер Rust-расширению без единого `memcpy`. DataFusion получает данные из внешнего источника в Arrow формате и сразу обрабатывает -- без десериализации.
+
+<DiagramContainer title="Zero-Copy в действии" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <FlowNode variant="input">Python (PyArrow)</FlowNode>
+      <FlowNode variant="input">Rust (arrow-rs)</FlowNode>
+      <FlowNode variant="input">Java (Arrow Java)</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <Tooltip content="Все реализации работают с одним byte layout. Shared memory pointer вместо сериализации.">
+      <DataBox label="Arrow Memory (один byte layout)" className="border-blue-500/30 w-72 mx-auto">
+        <div className="text-xs space-y-1">
+          <div>Validity Bitmap + Data Buffer</div>
+          <div>Идентичные байты во всех языках</div>
+        </div>
+      </DataBox>
+    </Tooltip>
+    <Arrow direction="down" />
+    <FlowNode variant="output">Обработка без десериализации</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+## Arrow до и после: мир без стандарта
+
+До Arrow каждая система определяла собственный in-memory формат. Pandas использовал NumPy arrays, Spark -- Tungsten binary format, R -- SEXP vectors. Передача данных между системами означала сериализацию и десериализацию на каждой границе.
+
+```
+Pandas → (serialize) → bytes → (deserialize) → Spark → (serialize) → bytes → (deserialize) → R
+```
+
+С Arrow:
+
+```
+Pandas (Arrow) → shared memory → Spark (Arrow) → shared memory → DataFusion (Arrow)
+```
+
+Это не теоретическое преимущество. DataFusion построен на Arrow с самого начала: каждый оператор принимает и возвращает `RecordBatch` -- основную единицу данных Arrow. Промежуточных форматов нет.
+
+## RecordBatch: основная единица данных
+
+**RecordBatch** -- группа колонок одинаковой длины с общей схемой. Это аналог "страницы" данных в Arrow мире.
+
+```rust
+// Структура RecordBatch (концептуально)
+RecordBatch {
+    schema: Schema,          // имена и типы колонок
+    columns: Vec<ArrayRef>,  // сами данные (по колонке)
+    row_count: usize,        // количество строк
+}
+```
+
+DataFusion обрабатывает данные потоково: каждый оператор (filter, projection, join) получает поток `RecordBatch`, трансформирует и передаёт дальше. Типичный размер batch -- 8192 строки, достаточно для эффективной векторизации и при этом помещается в L2 cache.
+
+<Callout type="tip">
+В следующем уроке мы разберём внутреннюю структуру Arrow-буферов: validity bitmap, offset buffer и data buffer -- три компонента, из которых состоит каждая колонка.
+</Callout>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Строчное хранение оптимально для OLTP, колоночное -- для OLAP
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Колоночный формат даёт column pruning, SIMD, компрессию, cache locality
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Apache Arrow -- единая спецификация колоночного in-memory формата
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Zero-copy: данные передаются указателем, не копированием
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> RecordBatch -- основная единица данных, поток RecordBatch -- модель обработки DataFusion

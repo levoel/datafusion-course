@@ -1,0 +1,382 @@
+---
+title: "Статистика и стоимостная модель"
+description: "Statistics struct, TableProvider::statistics(), ColumnStatistics, EXPLAIN ANALYZE метрики, профилирование производительности и обнаружение регрессий плана"
+order: 6
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Statistics", "ColumnStatistics", "TableProvider", "EXPLAIN ANALYZE", "Profiling", "PlanRegression", "CostModel"]
+---
+
+# Статистика и стоимостная модель
+
+Оптимизатор принимает решения: какой алгоритм join использовать, в каком порядке соединять таблицы, нужно ли перераспределение. Эти решения зависят от статистики — оценки размера данных. Без статистики оптимизатор работает вслепую. В этом уроке разберём, как предоставить статистику, как DataFusion её использует и как анализировать производительность через EXPLAIN ANALYZE.
+
+## Statistics struct
+
+DataFusion представляет статистику через struct `Statistics`:
+
+```rust
+use datafusion::common::stats::Precision;
+use datafusion::common::{ColumnStatistics, Statistics};
+
+pub struct Statistics {
+    /// Количество строк в источнике
+    pub num_rows: Precision<usize>,
+
+    /// Общий размер данных в байтах
+    pub total_byte_size: Precision<usize>,
+
+    /// Статистика по каждой колонке
+    pub column_statistics: Vec<ColumnStatistics>,
+}
+```
+
+### Precision: точность оценки
+
+`Precision<T>` указывает, насколько точна оценка:
+
+```rust
+pub enum Precision<T> {
+    /// Точное значение (подсчитано полностью)
+    Exact(T),
+
+    /// Приблизительная оценка
+    Inexact(T),
+
+    /// Неизвестно
+    Absent,
+}
+```
+
+| Уровень | Пример | Когда используется |
+|---|---|---|
+| `Exact` | Parquet footer содержит точное количество строк | Метаданные формата |
+| `Inexact` | Оценка после фильтрации (50% selectivity) | Heuristic-модели |
+| `Absent` | CSV-файл без предварительного сканирования | Нет данных |
+
+### ColumnStatistics
+
+Статистика по отдельной колонке:
+
+```rust
+pub struct ColumnStatistics {
+    /// Количество NULL-значений
+    pub null_count: Precision<usize>,
+
+    /// Минимальное значение
+    pub min_value: Precision<ScalarValue>,
+
+    /// Максимальное значение
+    pub max_value: Precision<ScalarValue>,
+
+    /// Количество уникальных значений (distinct count)
+    pub distinct_count: Precision<usize>,
+}
+```
+
+<Callout type="note">
+Parquet автоматически предоставляет `min_value`/`max_value` через column chunk statistics. Это позволяет DataFusion пропускать целые row groups при predicate pushdown: если `max_value(age) = 25` в row group, а фильтр `age > 30`, весь row group пропускается без чтения.
+</Callout>
+
+## TableProvider::statistics()
+
+Кастомный `TableProvider` предоставляет статистику через метод `statistics()`:
+
+```rust
+use datafusion::catalog::Session;
+use datafusion::datasource::TableProvider;
+use datafusion::common::{Statistics, ColumnStatistics};
+use datafusion::common::stats::Precision;
+use datafusion::common::ScalarValue;
+
+#[async_trait]
+impl TableProvider for MyTableProvider {
+    // ... schema(), table_type(), scan() ...
+
+    fn statistics(&self) -> Option<Statistics> {
+        Some(Statistics {
+            num_rows: Precision::Exact(1_000_000),
+            total_byte_size: Precision::Exact(256_000_000), // ~256MB
+
+            column_statistics: vec![
+                // Колонка 0: id (Int64, unique)
+                ColumnStatistics {
+                    null_count: Precision::Exact(0),
+                    min_value: Precision::Exact(ScalarValue::Int64(Some(1))),
+                    max_value: Precision::Exact(ScalarValue::Int64(Some(1_000_000))),
+                    distinct_count: Precision::Exact(1_000_000),
+                },
+                // Колонка 1: region (Utf8, low cardinality)
+                ColumnStatistics {
+                    null_count: Precision::Exact(0),
+                    min_value: Precision::Absent,
+                    max_value: Precision::Absent,
+                    distinct_count: Precision::Exact(12),
+                },
+                // Колонка 2: amount (Float64)
+                ColumnStatistics {
+                    null_count: Precision::Inexact(500),
+                    min_value: Precision::Exact(ScalarValue::Float64(Some(0.01))),
+                    max_value: Precision::Exact(ScalarValue::Float64(Some(99999.99))),
+                    distinct_count: Precision::Absent,
+                },
+            ],
+        })
+    }
+}
+```
+
+## Как оптимизатор использует статистику
+
+### Выбор build side для HashJoin
+
+```
+orders: num_rows = 10_000_000
+customers: num_rows = 100_000
+
+→ customers (меньше) выбирается как build side
+→ HashJoinExec: mode=CollectLeft (собрать customers в одну партицию)
+```
+
+Без статистики оптимизатор не знает, какая таблица меньше, и использует Partitioned mode (дороже из-за двойного перераспределения).
+
+### Порядок join
+
+```
+-- Три таблицы: orders (10M), customers (100K), regions (50)
+SELECT *
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+JOIN regions r ON c.region_id = r.id;
+
+-- С статистикой: regions JOIN customers → JOIN orders
+-- Без статистики: порядок как написано (хуже)
+```
+
+### Selectivity estimation
+
+```
+-- Фильтр: age > 30
+-- Статистика: min=18, max=70, distinct=53
+-- Оценка selectivity: (70 - 30) / (70 - 18) ≈ 0.77 → 77% строк пройдут
+-- Estimated rows после фильтра: 1_000_000 * 0.77 = 770_000
+```
+
+Оценка selectivity влияет на выбор алгоритма последующих операций (join, aggregation).
+
+<Callout type="tip">
+Если оптимизатор выбирает неоптимальный план (например, NestedLoop вместо HashJoin для большой таблицы), первое что стоит проверить — наличие статистики. Отсутствие `num_rows` лишает оптимизатор главного сигнала для принятия решений.
+</Callout>
+
+## EXPLAIN ANALYZE: метрики выполнения
+
+`EXPLAIN ANALYZE` выполняет запрос и показывает реальные метрики каждого оператора:
+
+```sql
+EXPLAIN ANALYZE
+SELECT region, SUM(amount) AS total
+FROM orders
+WHERE status = 'completed'
+GROUP BY region
+ORDER BY total DESC
+LIMIT 5;
+```
+
+### Ключевые метрики операторов
+
+```
+GlobalLimitExec: skip=0, fetch=5
+  metrics=[output_rows=5, elapsed_compute=1.2µs]
+
+SortExec: expr=[total DESC], fetch=5
+  metrics=[output_rows=5, elapsed_compute=45.3µs]
+
+AggregateExec: mode=FinalPartitioned
+  metrics=[output_rows=12, elapsed_compute=234.5µs]
+
+AggregateExec: mode=Partial
+  metrics=[output_rows=192, elapsed_compute=45.2ms]
+
+FilterExec: status = 'completed'
+  metrics=[output_rows=487329, elapsed_compute=12.3ms]
+
+ParquetExec: file_groups={16 groups}
+  metrics=[
+    output_rows=1000000,
+    elapsed_compute=89.4ms,
+    bytes_scanned=45200000,
+    predicate_evaluation_errors=0,
+    row_groups_pruned=3,
+    row_groups_matched=13
+  ]
+```
+
+### Метрики по категориям
+
+| Метрика | Оператор | Значение |
+|---|---|---|
+| `output_rows` | Все | Строк на выходе — главный индикатор эффективности фильтрации |
+| `elapsed_compute` | Все | CPU-время оператора — находит bottleneck |
+| `bytes_scanned` | Scan | Прочитано байт с диска — эффективность projection/predicate pushdown |
+| `row_groups_pruned` | ParquetExec | Пропущенные row groups — эффективность min/max pruning |
+| `spill_count` | Sort, Aggregate | Количество spill-to-disk — нехватка памяти |
+| `spill_bytes` | Sort, Aggregate | Байт записано на диск при spill |
+| `repart_time` | RepartitionExec | Время перераспределения — сетевой/memory bottleneck |
+| `send_time` | RepartitionExec | Время отправки между партициями |
+
+## Профилирование производительности
+
+### Workflow диагностики
+
+```sql
+-- Шаг 1: Структура плана (без выполнения)
+EXPLAIN SELECT ...;
+-- → Проверить: выбор алгоритма, pushdown, порядок join
+
+-- Шаг 2: Реальные метрики
+EXPLAIN ANALYZE SELECT ...;
+-- → Найти самый медленный оператор (max elapsed_compute)
+-- → Проверить selectivity (output_rows на каждом этапе)
+-- → Проверить spill_count > 0
+
+-- Шаг 3: Конфигурация
+SELECT name, value FROM information_schema.df_settings
+WHERE name LIKE '%partitions%'
+   OR name LIKE '%batch_size%'
+   OR name LIKE '%memory%';
+```
+
+### Типичные проблемы и решения
+
+<DiagramContainer title="Диагностика по метрикам EXPLAIN ANALYZE" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="row_groups_pruned = 0" className="border-red-500/30">
+      <div className="text-xs">Данные не отсортированы по колонке фильтрации</div>
+      <div className="text-xs mt-1 text-emerald-400">Решение: пересортировать Parquet по ключу фильтрации</div>
+    </DataBox>
+    <DataBox label="spill_count > 0" className="border-red-500/30">
+      <div className="text-xs">Нехватка памяти для sort/aggregate</div>
+      <div className="text-xs mt-1 text-emerald-400">Решение: увеличить memory pool или оптимизировать запрос</div>
+    </DataBox>
+    <DataBox label="bytes_scanned высок" className="border-yellow-500/30">
+      <div className="text-xs">Нет projection pushdown или predicate pushdown</div>
+      <div className="text-xs mt-1 text-emerald-400">Решение: проверить, что SELECT не использует ненужные колонки</div>
+    </DataBox>
+    <DataBox label="NestedLoopJoin на больших таблицах" className="border-yellow-500/30">
+      <div className="text-xs">Нет equi-предиката или неверный тип join</div>
+      <div className="text-xs mt-1 text-emerald-400">Решение: добавить equi-join condition или переписать запрос</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+## Обнаружение регрессий плана
+
+При обновлении DataFusion или изменении данных план может измениться. Регрессия плана — когда новый план медленнее старого.
+
+### Стратегия мониторинга
+
+```rust
+use datafusion::prelude::SessionContext;
+
+async fn capture_plan_fingerprint(
+    ctx: &SessionContext,
+    sql: &str,
+) -> Result<String> {
+    let df = ctx.sql(&format!("EXPLAIN {}", sql)).await?;
+    let batches = df.collect().await?;
+
+    // Извлечь текстовое представление плана
+    let plan_text = batches
+        .iter()
+        .map(|b| {
+            let col = b.column(1); // plan column
+            let arr = col.as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            (0..arr.len())
+                .map(|i| arr.value(i).to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    Ok(plan_text)
+}
+```
+
+### Что сравнивать между версиями
+
+1. **Алгоритм join** — HashJoin → NestedLoop = регрессия
+2. **Наличие pushdown** — `projection=[*]` вместо выборочных колонок = регрессия
+3. **Количество RepartitionExec** — лишние перераспределения = overhead
+4. **Наличие SortExec** — появление сортировки где раньше не было = регрессия
+5. **output_rows на каждом этапе** — резкий рост промежуточных строк = потеря оптимизации
+
+### Автоматическая проверка
+
+```rust
+#[tokio::test]
+async fn test_plan_not_regressed() {
+    let ctx = setup_test_context().await;
+
+    let plan = ctx
+        .sql("SELECT * FROM orders WHERE status = 'active' ORDER BY id LIMIT 10")
+        .await
+        .unwrap()
+        .into_optimized_plan()
+        .unwrap();
+
+    let plan_str = format!("{}", plan.display_indent());
+
+    // Проверить ключевые свойства плана
+    assert!(plan_str.contains("TopK"), "Should use TopK optimization");
+    assert!(!plan_str.contains("NestedLoopJoin"), "Should not use NestedLoop");
+    assert!(plan_str.contains("filter=[status"), "Filter should be pushed down");
+}
+```
+
+<Callout type="warning">
+Тесты на точное представление плана хрупкие — они ломаются при каждом обновлении DataFusion. Тестируйте свойства плана (наличие pushdown, тип join, TopK) а не точный текст.
+</Callout>
+
+## Предоставление статистики для ListingTable
+
+Для файловых источников DataFusion может собирать статистику автоматически:
+
+```rust
+use datafusion::datasource::listing::ListingOptions;
+use datafusion::datasource::file_format::parquet::ParquetFormat;
+use std::sync::Arc;
+
+let listing_options = ListingOptions::new(
+    Arc::new(ParquetFormat::default())
+)
+.with_collect_stat(true);  // Включить сбор статистики
+```
+
+Или через SQL:
+
+```sql
+SET datafusion.execution.collect_statistics = true;
+
+CREATE EXTERNAL TABLE orders
+STORED AS PARQUET
+LOCATION '/data/orders/';
+-- Статистика будет собрана из Parquet footer
+```
+
+Parquet footer содержит точные `num_rows` и `min`/`max` по колонкам для каждого row group — это самый дешёвый и точный источник статистики.
+
+<Callout type="note">
+CSV-файлы не содержат встроенной статистики. Для CSV `collect_statistics = true` означает полный предварительный скан файла — дорого для больших файлов. Для CSV-источников лучше предоставить статистику программно через кастомный `TableProvider`.
+</Callout>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `Statistics` содержит `num_rows`, `total_byte_size` и `column_statistics` с тремя уровнями точности (`Exact`, `Inexact`, `Absent`)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `TableProvider::statistics()` — точка подключения статистики для кастомных источников
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Статистика определяет выбор join algorithm, build side, порядок join и selectivity estimation
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `EXPLAIN ANALYZE` показывает реальные метрики: `output_rows`, `elapsed_compute`, `bytes_scanned`, `spill_count`
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Регрессии плана обнаруживаются через тесты свойств плана (тип join, наличие pushdown, TopK)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Parquet предоставляет точную статистику через footer бесплатно; CSV требует полного скана

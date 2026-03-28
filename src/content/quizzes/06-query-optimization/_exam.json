@@ -1,0 +1,189 @@
+{
+  "lessonSlug": "06-query-optimization/_exam",
+  "moduleId": "06-query-optimization",
+  "examTitle": "Экзамен: Оптимизация запросов",
+  "passThreshold": 70,
+  "_meta": { "idPrefix": "df-m06-exam" },
+  "questions": [
+    {
+      "id": "df-m06-exam-q1",
+      "type": "multiple-choice",
+      "question": "Кастомное правило MyRule вставлено после PushDownFilter в цепочке оптимизатора. MyRule добавляет новый Filter к определённым TableScan. Почему этот фильтр может не быть спущен в scan?",
+      "options": [
+        { "id": "a", "text": "PushDownFilter уже отработал к этому моменту — новый Filter не будет спущен до следующего прохода. Если max_passes исчерпаны, фильтр останется над TableScan" },
+        { "id": "b", "text": "Кастомные правила не могут добавлять Filter-узлы — это вызовет ошибку оптимизатора" },
+        { "id": "c", "text": "PushDownFilter автоматически обработает все Filter-узлы, включая вставленные позже" },
+        { "id": "d", "text": "Filter над TableScan — финальная позиция, спуск в scan невозможен" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Порядок правил в цепочке имеет значение. Если MyRule вставляет Filter после того, как PushDownFilter уже отработал в текущем проходе, новый фильтр обработается только при повторном проходе. С max_passes=3, если проходы исчерпаны — фильтр останется выше scan. Решение: поместить MyRule до PushDownFilter или увеличить max_passes.",
+      "bloomLevel": "analytical",
+      "studyHint": "Порядок правил + max_passes: вставка узлов после обработки правила → ждёт следующего прохода. Позиция в цепочке критична."
+    },
+    {
+      "id": "df-m06-exam-q2",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE для запроса с JOIN показывает: HashJoinExec output_rows=50M, при этом обе исходные таблицы содержат 5M строк. Что произошло?",
+      "options": [
+        { "id": "a", "text": "Ключ join имеет дублированные значения (многие ко многим) — каждая строка левой стороны совпадает с несколькими строками правой, создавая декартово произведение на дубликатах" },
+        { "id": "b", "text": "HashJoin дублирует строки для параллелизма — нормальное поведение для Partitioned mode" },
+        { "id": "c", "text": "Ошибка оптимизатора — output_rows не может превышать размер обеих таблиц" },
+        { "id": "d", "text": "Оптимизатор добавил CROSS JOIN вместо INNER JOIN" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "5M × 5M → 50M строк означает, что в среднем каждая строка одной стороны совпадает с 10 строками другой. Это many-to-many join — ключ join не уникален. Типичный случай: JOIN по category вместо unique id. Решение: добавить более селективные предикаты или пересмотреть модель данных.",
+      "bloomLevel": "analytical",
+      "studyHint": "output_rows > max(left, right) → many-to-many join. Проверьте уникальность ключа join. Добавьте фильтры до join."
+    },
+    {
+      "id": "df-m06-exam-q3",
+      "type": "multiple-choice",
+      "question": "AnalyzerRule RequireFilterRule запрещает запросы без WHERE к большим таблицам. Почему это правило нельзя реализовать как OptimizerRule?",
+      "options": [
+        { "id": "a", "text": "OptimizerRule не должен отклонять запросы — его контракт: трансформировать план, сохраняя семантику. Policy enforcement (запрет запросов) — задача AnalyzerRule" },
+        { "id": "b", "text": "OptimizerRule не имеет доступа к TableScan-узлам — только к верхнеуровневым узлам" },
+        { "id": "c", "text": "Технически возможно, но OptimizerRule работает после удаления метаданных таблиц" },
+        { "id": "d", "text": "OptimizerRule вернёт ошибку, но оптимизатор её проигнорирует (skip_failing_rules)" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Роли фаз: Analyzer = семантическая валидация + policy. Optimizer = трансформация без изменения семантики. Технически OptimizerRule может вернуть Err, но skip_failing_rules=true (по умолчанию) может проигнорировать ошибку. AnalyzerRule — корректное место для запрета запросов.",
+      "bloomLevel": "analytical",
+      "studyHint": "Policy enforcement → AnalyzerRule. Трансформация → OptimizerRule. skip_failing_rules делает ошибки OptimizerRule ненадёжными."
+    },
+    {
+      "id": "df-m06-exam-q4",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT region, SUM(amount) FROM orders GROUP BY region ORDER BY SUM(amount) DESC LIMIT 5. Какие оптимизации DataFusion применит к этому запросу?",
+      "options": [
+        { "id": "a", "text": "Двухфазная агрегация (Partial → Repartition по region → Final) + TopK-сортировка с fetch=5 вместо полной сортировки" },
+        { "id": "b", "text": "Только TopK-сортировка — агрегация всегда однофазная" },
+        { "id": "c", "text": "Только двухфазная агрегация — LIMIT не влияет на сортировку" },
+        { "id": "d", "text": "Никаких оптимизаций — DataFusion не оптимизирует GROUP BY с ORDER BY" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Две оптимизации работают вместе: (1) AggregateExec Partial → RepartitionExec Hash(region) → AggregateExec Final — параллельная двухфазная агрегация. (2) SortExec с fetch=5 — TopK вместо полной сортировки 12 результатов. Первая сокращает время агрегации, вторая — время сортировки.",
+      "bloomLevel": "analytical",
+      "studyHint": "GROUP BY → двухфазная агрегация (Partial/Final). ORDER BY + LIMIT → TopK. Комбинация даёт максимальный эффект."
+    },
+    {
+      "id": "df-m06-exam-q5",
+      "type": "multiple-choice",
+      "question": "Кастомный TableProvider для time-series хранилища возвращает Statistics с Precision::Absent для num_rows. Какие решения оптимизатора ухудшатся?",
+      "options": [
+        { "id": "a", "text": "Выбор build side для HashJoin (не знает, какая таблица меньше) и порядок join (не может минимизировать промежуточные результаты)" },
+        { "id": "b", "text": "Только выбор между HashJoin и SortMergeJoin" },
+        { "id": "c", "text": "Predicate pushdown перестанет работать" },
+        { "id": "d", "text": "Никакие — оптимизатор использует только column statistics" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "num_rows — главный сигнал для: (1) build side selection — без него нельзя выбрать меньшую сторону, используется Partitioned mode (дороже). (2) Join reordering — без оценки размеров порядок не оптимизируется. Predicate pushdown и projection pushdown не зависят от num_rows.",
+      "bloomLevel": "analytical",
+      "studyHint": "Absent num_rows → слепой выбор build side, порядка join. Column statistics → predicate pushdown, selectivity. Разные задачи."
+    },
+    {
+      "id": "df-m06-exam-q6",
+      "type": "multiple-choice",
+      "question": "EnforceDistribution вставил RepartitionExec с Hash(customer_id) перед HashJoin. Данные orders уже партиционированы по customer_id (например, из Hive-таблицы). Как избежать лишнего перераспределения?",
+      "options": [
+        { "id": "a", "text": "ExecutionPlan для orders должен указать output_partitioning() = Hash([customer_id], N). EnforceDistribution увидит совпадение и не вставит RepartitionExec" },
+        { "id": "b", "text": "Отключить EnforceDistribution — SET datafusion.optimizer.enforce_distribution = false" },
+        { "id": "c", "text": "Указать PARTITIONED BY в SQL-запросе" },
+        { "id": "d", "text": "Невозможно — EnforceDistribution всегда вставляет RepartitionExec" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "EnforceDistribution проверяет output_partitioning() каждого дочернего узла. Если TableScan/ExecutionPlan для orders сообщает Hash([customer_id], N), и HashJoin требует то же — перераспределение не нужно. Ключ: правильная реализация output_partitioning() в кастомном ExecutionPlan.",
+      "bloomLevel": "applied",
+      "studyHint": "output_partitioning() — контракт оператора. Если совпадает с требованием родителя → RepartitionExec не вставляется."
+    },
+    {
+      "id": "df-m06-exam-q7",
+      "type": "multiple-choice",
+      "question": "Динамические фильтры (bloom filter из build side) сокращают probe side при HashJoin. В каком сценарии этот эффект максимален?",
+      "options": [
+        { "id": "a", "text": "Малая dimension-таблица с сильным фильтром (WHERE d.category = 'electronics') и большая fact-таблица — bloom filter из нескольких тысяч d.id значений отсекает большинство строк fact" },
+        { "id": "b", "text": "Обе таблицы одинакового размера без фильтров — bloom filter работает симметрично" },
+        { "id": "c", "text": "Probe side меньше build side — bloom filter сокращает build" },
+        { "id": "d", "text": "JOIN без WHERE — все строки обеих таблиц проходят bloom filter" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Максимальный эффект: build side мал и отфильтрован → bloom filter содержит мало ключей → большинство строк probe side не совпадают с bloom filter и отбрасываются до actual join. Типичный star-schema паттерн: малая dimension + сильный фильтр + большая fact.",
+      "bloomLevel": "analytical",
+      "studyHint": "Динамические фильтры: малый + отфильтрованный build → узкий bloom filter → максимальная отсечка на большом probe."
+    },
+    {
+      "id": "df-m06-exam-q8",
+      "type": "multiple-choice",
+      "question": "Правило переписывает BETWEEN a AND b в expr >= a AND expr <= b через transform_up. Почему выбран transform_up, а не transform_down?",
+      "options": [
+        { "id": "a", "text": "transform_up гарантирует, что вложенные подвыражения уже переписаны к моменту обработки родителя — если BETWEEN содержит другие BETWEEN внутри, они обработаны первыми" },
+        { "id": "b", "text": "transform_down вызвал бы бесконечный цикл при замене BETWEEN" },
+        { "id": "c", "text": "transform_up быстрее для выражений — меньше аллокаций" },
+        { "id": "d", "text": "transform_down не поддерживает замену Expr-узлов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "transform_up обрабатывает дочерние узлы первыми. Если BETWEEN содержит вложенные выражения (BETWEEN (x BETWEEN 1 AND 5) AND 10), внутренний BETWEEN уже переписан в >= AND <= к моменту обработки внешнего. transform_down не гарантирует этого — обработал бы внешний BETWEEN до обработки внутреннего.",
+      "bloomLevel": "applied",
+      "studyHint": "transform_up для переписывания вложенных выражений: дочерние обработаны → родитель видит уже переписанное дерево."
+    },
+    {
+      "id": "df-m06-exam-q9",
+      "type": "multiple-choice",
+      "question": "SortExec является fully blocking оператором (без fetch). AggregateExec в режиме Partial — streaming. Почему Physical Optimizer предпочитает двухфазную агрегацию (Partial → Final) вместо однофазной?",
+      "options": [
+        { "id": "a", "text": "Partial streaming + Repartition + Final — только Final блокирует (на уменьшенном объёме данных). Однофазная блокирует на полном объёме и не может параллелиться по партициям" },
+        { "id": "b", "text": "Двухфазная даёт точные результаты, однофазная — приблизительные" },
+        { "id": "c", "text": "Двухфазная требует меньше памяти на каждом узле кластера" },
+        { "id": "d", "text": "Однофазная агрегация не поддерживается DataFusion" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Pipeline semantics: Partial Aggregate в каждой партиции работает streaming (не блокирует), выдаёт уменьшенные промежуточные результаты. После Repartition по GROUP BY ключу, Final Aggregate блокирует, но на значительно меньшем объёме данных. Параллелизм + меньшее блокирование = лучшая latency и throughput.",
+      "bloomLevel": "analytical",
+      "studyHint": "Двухфазная: Partial (streaming, параллельно) → Repartition → Final (blocking, на уменьшенном объёме). Лучше pipeline."
+    },
+    {
+      "id": "df-m06-exam-q10",
+      "type": "multiple-choice",
+      "question": "ColumnStatistics содержит distinct_count: Precision::Exact(12) для колонки region. Как оптимизатор использует distinct_count для оценки selectivity фильтра WHERE region = 'EU'?",
+      "options": [
+        { "id": "a", "text": "Оценка selectivity ≈ 1/12 при допущении равномерного распределения — из 1M строк после фильтра ожидается ~83K строк" },
+        { "id": "b", "text": "distinct_count не используется для selectivity — только min/max" },
+        { "id": "c", "text": "Selectivity = 12/1M = 0.0012% — distinct_count делится на num_rows" },
+        { "id": "d", "text": "Selectivity = 1.0 — equality filter не сокращает данные по оценке оптимизатора" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Для equality predicate (=) с distinct_count оптимизатор оценивает selectivity как 1/distinct_count при допущении равномерного распределения. region = 'EU' с distinct_count=12 → selectivity ≈ 1/12 ≈ 8.3%. Это влияет на выбор порядка join и оценку размера промежуточных результатов.",
+      "bloomLevel": "analytical",
+      "studyHint": "distinct_count + equality → selectivity ≈ 1/distinct. Допущение: равномерное распределение. Неточно для skewed данных."
+    },
+    {
+      "id": "df-m06-exam-q11",
+      "type": "multiple-choice",
+      "question": "При обновлении DataFusion план запроса изменился: HashJoin заменён на NestedLoopJoin. Какой из тестов корректно обнаружит регрессию?",
+      "options": [
+        { "id": "a", "text": "assert!(!plan_str.contains(\"NestedLoopJoin\")) — проверяет свойство плана (отсутствие NestedLoop), стабилен при minor-обновлениях" },
+        { "id": "b", "text": "assert_eq!(plan_str, expected_plan_text) — точное совпадение текста плана" },
+        { "id": "c", "text": "assert!(plan_str.len() < 500) — короткий план = оптимальный" },
+        { "id": "d", "text": "Регрессии плана нельзя обнаружить автоматически" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Тест свойства (!contains NestedLoopJoin) проверяет семантику: оптимизатор не должен использовать NestedLoop для этого запроса. Точное сравнение текста ломается при любом обновлении (новые поля, переименования). Длина плана — не индикатор оптимальности.",
+      "bloomLevel": "applied",
+      "studyHint": "Тестируйте свойства (тип join, pushdown, TopK), не точный текст. Хрупкие тесты = ложные падения."
+    },
+    {
+      "id": "df-m06-exam-q12",
+      "type": "multiple-choice",
+      "question": "Вы проектируете PhysicalOptimizerRule, которое заменяет SortExec + GlobalLimitExec на кастомный MyTopKExec. Какую проверку нужно выполнить перед заменой?",
+      "options": [
+        { "id": "a", "text": "Проверить sort.fetch() — если fetch присутствует и ≤ порога, замена безопасна. Без fetch это полная сортировка, не TopK, и замена изменит семантику" },
+        { "id": "b", "text": "Проверить, что SortExec стоит первым в плане — TopK работает только на корневом узле" },
+        { "id": "c", "text": "Проверить, что данные уже отсортированы — TopK не нужен для отсортированных данных" },
+        { "id": "d", "text": "Проверять ничего не нужно — любой SortExec можно заменить на TopK" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "sort.fetch() — ключевая проверка. Наличие fetch означает, что SortExec уже содержит LIMIT (комбинация ORDER BY + LIMIT). Если fetch=None, это полная сортировка без LIMIT — замена на TopK изменила бы семантику (отдала бы только K строк вместо всех отсортированных). Порог (≤100) — эвристика: для больших K полная сортировка может быть эффективнее heap.",
+      "bloomLevel": "analytical",
+      "studyHint": "sort.fetch() = есть LIMIT → TopK безопасен. Нет fetch → полная сортировка, замена на TopK = нарушение семантики."
+    }
+  ]
+}

@@ -1,0 +1,216 @@
+---
+title: "Arrow IPC и Flight: передача данных без сериализации"
+description: "Arrow IPC формат (stream и file), zero-copy десериализация, Arrow Flight gRPC протокол, Flight SQL"
+order: 4
+difficulty: "intermediate"
+estimatedTime: 13
+topics: ["Arrow IPC", "Arrow Flight", "Flight SQL", "Zero-Copy", "gRPC", "Data Transfer"]
+---
+
+# Arrow IPC и Flight: передача данных без сериализации
+
+## Проблема: передача данных между процессами
+
+Arrow решает проблему in-memory формата внутри одного процесса. Но данные нужно передавать: между микросервисами, между узлами кластера, между клиентом и сервером.
+
+Традиционный подход: сериализовать данные в JSON/CSV/Protobuf, передать по сети, десериализовать. На каждой границе -- O(n) работы по конвертации.
+
+Arrow предлагает два протокола, устраняющих эту проблему:
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Arrow IPC** -- бинарный формат для записи Arrow-данных в файл или поток
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Arrow Flight** -- gRPC-протокол для высокопроизводительной передачи Arrow-данных по сети
+
+## Arrow IPC: два формата
+
+Arrow IPC (Inter-Process Communication) определяет два формата для сериализации RecordBatch:
+
+### Stream Format
+
+Последовательность сообщений без возможности произвольного доступа. Оптимален для потоковой передачи.
+
+<DiagramContainer title="Arrow IPC Stream Format" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <DataBox label="Schema Message" className="border-slate-400/30 w-64 mx-auto">
+      <div className="text-xs">Схема (Field names, DataTypes, metadata)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="RecordBatch Message #1" className="border-blue-500/30 w-64 mx-auto">
+      <div className="text-xs">Metadata + Body (буферы колонок)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="RecordBatch Message #2" className="border-blue-500/30 w-64 mx-auto">
+      <div className="text-xs">Metadata + Body (буферы колонок)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="..." className="border-blue-400/20 w-64 mx-auto">
+      <div className="text-xs">Ещё RecordBatch сообщения</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="EOS (End of Stream)" className="border-red-500/30 w-64 mx-auto">
+      <div className="text-xs">Маркер конца потока</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+Каждое сообщение содержит:
+- **Flatbuffers metadata** -- описание layout буферов в body
+- **Body** -- сами буферы данных, выровненные по 64 байт
+
+### File Format (Feather)
+
+Добавляет footer с индексами, позволяя произвольный доступ к RecordBatch по номеру.
+
+<DiagramContainer title="Arrow IPC File Format" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <DataBox label="Magic: ARROW1" className="border-slate-400/30 w-64 mx-auto">
+      <div className="text-xs">6 байт magic number</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="RecordBatch блоки" className="border-blue-500/30 w-64 mx-auto">
+      <div className="text-xs">Schema + RecordBatch messages (как в stream)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Footer" className="border-emerald-500/30 w-64 mx-auto">
+      <div className="text-xs space-y-1">
+        <div>Schema (дубликат)</div>
+        <div>Block index: offset + size каждого RecordBatch</div>
+      </div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Magic: ARROW1" className="border-slate-400/30 w-64 mx-auto">
+      <div className="text-xs">6 байт magic number (конец)</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+Footer позволяет читать конкретный RecordBatch без сканирования всего файла. Это аналог row group index в Parquet, но для in-memory формата.
+
+### Zero-Copy десериализация
+
+Ключевое свойство IPC: body сообщения содержит Arrow-буферы **в нативном формате**. Десериализация -- это только чтение metadata и установка указателей на буферы. Сами данные не копируются и не конвертируются.
+
+```rust
+use arrow::ipc::reader::StreamReader;
+use std::io::Cursor;
+
+// Чтение Arrow IPC stream
+let reader = StreamReader::try_new(cursor, None)?;
+
+for batch in reader {
+    let batch = batch?;
+    // batch.column(0) указывает напрямую на буферы из IPC --
+    // никакого memcpy, никакой десериализации значений
+    println!("Rows: {}", batch.num_rows());
+}
+```
+
+Для сравнения: десериализация CSV требует парсинга каждого значения из текста в бинарный формат. Для 1 миллиона строк с 10 колонками это 10 миллионов конвертаций. Arrow IPC -- ноль конвертаций.
+
+## Arrow Flight: данные по сети
+
+**Arrow Flight** -- протокол поверх gRPC для передачи Arrow-данных по сети. Flight не заменяет IPC, а использует его как формат сообщений внутри gRPC-вызовов.
+
+### Зачем Flight, если есть gRPC + Protobuf
+
+gRPC с Protobuf требует сериализации данных в Protobuf wire format и обратно. Для аналитических нагрузок (миллионы строк) overhead сериализации доминирует. Flight передаёт Arrow IPC буферы напрямую через gRPC streams, минуя Protobuf-сериализацию данных.
+
+<DiagramContainer title="Arrow Flight: клиент-серверное взаимодействие" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="input">Flight Client</FlowNode>
+      <FlowNode variant="output">Flight Server</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <DataBox label="Flight Protocol (gRPC)" className="border-blue-500/30 w-72 mx-auto">
+      <div className="text-xs space-y-1">
+        <div>GetFlightInfo — метаданные о доступных данных</div>
+        <div>DoGet — получить поток RecordBatch</div>
+        <div>DoPut — отправить поток RecordBatch</div>
+        <div>DoExchange — двунаправленный обмен</div>
+      </div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Данные: Arrow IPC RecordBatch" className="border-emerald-500/30 w-72 mx-auto">
+      <div className="text-xs">Нет сериализации Protobuf — нативные Arrow буферы</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+### Основные RPC-методы Flight
+
+| Метод | Описание | Аналогия |
+|-------|----------|----------|
+| `GetFlightInfo` | Получить метаданные (schema, endpoints) | `DESCRIBE TABLE` |
+| `DoGet` | Получить поток RecordBatch | `SELECT * FROM ...` |
+| `DoPut` | Отправить поток RecordBatch на сервер | `INSERT INTO ...` |
+| `DoExchange` | Двунаправленный поток (запрос + ответ) | Интерактивный запрос |
+| `ListFlights` | Список доступных datasets | `SHOW TABLES` |
+| `GetSchema` | Получить схему без данных | `DESCRIBE` (лёгкий) |
+| `DoAction` | Произвольное действие (create, delete) | Административные команды |
+
+### Endpoints и параллельное чтение
+
+`GetFlightInfo` возвращает список **endpoints** -- адреса серверов, с которых можно получить части данных. Это позволяет параллельное чтение:
+
+```
+GetFlightInfo("table_x") → [
+  Endpoint { locations: ["server-1:8815"], ticket: "partition_0" },
+  Endpoint { locations: ["server-2:8815"], ticket: "partition_1" },
+  Endpoint { locations: ["server-3:8815"], ticket: "partition_2" },
+]
+```
+
+Клиент отправляет `DoGet` на каждый endpoint параллельно и объединяет потоки RecordBatch. Ballista (распределённый DataFusion) использует именно этот механизм для передачи данных между executor-ами.
+
+## Flight SQL
+
+**Flight SQL** -- расширение Flight для SQL-интерфейса. Добавляет семантику SQL-запросов поверх Flight transport:
+
+- `CommandStatementQuery` -- выполнить SQL-запрос и получить результат как поток RecordBatch
+- `CommandPreparedStatementQuery` -- prepared statements с биндингами
+- `CommandGetCatalogs` / `CommandGetSchemas` / `CommandGetTables` -- metadata API
+
+```
+Клиент                                  Сервер
+  │                                       │
+  │─── GetFlightInfo(SQL: "SELECT...")────>│
+  │<── FlightInfo(schema, endpoints) ─────│
+  │                                       │
+  │─── DoGet(ticket) ────────────────────>│
+  │<── RecordBatch stream ───────────────│
+  │<── RecordBatch stream ───────────────│
+  │<── EOS ──────────────────────────────│
+```
+
+Flight SQL -- это альтернатива JDBC/ODBC с нативной Arrow-передачей данных. Вместо конвертации результатов в JDBC ResultSet (Java объекты) или ODBC буферы (C-структуры), клиент получает Arrow RecordBatch напрямую.
+
+<Callout type="note">
+DataFusion поддерживает Arrow IPC stream format нативно: результаты запросов можно стримить как Arrow IPC без промежуточной сериализации. Flight SQL сервер на базе DataFusion -- это тонкий слой gRPC поверх уже Arrow-нативного движка.
+</Callout>
+
+## Производительность: Arrow IPC vs альтернативы
+
+| Формат | Сериализация | Десериализация | Размер | Совместимость |
+|--------|-------------|---------------|--------|--------------|
+| Arrow IPC | Быстрая (копирование буферов) | Zero-copy | 1x (не сжат) | Arrow-native |
+| Parquet | Медленная (encode + compress) | Медленная (decompress + decode) | 0.1-0.3x | Универсальная |
+| CSV | Быстрая (текст) | Медленная (parse per value) | 2-5x | Универсальная |
+| JSON | Быстрая (текст) | Медленная (parse per value) | 3-10x | Универсальная |
+| Protobuf | Средняя (encode) | Средняя (decode) | 0.3-0.5x | gRPC-native |
+
+Arrow IPC выигрывает по скорости десериализации: она фактически бесплатна. Проигрывает по размеру (нет компрессии по умолчанию). Для передачи по сети Flight поддерживает опциональное LZ4/ZSTD-сжатие буферов.
+
+## Где используется Flight
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Ballista** -- распределённый DataFusion, exchange данных между executor-ами через Flight
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Dremio** -- Arrow Flight как основной интерфейс доступа к данным
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **InfluxDB 3.0** -- Flight SQL для запросов к time-series данным (движок на DataFusion)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **ADBC (Arrow Database Connectivity)** -- использует Flight SQL как transport layer
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Arrow IPC -- бинарный формат для Arrow-данных: stream (потоковый) и file (с индексом)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Zero-copy десериализация: чтение metadata + установка указателей, данные не копируются
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Arrow Flight -- gRPC-протокол для передачи Arrow по сети без Protobuf-сериализации
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Flight SQL добавляет SQL-семантику (запросы, prepared statements, metadata)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Ballista и InfluxDB используют Flight для распределённой передачи данных

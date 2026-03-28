@@ -1,0 +1,176 @@
+---
+title: "Capstone: проектирование аналитического движка"
+description: "Постановка задачи, спецификация требований, архитектурное проектирование мини аналитической системы на DataFusion Python"
+order: 1
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["capstone", "architecture", "requirements", "DataFusion Python", "analytics engine", "system design"]
+---
+
+# Capstone: проектирование аналитического движка
+
+На протяжении курса вы изучали DataFusion послойно: от Arrow-формата ([модуль 1](/course/01-arrow-foundation/01-what-is-apache-arrow)) через архитектуру движка ([модуль 2](/course/02-architecture/01-high-level-overview)) до распределённого выполнения ([модуль 8](/course/08-distributed-execution/01-distributed-computing-basics)). В этом модуле вы соберёте знания воедино, спроектировав и реализовав мини аналитический движок.
+
+## Задание
+
+Построить аналитическую систему на DataFusion Python, которая:
+
+1. **Загружает данные** из Parquet-файлов (arrow-формат на диске --- [модуль 1](/course/01-arrow-foundation/03-parquet-format))
+2. **Регистрирует пользовательские функции** (UDF/UDAF --- [модуль 4](/course/04-datafusion-python/04-udf-and-udaf))
+3. **Выполняет SQL-запросы** и DataFrame-операции ([модуль 3](/course/03-sql-dataframe-api/01-sql-basics) и [модуль 4](/course/04-datafusion-python/02-dataframe-in-python))
+4. **Генерирует отчёты** в Parquet-формате
+5. **Использует расширяемость** DataFusion (кастомные источники --- [модуль 5](/course/05-extensibility/01-extension-points))
+
+## Контекст: почему DataFusion Python
+
+В [модуле 4](/course/04-datafusion-python/01-installation-and-context) вы освоили Python-биндинги DataFusion. Для capstone-проекта Python --- оптимальный выбор:
+
+- **Быстрый прототип**: Python позволяет итерировать без компиляции Rust
+- **Тот же движок**: Python API вызывает тот же Rust-код через PyO3 --- производительность на уровне нативного DataFusion
+- **Готовая экосистема**: PyArrow, Pandas, Parquet --- всё доступно из pip
+
+<Callout type="note">
+Capstone-проект не требует знания Rust. Все упражнения выполняются на DataFusion Python, который вы изучали в модуле 4.
+</Callout>
+
+## Спецификация требований
+
+### Данные
+
+Система работает с двумя Parquet-файлами:
+
+<DiagramContainer title="Схема данных" className="my-6">
+  <FlowRow className="gap-6 justify-center flex-wrap">
+    <DataBox label="sales_events.parquet" className="border-blue-500/30 w-72">
+      <div className="text-xs font-mono space-y-0.5">
+        <div>event_id: INT64 --- идентификатор</div>
+        <div>timestamp: STRING --- время события</div>
+        <div>category: STRING --- категория товара</div>
+        <div>region: STRING --- регион продажи</div>
+        <div>channel: STRING --- канал (web/mobile/store)</div>
+        <div>amount: FLOAT64 --- сумма</div>
+        <div>quantity: INT32 --- количество</div>
+        <div>user_id: INT64 --- пользователь</div>
+      </div>
+    </DataBox>
+    <DataBox label="products.parquet" className="border-emerald-500/30 w-72">
+      <div className="text-xs font-mono space-y-0.5">
+        <div>product_id: INT64 --- идентификатор</div>
+        <div>name: STRING --- название</div>
+        <div>category: STRING --- категория</div>
+        <div>base_price: FLOAT64 --- базовая цена</div>
+        <div>weight_kg: FLOAT64 --- вес (кг)</div>
+      </div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+10 000 записей о продажах и 200 продуктов в 5 категориях. Данные генерируются при сборке Docker-образа (скрипт `generate_data.py`).
+
+### Функциональные требования
+
+| Требование | Описание | Модуль курса |
+|---|---|---|
+| FR-1 | Автоматическая регистрация Parquet-файлов как таблиц | M04: `register_parquet` |
+| FR-2 | Скалярный UDF для классификации выручки | M04: `udf()` |
+| FR-3 | Агрегатный UDAF для средневзвешенного значения | M04: `Accumulator` |
+| FR-4 | SQL-аналитика: сводки, группировки, сортировки | M03: SQL API |
+| FR-5 | DataFrame-аналитика: фильтрация, агрегация | M04: DataFrame API |
+| FR-6 | Экспорт отчётов в Parquet | M01: Parquet формат |
+
+### Архитектура
+
+<DiagramContainer title="Архитектура мини аналитического движка" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="input">Parquet-файлы</FlowNode>
+      <FlowNode variant="input">CSV / JSON (опционально)</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <DataBox label="DataLoader" className="border-blue-500/30 mx-auto w-80">
+      <div className="text-xs">Автоматическая регистрация источников данных</div>
+      <div className="text-xs">register_parquet / register_csv</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="SessionContext + UDF Registry" className="border-emerald-500/30 mx-auto w-80">
+      <div className="text-xs">Ядро движка: SQL, DataFrame, пользовательские функции</div>
+      <div className="text-xs">classify_amount, revenue_tier, weighted_avg</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <DataBox label="SQL-запросы" className="border-amber-500/30 w-56">
+        <div className="text-xs">GROUP BY, JOIN, ORDER BY</div>
+        <div className="text-xs">Сводки, топы, аналитика</div>
+      </DataBox>
+      <DataBox label="DataFrame API" className="border-purple-500/30 w-56">
+        <div className="text-xs">filter, aggregate, select</div>
+        <div className="text-xs">Программная обработка</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowNode variant="output">Parquet-отчёты (data/reports/)</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+Движок состоит из четырёх слоёв:
+
+1. **DataLoader** --- регистрирует файлы данных как таблицы в SessionContext. Аналог каталога в полноценных системах ([модуль 5](/course/05-extensibility/02-custom-table-providers) --- кастомные TableProvider).
+
+2. **UDF Registry** --- регистрирует бизнес-функции. В промышленных системах это часть плагин-архитектуры ([модуль 5](/course/05-extensibility/04-custom-functions) --- кастомные функции).
+
+3. **Query Layer** --- SQL и DataFrame API для аналитических запросов. DataFusion транслирует оба интерфейса в один LogicalPlan ([модуль 2](/course/02-architecture/03-logical-plan)).
+
+4. **Report Generator** --- сохраняет результаты в Parquet. В production-системах этот слой отправляет данные в объектное хранилище или Flight-сервис ([модуль 4](/course/04-datafusion-python/06-advanced-patterns)).
+
+## Подготовка к лабораторной
+
+### Развёртывание среды
+
+Лабораторные файлы находятся в `labs/capstone/`. Для запуска Docker-среды:
+
+```bash
+cd labs/capstone
+docker compose up -d --build
+docker compose exec lab bash
+```
+
+### Структура упражнений
+
+Три упражнения с нарастающей сложностью:
+
+| Упражнение | Файл | Цель |
+|---|---|---|
+| 1. Исследование данных | `exercises/01_explore_data.py` | Чтение Parquet, SQL, DataFrame API |
+| 2. Пользовательские функции | `exercises/02_custom_udf.py` | UDF, UDAF, комбинированные запросы |
+| 3. Аналитический движок | `exercises/03_analytics_engine.py` | Полный конвейер: загрузка, UDF, аналитика, отчёты |
+
+Каждое упражнение содержит блоки `TODO` с подсказками. Раскомментируйте код и дополните реализацию.
+
+<Callout type="tip">
+Начните с упражнения 1 --- оно закрепляет базовые операции из модуля 4. Упражнение 3 объединяет всё в единый движок.
+</Callout>
+
+## Самопроверка перед лабораторной
+
+Перед тем как перейти к практике, убедитесь, что вы помните ключевые концепции:
+
+- **SessionContext** --- точка входа в DataFusion Python. Создаётся один раз, используется для регистрации данных и выполнения запросов. Подробно --- [урок 4.1](/course/04-datafusion-python/01-installation-and-context).
+
+- **register_parquet** --- регистрирует файл как таблицу. После регистрации файл доступен по имени в SQL-запросах. Подробно --- [урок 4.1](/course/04-datafusion-python/01-installation-and-context).
+
+- **udf()** --- создаёт скалярную пользовательскую функцию. Принимает Python-функцию, типы аргументов, тип результата и volatility. Подробно --- [урок 4.4](/course/04-datafusion-python/04-udf-and-udaf).
+
+- **Accumulator** --- базовый класс для UDAF. Реализует `state()`, `update()`, `merge()`, `evaluate()`. Подробно --- [урок 4.4](/course/04-datafusion-python/04-udf-and-udaf).
+
+- **write_parquet** --- сохраняет DataFrame в Parquet-файл. Подробно --- [урок 4.2](/course/04-datafusion-python/02-dataframe-in-python).
+
+## Итоги
+
+В этом уроке вы получили:
+
+- Постановку capstone-задачи --- мини аналитический движок на DataFusion Python
+- Спецификацию данных и функциональных требований
+- Архитектуру системы с чёткими слоями
+- Подготовку Docker-среды для лабораторной работы
+
+В следующем уроке переходим к практике --- реализуем движок в Docker-лаборатории.

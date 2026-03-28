@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "02-architecture/06-crate-architecture",
+  "moduleId": "02-architecture",
+  "_meta": {
+    "idPrefix": "df-m02-06"
+  },
+  "questions": [
+    {
+      "id": "df-m02-06-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion разбит на отдельные Rust crate. Какой crate содержит фундаментальные типы DFSchema, ScalarValue и DataFusionError?",
+      "options": [
+        {
+          "id": "a",
+          "text": "datafusion-expr"
+        },
+        {
+          "id": "b",
+          "text": "datafusion-common"
+        },
+        {
+          "id": "c",
+          "text": "datafusion-execution"
+        },
+        {
+          "id": "d",
+          "text": "datafusion (meta-crate)"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "datafusion-common — фундамент всей архитектуры: DFSchema (схема с qualifier table.column), ScalarValue (скалярные значения), DataFusionError (единый тип ошибок) и Statistics. Все остальные crate зависят от datafusion-common.",
+      "bloomLevel": "conceptual",
+      "studyHint": "datafusion-common — дно графа зависимостей. Всё остальное строится поверх."
+    },
+    {
+      "id": "df-m02-06-q2",
+      "type": "multiple-choice",
+      "question": "Система хочет использовать SQL-парсинг и оптимизацию от DataFusion, но выполнять план собственным GPU-движком. Какие crate нужно подключить?",
+      "options": [
+        {
+          "id": "a",
+          "text": "datafusion (полный meta-crate) — нельзя подключить частично"
+        },
+        {
+          "id": "b",
+          "text": "datafusion-common, datafusion-expr, datafusion-sql, datafusion-optimizer — без datafusion-physical-plan"
+        },
+        {
+          "id": "c",
+          "text": "Только datafusion-sql — он содержит всё необходимое"
+        },
+        {
+          "id": "d",
+          "text": "datafusion-physical-plan и datafusion-execution"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Модульная архитектура позволяет зависеть на подмножество: datafusion-common (типы), datafusion-expr (LogicalPlan, Expr, TableProvider), datafusion-sql (SQL → LogicalPlan), datafusion-optimizer (правила оптимизации). Без datafusion-physical-plan — своя реализация выполнения на GPU.",
+      "bloomLevel": "applied",
+      "studyHint": "Зависимости направлены вниз: sql зависит от expr, но не от physical-plan. Можно брать только логический уровень."
+    },
+    {
+      "id": "df-m02-06-q3",
+      "type": "multiple-choice",
+      "question": "datafusion-expr содержит LogicalPlan и Expr. Почему этот crate называется чисто декларативным уровнем?",
+      "options": [
+        {
+          "id": "a",
+          "text": "LogicalPlan описывает ЧТО вычислить, но не содержит кода выполнения. Это дерево операций, не привязанное к конкретным алгоритмам или hardware"
+        },
+        {
+          "id": "b",
+          "text": "Потому что все типы помечены #[derive(Debug)] — декларативный стиль Rust"
+        },
+        {
+          "id": "c",
+          "text": "Потому что crate содержит только макросы"
+        },
+        {
+          "id": "d",
+          "text": "Потому что LogicalPlan описывается в YAML, не в Rust"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "datafusion-expr — декларативный уровень: LogicalPlan описывает, что вычислить (Projection, Filter, Join), Expr описывает выражения. Никакого кода выполнения: нет hash table для join, нет сортировки, нет I/O. Код выполнения живёт в datafusion-physical-plan и datafusion-physical-expr.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Декларативный = описание. Императивный = выполнение. LogicalPlan = описание, ExecutionPlan = выполнение."
+    },
+    {
+      "id": "df-m02-06-q4",
+      "type": "multiple-choice",
+      "question": "Все crate DataFusion выпускаются с одним номером версии (например, 52.3). Какое свойство версионирования это обеспечивает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Синхронный релиз: не нужно подбирать совместимые версии между crate — datafusion-common 52.3 гарантированно совместим с datafusion-expr 52.3"
+        },
+        {
+          "id": "b",
+          "text": "Semver-совместимость: код, написанный для 52.x, работает с 52.y без изменений"
+        },
+        {
+          "id": "c",
+          "text": "Все crate содержат идентичный код, отличаются только feature flags"
+        },
+        {
+          "id": "d",
+          "text": "Номер версии не имеет значения — crate совместимы всегда"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Синхронное версионирование упрощает управление зависимостями: все crate DataFusion используют один номер версии. DataFusion пока не обещает semver-совместимость на уровне API — breaking changes возможны между minor-версиями. Релизы выходят ежемесячно.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Синхронный номер версии = простота. Но breaking changes возможны — DataFusion ещё не на semver."
+    },
+    {
+      "id": "df-m02-06-q5",
+      "type": "multiple-choice",
+      "question": "Каждый crate DataFusion предоставляет trait для расширения. Какой crate содержит trait OptimizerRule для создания пользовательских правил оптимизации?",
+      "options": [
+        {
+          "id": "a",
+          "text": "datafusion-expr"
+        },
+        {
+          "id": "b",
+          "text": "datafusion-common"
+        },
+        {
+          "id": "c",
+          "text": "datafusion-optimizer"
+        },
+        {
+          "id": "d",
+          "text": "datafusion-physical-plan"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "datafusion-optimizer содержит Optimizer (цепочку правил) и trait OptimizerRule. Каждое правило реализует try_optimize(), которое трансформирует LogicalPlan. Встроенные правила: FilterPushdown, ProjectionPushdown, ConstantFolding и десятки других. Вы можете добавить свои правила или отключить встроенные.",
+      "bloomLevel": "applied",
+      "studyHint": "Точки расширения по crate: TableProvider в expr, OptimizerRule в optimizer, ExecutionPlan в physical-plan."
+    }
+  ]
+}

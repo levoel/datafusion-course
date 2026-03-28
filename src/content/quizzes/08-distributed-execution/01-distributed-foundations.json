@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "08-distributed-execution/01-distributed-foundations",
+  "moduleId": "08-distributed-execution",
+  "_meta": { "idPrefix": "df-m08-01" },
+  "questions": [
+    {
+      "id": "df-m08-01-q1",
+      "type": "multiple-choice",
+      "question": "Какие три класса задач требуют распределённого выполнения вместо однопроцессного DataFusion?",
+      "options": [
+        { "id": "a", "text": "Объём данных превышает память одного узла, вычислительная сложность не помещается в допустимое время, данные изначально распределены по нескольким узлам" },
+        { "id": "b", "text": "Необходимость использования GPU, нехватка оперативной памяти, отсутствие поддержки SQL" },
+        { "id": "c", "text": "Требование к высокой доступности, репликация данных, отказоустойчивость" },
+        { "id": "d", "text": "Ограничение DataFusion одним ядром CPU, отсутствие параллелизма, невозможность чтения Parquet" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Три класса: (1) объём > RAM одного узла — spill-to-disk медленный при терабайтах, (2) вычислительная сложность — multi-way join, оконные функции по миллиардам строк занимают минуты на одном узле, (3) данные изначально распределены — шардированные архитектуры (InfluxDB IOx, GreptimeDB) хранят данные на разных узлах.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Три причины распределения: объём > RAM, сложность > допустимое время, данные уже на разных узлах. DataFusion с target_partitions покрывает большинство аналитических сценариев до этих порогов."
+    },
+    {
+      "id": "df-m08-01-q2",
+      "type": "multiple-choice",
+      "question": "RepartitionExec поддерживает три стратегии перераспределения. Какая используется для co-location данных при JOIN и GROUP BY?",
+      "options": [
+        { "id": "a", "text": "Hash — строки с одинаковым ключом попадают в одну партицию, обеспечивая co-location для join и group by" },
+        { "id": "b", "text": "RoundRobin — циклическое распределение строк по партициям обеспечивает равномерную загрузку" },
+        { "id": "c", "text": "UnknownPartitioning — количество партиций известно, но распределение не определено" },
+        { "id": "d", "text": "SortPartitioning — сортировка по ключу для merge join" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Hash([col], n) вычисляет хеш ключа и направляет строку в партицию hash(key) % n. Это гарантирует, что все строки с одинаковым ключом окажутся в одной партиции — необходимое условие для HashJoin и HashAggregate. RoundRobin используется для равномерной загрузки, UnknownPartitioning — формальная обёртка.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Hash = co-location для join/group by. RoundRobin = равномерная загрузка. UnknownPartitioning = кол-во известно, распределение — нет."
+    },
+    {
+      "id": "df-m08-01-q3",
+      "type": "multiple-choice",
+      "question": "В однопроцессном DataFusion RepartitionExec перемещает RecordBatch между потоками через crossbeam-каналы. Что меняется в распределённой системе?",
+      "options": [
+        { "id": "a", "text": "Данные сериализуются в Arrow IPC, передаются по сети между executor-ами и десериализуются — вместо crossbeam-каналов в памяти используется сетевой shuffle" },
+        { "id": "b", "text": "RepartitionExec заменяется на новый оператор, не связанный с DataFusion" },
+        { "id": "c", "text": "Ничего не меняется — crossbeam-каналы работают между узлами через shared memory" },
+        { "id": "d", "text": "Данные всегда записываются на диск — сетевая передача не используется" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "В однопроцессном DataFusion RepartitionExec перемещает данные через crossbeam-каналы в памяти одного процесса — это быстро. В распределённой системе RepartitionExec становится точкой сетевого shuffle: данные сериализуются (обычно Arrow IPC), передаются по сети и десериализуются. Сеть — на порядки медленнее, становясь главным bottleneck.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Однопроцессно: crossbeam channels (в памяти). Распределённо: Arrow IPC по сети. Сеть — главный bottleneck."
+    },
+    {
+      "id": "df-m08-01-q4",
+      "type": "multiple-choice",
+      "question": "Физический план HashJoin с двумя Parquet-источниками разбивается на query stages. Stage 1 и Stage 2 читают данные и выполняют ShuffleWriter. В каком порядке выполняются stage?",
+      "options": [
+        { "id": "a", "text": "Stage 1 и Stage 2 выполняются параллельно (оба читают и пишут shuffle), Stage 3 (HashJoin) начинается только после завершения обоих — это DAG зависимостей" },
+        { "id": "b", "text": "Строго последовательно: Stage 1, затем Stage 2, затем Stage 3" },
+        { "id": "c", "text": "Все три stage выполняются одновременно в streaming-режиме" },
+        { "id": "d", "text": "Порядок случайный — scheduler выбирает произвольно" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Query stages образуют DAG зависимостей. Stage 1 (scan orders → shuffle) и Stage 2 (scan customers → shuffle) не зависят друг от друга — scheduler запускает их параллельно. Stage 3 (ShuffleReader + HashJoin) зависит от обоих — начинается только после завершения Stage 1 и Stage 2.",
+      "bloomLevel": "applied",
+      "studyHint": "Stage без зависимостей → параллельно. Stage с зависимостями → ждёт завершения входных. DAG = directed acyclic graph."
+    },
+    {
+      "id": "df-m08-01-q5",
+      "type": "multiple-choice",
+      "question": "Переход от однопроцессного к распределённому выполнению затрагивает три аспекта. Какой из них отсутствует в однопроцессном DataFusion и должен быть добавлен внешней системой?",
+      "options": [
+        { "id": "a", "text": "Отказоустойчивость: в однопроцессном DataFusion ошибка роняет весь процесс, а в распределённой системе scheduler должен перезапустить задачу на другом executor-е или вернуть ошибку" },
+        { "id": "b", "text": "Партиционирование: однопроцессный DataFusion не поддерживает разбиение на партиции" },
+        { "id": "c", "text": "Чтение Parquet: однопроцессный DataFusion не может читать columnar форматы" },
+        { "id": "d", "text": "SQL-парсинг: распределённая система требует собственный SQL-парсер" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Три аспекта перехода: координация (scheduler вместо одного SessionContext), shuffle (сеть вместо crossbeam), отказоустойчивость (retry/reschedule при падении executor-а). В однопроцессном DataFusion отказоустойчивости нет — ошибка = весь процесс. Планировщик решает: перезапустить задачу или вернуть ошибку.",
+      "bloomLevel": "analytical",
+      "studyHint": "Три аспекта: координация, shuffle, отказоустойчивость. Все три отсутствуют в однопроцессном DataFusion и добавляются внешней системой."
+    }
+  ]
+}

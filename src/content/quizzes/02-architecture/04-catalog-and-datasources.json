@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "02-architecture/04-catalog-and-datasources",
+  "moduleId": "02-architecture",
+  "_meta": {
+    "idPrefix": "df-m02-04"
+  },
+  "questions": [
+    {
+      "id": "df-m02-04-q1",
+      "type": "multiple-choice",
+      "question": "Система каталогов DataFusion имеет три уровня. Какова правильная иерархия?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CatalogProvider → SchemaProvider → TableProvider (catalog.schema.table)"
+        },
+        {
+          "id": "b",
+          "text": "TableProvider → SchemaProvider → CatalogProvider (table.schema.catalog)"
+        },
+        {
+          "id": "c",
+          "text": "SessionContext → TableProvider → RecordBatch"
+        },
+        {
+          "id": "d",
+          "text": "DatabaseProvider → CollectionProvider → DocumentProvider"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Три уровня: CatalogProvider (верхний, содержит схемы) → SchemaProvider (средний, содержит таблицы) → TableProvider (нижний, знает как читать данные). Именование catalog.schema.table аналогично PostgreSQL. По умолчанию DataFusion создаёт каталог \"datafusion\" со схемой \"public\".",
+      "bloomLevel": "conceptual",
+      "studyHint": "Запомните аналогию с PostgreSQL: SELECT * FROM orders = datafusion.public.orders."
+    },
+    {
+      "id": "df-m02-04-q2",
+      "type": "multiple-choice",
+      "question": "Метод TableProvider::scan() принимает параметры projection, filters и limit. Что они обеспечивают?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Декоративные подсказки для логирования — источник всегда читает все данные"
+        },
+        {
+          "id": "b",
+          "text": "Pushdown-оптимизации: projection сужает колонки, filters передают предикаты для пропуска строк, limit ограничивает количество — всё на уровне источника данных, до передачи в plan tree"
+        },
+        {
+          "id": "c",
+          "text": "Параметры кеширования для повторных запросов"
+        },
+        {
+          "id": "d",
+          "text": "Настройки сжатия для выходного потока"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Три параметра scan() — pushdown-оптимизации: projection (какие колонки читать — остальные пропускаются), filters (предикаты для пропуска ненужных строк — в Parquet используют row group statistics), limit (максимум строк). Источник обрабатывает их до передачи данных в plan tree, минимизируя объём.",
+      "bloomLevel": "applied",
+      "studyHint": "scan() возвращает ExecutionPlan — физический оператор, встроенный в дерево выполнения."
+    },
+    {
+      "id": "df-m02-04-q3",
+      "type": "multiple-choice",
+      "question": "ListingTable обнаруживает файлы в директории и поддерживает Hive-style partitioning (year=2024/month=03/). Какой формат он НЕ поддерживает из коробки?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Parquet"
+        },
+        {
+          "id": "b",
+          "text": "CSV"
+        },
+        {
+          "id": "c",
+          "text": "Protocol Buffers (protobuf)"
+        },
+        {
+          "id": "d",
+          "text": "JSON"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "ListingTable — универсальный провайдер для файловых источников: Parquet, CSV, JSON и Avro. Protocol Buffers не поддерживается из коробки — для нестандартных форматов нужен пользовательский TableProvider. ListingTable также поддерживает inference схемы, partition pruning и predicate pushdown.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Четыре встроенных формата: Parquet, CSV, JSON, Avro. Всё остальное — custom TableProvider."
+    },
+    {
+      "id": "df-m02-04-q4",
+      "type": "multiple-choice",
+      "question": "Вы реализуете пользовательский TableProvider для REST API. Метод scan() должен:",
+      "options": [
+        {
+          "id": "a",
+          "text": "Немедленно вызвать API и вернуть все данные в Vec<RecordBatch>"
+        },
+        {
+          "id": "b",
+          "text": "Вернуть Arc<dyn ExecutionPlan> — кастомный физический оператор, который вызовет API при execute() и вернёт SendableRecordBatchStream"
+        },
+        {
+          "id": "c",
+          "text": "Вернуть URL для прямого доступа из клиента"
+        },
+        {
+          "id": "d",
+          "text": "Записать данные в Parquet-файл и вернуть ListingTable"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "scan() возвращает Arc<dyn ExecutionPlan> — план, который будет встроен в дерево выполнения. Реальный вызов API произойдёт при execute(), когда верхний оператор запросит данные. Это сохраняет ленивость pipeline: scan() не загружает данные, а создаёт оператор для их загрузки.",
+      "bloomLevel": "applied",
+      "studyHint": "Паттерн: TableProvider::scan() → кастомный ExecutionPlan → при execute() вызывается API."
+    },
+    {
+      "id": "df-m02-04-q5",
+      "type": "multiple-choice",
+      "question": "Метод SchemaProvider::table() в DataFusion является асинхронным (async). Какую возможность это открывает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Таблицы загружаются быстрее за счёт многопоточности"
+        },
+        {
+          "id": "b",
+          "text": "Lazy loading метаданных: схема может загружать информацию о таблице из remote catalog (Hive Metastore, Iceberg REST, Unity Catalog) только при первом обращении"
+        },
+        {
+          "id": "c",
+          "text": "Таблицы автоматически обновляются при изменении данных"
+        },
+        {
+          "id": "d",
+          "text": "Асинхронность нужна для поддержки транзакций"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Асинхронный table() позволяет реализовать lazy loading: при обращении к таблице SchemaProvider может загрузить метаданные из удалённого каталога (Hive Metastore, Iceberg REST, Unity Catalog) по сети. Без async это заблокировало бы поток выполнения на время сетевого запроса.",
+      "bloomLevel": "conceptual",
+      "studyHint": "async + lazy loading = remote каталоги без блокировки. Метаданные загружаются при первом обращении."
+    }
+  ]
+}

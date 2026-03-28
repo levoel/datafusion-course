@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "01-arrow-foundation/04-ipc-and-flight",
+  "moduleId": "01-arrow-foundation",
+  "_meta": {
+    "idPrefix": "df-m01-04"
+  },
+  "questions": [
+    {
+      "id": "df-m01-04-q1",
+      "type": "multiple-choice",
+      "question": "Чем Arrow IPC Stream Format отличается от File Format (Feather)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Stream format сжимает данные, File format — нет"
+        },
+        {
+          "id": "b",
+          "text": "Stream format — последовательность сообщений без произвольного доступа. File format добавляет footer с индексами, позволяя читать конкретный RecordBatch без сканирования всего файла"
+        },
+        {
+          "id": "c",
+          "text": "Stream format работает только в памяти, File format — только на диске"
+        },
+        {
+          "id": "d",
+          "text": "File format хранит данные по строкам, Stream format — по колонкам"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Stream format — последовательность сообщений (Schema + RecordBatch + EOS) без возможности произвольного доступа, оптимален для потоковой передачи. File format добавляет footer с block index (offset + size каждого RecordBatch), позволяя читать конкретный batch напрямую. Оба формата колоночные.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Stream = последовательный доступ (pipeline). File = произвольный доступ (footer с индексами)."
+    },
+    {
+      "id": "df-m01-04-q2",
+      "type": "multiple-choice",
+      "question": "Что означает zero-copy десериализация в Arrow IPC?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Данные передаются в сжатом виде и распаковываются по требованию"
+        },
+        {
+          "id": "b",
+          "text": "Body IPC-сообщения содержит Arrow-буферы в нативном формате — десериализация сводится к чтению metadata и установке указателей, данные не копируются"
+        },
+        {
+          "id": "c",
+          "text": "Каждое значение конвертируется из текста в бинарный формат при чтении"
+        },
+        {
+          "id": "d",
+          "text": "Данные кешируются в RAM после первого чтения"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Arrow IPC body содержит буферы в нативном Arrow формате. Десериализация — это только чтение Flatbuffers metadata и установка указателей на буферы. Сами данные не копируются и не конвертируются. Для сравнения: CSV требует парсинга каждого значения из текста — 10 миллионов конвертаций для 1M строк x 10 колонок. Arrow IPC — ноль конвертаций.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Сравните: CSV = O(n) парсинг per value. Arrow IPC = O(1) — только metadata + указатели."
+    },
+    {
+      "id": "df-m01-04-q3",
+      "type": "multiple-choice",
+      "question": "Зачем нужен Arrow Flight, если уже существует gRPC + Protobuf?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Flight поддерживает больше языков программирования"
+        },
+        {
+          "id": "b",
+          "text": "Flight использует HTTP вместо gRPC, что проще для интеграции"
+        },
+        {
+          "id": "c",
+          "text": "gRPC с Protobuf требует сериализации в wire format и обратно. Flight передаёт Arrow IPC буферы напрямую через gRPC streams, минуя Protobuf-сериализацию данных"
+        },
+        {
+          "id": "d",
+          "text": "Flight работает быстрее, потому что не использует TCP/IP"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "gRPC + Protobuf сериализует данные в Protobuf wire format на каждой границе. Для аналитических нагрузок (миллионы строк) overhead сериализации доминирует. Arrow Flight передаёт нативные Arrow IPC буферы через gRPC streams, минуя Protobuf-сериализацию данных. Flight работает поверх gRPC, а не вместо него.",
+      "bloomLevel": "applied",
+      "studyHint": "Flight = gRPC transport + Arrow IPC payload. Protobuf используется только для metadata, не для данных."
+    },
+    {
+      "id": "df-m01-04-q4",
+      "type": "multiple-choice",
+      "question": "GetFlightInfo возвращает несколько endpoints с разными адресами серверов. Какую возможность это обеспечивает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Отказоустойчивость — если один сервер упадёт, данные доступны на другом"
+        },
+        {
+          "id": "b",
+          "text": "Параллельное чтение — клиент отправляет DoGet на каждый endpoint параллельно и объединяет потоки RecordBatch"
+        },
+        {
+          "id": "c",
+          "text": "Шифрование — каждый endpoint использует свой ключ"
+        },
+        {
+          "id": "d",
+          "text": "Версионирование — разные endpoints хранят разные версии данных"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Endpoints позволяют параллельное чтение: каждый endpoint содержит часть данных (partition), клиент отправляет DoGet на каждый параллельно и объединяет потоки. Ballista (распределённый DataFusion) использует этот механизм для обмена данными между executor-ами.",
+      "bloomLevel": "applied",
+      "studyHint": "Endpoints = partitions на разных серверах. Параллелизм чтения — аналог partition scan."
+    },
+    {
+      "id": "df-m01-04-q5",
+      "type": "multiple-choice",
+      "question": "Что такое Flight SQL и чем оно отличается от JDBC/ODBC?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Flight SQL — формат хранения SQL-запросов, JDBC/ODBC — протоколы передачи"
+        },
+        {
+          "id": "b",
+          "text": "Flight SQL добавляет SQL-семантику поверх Flight transport. Результаты возвращаются как Arrow RecordBatch, а не как JDBC ResultSet или ODBC буферы, исключая промежуточную конвертацию"
+        },
+        {
+          "id": "c",
+          "text": "Flight SQL и JDBC/ODBC идентичны по производительности"
+        },
+        {
+          "id": "d",
+          "text": "Flight SQL работает только с DataFusion, JDBC/ODBC — универсальны"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Flight SQL — расширение Flight для SQL-интерфейса. Добавляет SQL-семантику (CommandStatementQuery, prepared statements, metadata API) поверх Flight transport. Результаты — Arrow RecordBatch напрямую, без конвертации в JDBC ResultSet (Java objects) или ODBC буферы (C-структуры).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Flight SQL = SQL-интерфейс + Arrow-нативная передача. JDBC/ODBC = SQL-интерфейс + промежуточная конвертация."
+    }
+  ]
+}

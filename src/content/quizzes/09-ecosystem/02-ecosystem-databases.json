@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "09-ecosystem/02-ecosystem-databases",
+  "moduleId": "09-ecosystem",
+  "_meta": { "idPrefix": "df-m09-02" },
+  "questions": [
+    {
+      "id": "df-m09-02-q1",
+      "type": "multiple-choice",
+      "question": "Какой результат получил Arroyo после миграции своего stream processing engine на DataFusion?",
+      "options": [
+        { "id": "a", "text": "3x рост throughput за счёт оптимизаций Arrow и DataFusion, SQL-совместимость «из коробки» вместо собственного парсера, возможность переиспользовать UDF-экосистему DataFusion" },
+        { "id": "b", "text": "Arroyo стал batch-системой — стриминг больше не поддерживается" },
+        { "id": "c", "text": "Throughput снизился, но улучшилась совместимость с Kafka" },
+        { "id": "d", "text": "Миграция не завершена — Arroyo по-прежнему использует собственный движок" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "До DataFusion Arroyo использовал собственный query engine. После миграции: 3x рост throughput благодаря оптимизациям Arrow и DataFusion, SQL-совместимость из коробки (вместо собственного парсера), доступ к UDF-экосистеме DataFusion. Стриминговые расширения (watermarks, windows) реализованы через кастомные LogicalPlan узлы и ExecutionPlan.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Arroyo + DataFusion → 3x throughput, SQL из коробки, UDF-экосистема. Streaming-специфика через кастомные plan узлы."
+    },
+    {
+      "id": "df-m09-02-q2",
+      "type": "multiple-choice",
+      "question": "Почему DataFusion подходит для observability-платформы OpenObserve? Какие свойства observability-данных делают его эффективным?",
+      "options": [
+        { "id": "a", "text": "Логи, метрики и трейсы — колоночные данные с timestamp; запросы — агрегации по времени и фильтрация (классические аналитические паттерны); DataFusion + Parquet дают columnar-аналитику на петабайтах записей" },
+        { "id": "b", "text": "DataFusion имеет встроенную поддержку OpenTelemetry протокола" },
+        { "id": "c", "text": "DataFusion заменяет Elasticsearch полностью, включая full-text search" },
+        { "id": "d", "text": "Observability-данные всегда маленькие — DataFusion хорош только для малых объёмов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Observability-данные (логи, метрики, трейсы) — это колоночные данные с timestamp. Типичные запросы: агрегации по времени, фильтрация по полям, top-N — классические аналитические паттерны. Объём: петабайты логов, триллионы записей. DataFusion + Parquet дают производительность columnar-аналитики. Full-text search реализован через кастомные ScalarUDF (match_all, str_match).",
+      "bloomLevel": "analytical",
+      "studyHint": "Observability = аналитика с timestamp. Агрегации, фильтрация, top-N — то, в чём силён DataFusion + Parquet. Full-text — через кастомные UDF."
+    },
+    {
+      "id": "df-m09-02-q3",
+      "type": "multiple-choice",
+      "question": "Какую роль играет DataFusion (Tesseract) в семантическом слое Cube?",
+      "options": [
+        { "id": "a", "text": "Локальное выполнение запросов по кешированным/pre-aggregated данным без обращения к source database, оптимизация плана перед отправкой в целевую СУБД, multi-source join когда данные из разных источников" },
+        { "id": "b", "text": "DataFusion полностью заменяет все целевые СУБД (Snowflake, BigQuery) — Cube больше не обращается к ним" },
+        { "id": "c", "text": "Tesseract используется только для парсинга YAML-моделей Cube, не для выполнения запросов" },
+        { "id": "d", "text": "DataFusion в Cube только генерирует SQL-запросы — выполнение всегда на стороне целевой СУБД" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Tesseract использует DataFusion как промежуточный вычислительный слой: (1) локальное выполнение запросов по кешированным/pre-aggregated данным без обращения к source database, (2) оптимизация плана перед отправкой в целевую СУБД, (3) multi-source join когда данные приходят из разных источников. DataFusion не заменяет СУБД, а оптимизирует и кеширует то, что не нужно каждый раз запрашивать.",
+      "bloomLevel": "applied",
+      "studyHint": "Cube/Tesseract: DataFusion = промежуточный слой. Кеш + pre-aggregation + multi-source join. Не замена СУБД, а оптимизация."
+    },
+    {
+      "id": "df-m09-02-q4",
+      "type": "multiple-choice",
+      "question": "В чём ключевое различие между HoraeDB и GreptimeDB, если обе — time-series СУБД на DataFusion?",
+      "options": [
+        { "id": "a", "text": "HoraeDB: фокус на аналитических time-series запросах, LSM-tree с columnar layout, SQL + InfluxQL, hash-based sharding. GreptimeDB: мультимодальность (метрики + логи + события), SSTable engine, SQL + PromQL + Pipeline, region-based distribution" },
+        { "id": "b", "text": "Различий нет — это один и тот же проект под разными названиями" },
+        { "id": "c", "text": "HoraeDB поддерживает только метрики, GreptimeDB — только логи" },
+        { "id": "d", "text": "HoraeDB — production-ready, GreptimeDB — экспериментальный проект" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "HoraeDB: фокус на аналитических time-series, LSM-tree с columnar layout, API: SQL + InfluxQL, hash-based sharding по тегам. GreptimeDB: мультимодальность (метрики + логи + события), собственный SSTable engine, API: SQL + PromQL + Pipeline, region-based distribution. Оба подтверждают паттерн: DataFusion — универсальный SQL-движок для time-series СУБД с произвольной storage-моделью.",
+      "bloomLevel": "analytical",
+      "studyHint": "HoraeDB: аналитика, LSM-tree, SQL+InfluxQL. GreptimeDB: мультимодальность, SSTable, SQL+PromQL. Общее: DataFusion + кастомное хранилище."
+    },
+    {
+      "id": "df-m09-02-q5",
+      "type": "multiple-choice",
+      "question": "Какие точки расширения DataFusion использует OpenObserve для своих нужд?",
+      "options": [
+        { "id": "a", "text": "TableProvider (Parquet на S3/локальных дисках), ScalarUDF (full-text search: match_all, str_match), OptimizerRule (time-range pruning — пропуск файлов вне временного окна), PhysicalOptimizerRule (partition pruning по метаданным Parquet)" },
+        { "id": "b", "text": "OpenObserve форкнул DataFusion и модифицировал ядро — точки расширения не используются" },
+        { "id": "c", "text": "Только TableProvider для доступа к Elasticsearch" },
+        { "id": "d", "text": "OpenObserve использует DataFusion только для парсинга SQL — выполнение на собственном движке" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "OpenObserve расширяет DataFusion через четыре точки: TableProvider для доступа к Parquet-файлам на S3 и локальных дисках, ScalarUDF для full-text search функций (match_all, str_match), OptimizerRule для time-range pruning (пропуск файлов вне временного окна), PhysicalOptimizerRule для partition pruning по метаданным Parquet. Всё без модификации ядра DataFusion.",
+      "bloomLevel": "applied",
+      "studyHint": "OpenObserve → 4 точки: TableProvider (S3/disk), ScalarUDF (full-text), OptimizerRule (time pruning), PhysicalOptimizerRule (partition pruning)."
+    }
+  ]
+}

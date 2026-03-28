@@ -1,0 +1,458 @@
+---
+title: "TableProvider: собственный источник данных"
+description: "Полная реализация TableProvider trait: schema, scan, ExecutionPlan, MemoryStream, filter/projection pushdown и DataSink для записи"
+order: 3
+difficulty: "advanced"
+estimatedTime: 22
+topics: ["TableProvider", "ExecutionPlan", "MemoryStream", "filter pushdown", "projection pushdown", "DataSink", "SendableRecordBatchStream"]
+---
+
+# TableProvider: собственный источник данных
+
+Мы познакомились с `TableProvider` в модуле 02, где рассмотрели трёхуровневую систему каталогов и встроенные реализации (`ListingTable`, `MemTable`). Теперь реализуем `TableProvider` с нуля — от trait-методов до полноценного `ExecutionPlan` с поддержкой pushdown-оптимизаций.
+
+## От trait к работающему источнику
+
+`TableProvider` связывает DataFusion с произвольным хранилищем данных. Ключевой метод — `scan()`, который возвращает `ExecutionPlan`:
+
+<DiagramContainer title="TableProvider → ExecutionPlan Pipeline" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input">SQL: SELECT a, b FROM my_source WHERE a &gt; 10</FlowNode>
+    <Arrow direction="down" label="Планировщик" />
+    <FlowNode variant="process">TableProvider::scan(projection=[0,1], filters=[a &gt; 10], limit=None)</FlowNode>
+    <Arrow direction="down" label="Физический план" />
+    <FlowNode variant="process">ExecutionPlan::execute(partition) → RecordBatchStream</FlowNode>
+    <Arrow direction="down" label="Потоковое чтение" />
+    <FlowNode variant="output">RecordBatch → RecordBatch → ... → конец потока</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+## Минимальная реализация
+
+Начнём с простейшего случая — in-memory источник без pushdown:
+
+```rust
+use datafusion::datasource::TableProvider;
+use datafusion::logical_expr::{Expr, TableType};
+use datafusion::physical_plan::ExecutionPlan;
+use datafusion::physical_plan::memory::MemoryExec;
+use datafusion::arrow::datatypes::{Schema, SchemaRef, Field, DataType};
+use datafusion::arrow::array::{Int64Array, StringArray, RecordBatch};
+use datafusion::execution::context::SessionState;
+use datafusion::common::Result;
+use async_trait::async_trait;
+use std::sync::Arc;
+use std::any::Any;
+
+struct InMemorySource {
+    schema: SchemaRef,
+    data: Vec<RecordBatch>,
+}
+
+impl InMemorySource {
+    fn new() -> Self {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("id", DataType::Int64, false),
+            Field::new("name", DataType::Utf8, true),
+            Field::new("score", DataType::Int64, true),
+        ]));
+
+        let batch = RecordBatch::try_new(
+            schema.clone(),
+            vec![
+                Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5])),
+                Arc::new(StringArray::from(vec!["Alice", "Bob", "Carol", "Dave", "Eve"])),
+                Arc::new(Int64Array::from(vec![95, 87, 73, 91, 68])),
+            ],
+        ).unwrap();
+
+        Self { schema, data: vec![batch] }
+    }
+}
+
+#[async_trait]
+impl TableProvider for InMemorySource {
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn schema(&self) -> SchemaRef {
+        self.schema.clone()
+    }
+
+    fn table_type(&self) -> TableType {
+        TableType::Base
+    }
+
+    async fn scan(
+        &self,
+        _state: &dyn datafusion::catalog::Session,
+        projection: Option<&Vec<usize>>,
+        _filters: &[Expr],
+        _limit: Option<usize>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        let batches = vec![self.data.clone()]; // Vec<Vec<RecordBatch>> — по одному Vec на партицию
+        Ok(Arc::new(MemoryExec::try_new(
+            &batches,
+            self.schema.clone(),
+            projection.cloned(),
+        )?))
+    }
+}
+
+// Регистрация и использование
+async fn demo() -> Result<()> {
+    let ctx = datafusion::prelude::SessionContext::new();
+    ctx.register_table("my_source", Arc::new(InMemorySource::new()))?;
+
+    let df = ctx.sql("SELECT name, score FROM my_source WHERE score > 80").await?;
+    df.show().await?;
+    Ok(())
+}
+```
+
+<Callout type="note">
+`MemoryExec` — встроенный `ExecutionPlan`, который возвращает заранее вычисленные `RecordBatch`. Для простых случаев это всё, что нужно. Для настоящих источников (API, БД, файлы) потребуется собственный `ExecutionPlan`.
+</Callout>
+
+## Собственный ExecutionPlan
+
+Когда данные не помещаются в память или должны загружаться лениво, реализуйте свой `ExecutionPlan`:
+
+```rust
+use datafusion::physical_plan::{
+    ExecutionPlan, PlanProperties, Partitioning,
+    DisplayAs, DisplayFormatType, ExecutionMode,
+};
+use datafusion::physical_expr::EquivalenceProperties;
+use datafusion::execution::TaskContext;
+use datafusion::arrow::datatypes::SchemaRef;
+use datafusion::common::Result;
+use datafusion::physical_plan::stream::RecordBatchStreamAdapter;
+use std::sync::Arc;
+use std::any::Any;
+use futures::stream;
+
+#[derive(Debug)]
+struct HttpSourceExec {
+    url: String,
+    schema: SchemaRef,
+    projection: Option<Vec<usize>>,
+    properties: PlanProperties,
+}
+
+impl HttpSourceExec {
+    fn new(url: String, schema: SchemaRef, projection: Option<Vec<usize>>) -> Self {
+        let projected_schema = match &projection {
+            Some(p) => Arc::new(schema.project(p).unwrap()),
+            None => schema.clone(),
+        };
+
+        let properties = PlanProperties::new(
+            EquivalenceProperties::new(projected_schema.clone()),
+            Partitioning::UnknownPartitioning(1),  // 1 партиция
+            ExecutionMode::Bounded,
+        );
+
+        Self { url, schema, projection, properties }
+    }
+}
+
+impl DisplayAs for HttpSourceExec {
+    fn fmt_as(&self, _t: DisplayFormatType, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "HttpSourceExec: url={}", self.url)
+    }
+}
+
+impl ExecutionPlan for HttpSourceExec {
+    fn name(&self) -> &str { "HttpSourceExec" }
+    fn as_any(&self) -> &dyn Any { self }
+
+    fn schema(&self) -> SchemaRef {
+        match &self.projection {
+            Some(p) => Arc::new(self.schema.project(p).unwrap()),
+            None => self.schema.clone(),
+        }
+    }
+
+    fn properties(&self) -> &PlanProperties {
+        &self.properties
+    }
+
+    fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> {
+        vec![]  // Leaf node — нет дочерних планов
+    }
+
+    fn with_new_children(
+        self: Arc<Self>,
+        _children: Vec<Arc<dyn ExecutionPlan>>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        Ok(self)  // Leaf node — нечего заменять
+    }
+
+    fn execute(
+        &self,
+        _partition: usize,
+        _context: Arc<TaskContext>,
+    ) -> Result<datafusion::physical_plan::SendableRecordBatchStream> {
+        let schema = self.schema();
+        let url = self.url.clone();
+
+        // Создаём асинхронный поток RecordBatch
+        let stream = stream::once(async move {
+            // В реальной реализации: HTTP-запрос к url, парсинг ответа
+            let batch = fetch_data_from_url(&url).await?;
+            Ok(batch)
+        });
+
+        Ok(Box::pin(RecordBatchStreamAdapter::new(schema, stream)))
+    }
+}
+```
+
+<Callout type="warning">
+`PlanProperties` — обязательная часть `ExecutionPlan` в DataFusion 52.x. Он описывает ordering (сортировку), partitioning (параллелизм) и execution mode (bounded/unbounded). Оптимизатор использует эти свойства для placement операторов Sort и Repartition.
+</Callout>
+
+## Filter Pushdown
+
+Filter pushdown позволяет источнику отфильтровать данные самостоятельно, до того как DataFusion применит оператор Filter. Это критично для удалённых источников — вместо загрузки всех данных и фильтрации в памяти, источник выполняет фильтрацию на стороне хранилища.
+
+```rust
+use datafusion::datasource::TableProviderFilterPushDown;
+
+#[async_trait]
+impl TableProvider for HttpSource {
+    // ... schema, table_type ...
+
+    fn supports_filters_pushdown(
+        &self,
+        filters: &[&Expr],
+    ) -> Result<Vec<TableProviderFilterPushDown>> {
+        filters.iter().map(|f| {
+            match f {
+                // Простые сравнения с колонками — можем pushdown
+                Expr::BinaryExpr(binary) if is_simple_comparison(binary) => {
+                    Ok(TableProviderFilterPushDown::Exact)
+                }
+                // Сложные выражения — не можем
+                _ => Ok(TableProviderFilterPushDown::Unsupported),
+            }
+        }).collect()
+    }
+
+    async fn scan(
+        &self,
+        _state: &dyn datafusion::catalog::Session,
+        projection: Option<&Vec<usize>>,
+        filters: &[Expr],
+        limit: Option<usize>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        // Передаём фильтры в ExecutionPlan для выполнения на стороне источника
+        Ok(Arc::new(HttpSourceExec::new_with_filters(
+            self.url.clone(),
+            self.schema(),
+            projection.cloned(),
+            filters.to_vec(),
+            limit,
+        )))
+    }
+}
+```
+
+Уровни pushdown:
+
+| Уровень | Значение |
+|---------|---------|
+| `Exact` | Источник гарантирует корректную фильтрацию. DataFusion не добавит повторный Filter |
+| `Inexact` | Источник отфильтрует часть строк. DataFusion добавит Filter для проверки |
+| `Unsupported` | Источник не может обработать фильтр. DataFusion применит Filter полностью |
+
+<Callout type="tip">
+Если сомневаетесь в корректности pushdown — используйте `Inexact`. DataFusion добавит проверочный Filter, и корректность гарантирована. `Exact` используйте только когда вы уверены, что источник фильтрует без ошибок.
+</Callout>
+
+## Projection Pushdown
+
+Projection pushdown передаёт список нужных колонок в scan. Источник может читать только их:
+
+```rust
+async fn scan(
+    &self,
+    _state: &dyn datafusion::catalog::Session,
+    projection: Option<&Vec<usize>>,  // Индексы нужных колонок
+    _filters: &[Expr],
+    _limit: Option<usize>,
+) -> Result<Arc<dyn ExecutionPlan>> {
+    let columns: Vec<String> = match projection {
+        Some(indices) => indices.iter()
+            .map(|i| self.schema.field(*i).name().clone())
+            .collect(),
+        None => self.schema.fields().iter()
+            .map(|f| f.name().clone())
+            .collect(),
+    };
+
+    // Передаём только нужные колонки в запрос к источнику
+    // SELECT col_a, col_b вместо SELECT *
+    Ok(Arc::new(HttpSourceExec::new_with_columns(
+        self.url.clone(),
+        self.schema(),
+        columns,
+        projection.cloned(),
+    )))
+}
+```
+
+## insert_into и DataSink
+
+Для записи данных обратно в источник реализуйте `insert_into`:
+
+```rust
+use datafusion::datasource::TableProvider;
+use datafusion::physical_plan::insert::DataSink;
+use datafusion::physical_plan::SendableRecordBatchStream;
+use datafusion::execution::TaskContext;
+
+#[async_trait]
+impl TableProvider for WritableSource {
+    // ... scan, schema ...
+
+    async fn insert_into(
+        &self,
+        _state: &dyn datafusion::catalog::Session,
+        input: Arc<dyn ExecutionPlan>,
+        _overwrite: bool,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        Ok(Arc::new(
+            datafusion::physical_plan::insert::DataSinkExec::new(
+                input,
+                Arc::new(MyDataSink::new(self.connection.clone())),
+                self.schema(),
+                None,
+            )
+        ))
+    }
+}
+
+#[derive(Debug)]
+struct MyDataSink {
+    connection: String,
+}
+
+#[async_trait]
+impl DataSink for MyDataSink {
+    fn as_any(&self) -> &dyn Any { self }
+    fn name(&self) -> &str { "MyDataSink" }
+
+    async fn write_all(
+        &self,
+        data: SendableRecordBatchStream,
+        _context: &Arc<TaskContext>,
+    ) -> Result<u64> {
+        use futures::StreamExt;
+
+        let mut rows_written = 0u64;
+        let mut stream = data;
+
+        while let Some(batch) = stream.next().await {
+            let batch = batch?;
+            // Записываем batch в целевое хранилище
+            write_batch_to_storage(&self.connection, &batch).await?;
+            rows_written += batch.num_rows() as u64;
+        }
+
+        Ok(rows_written)
+    }
+}
+```
+
+После реализации `insert_into` становится доступен SQL-синтаксис:
+
+```sql
+INSERT INTO my_writable_source SELECT * FROM other_table WHERE condition;
+```
+
+## Полный пример: CSV API-источник
+
+```rust
+use datafusion::datasource::TableProvider;
+use datafusion::logical_expr::{Expr, TableType};
+use datafusion::physical_plan::ExecutionPlan;
+use datafusion::physical_plan::memory::MemoryExec;
+use datafusion::arrow::datatypes::{Schema, SchemaRef, Field, DataType};
+use datafusion::arrow::array::{StringArray, Float64Array, RecordBatch};
+use datafusion::common::Result;
+use datafusion::prelude::SessionContext;
+use async_trait::async_trait;
+use std::sync::Arc;
+use std::any::Any;
+
+/// TableProvider, загружающий CSV-данные из URL
+struct CsvApiSource {
+    schema: SchemaRef,
+    api_url: String,
+}
+
+impl CsvApiSource {
+    fn new(api_url: &str) -> Self {
+        let schema = Arc::new(Schema::new(vec![
+            Field::new("city", DataType::Utf8, false),
+            Field::new("temperature", DataType::Float64, true),
+            Field::new("humidity", DataType::Float64, true),
+        ]));
+        Self { schema, api_url: api_url.to_string() }
+    }
+}
+
+#[async_trait]
+impl TableProvider for CsvApiSource {
+    fn as_any(&self) -> &dyn Any { self }
+    fn schema(&self) -> SchemaRef { self.schema.clone() }
+    fn table_type(&self) -> TableType { TableType::Base }
+
+    async fn scan(
+        &self,
+        _state: &dyn datafusion::catalog::Session,
+        projection: Option<&Vec<usize>>,
+        _filters: &[Expr],
+        _limit: Option<usize>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        // В production: HTTP GET → parse CSV → RecordBatch
+        // Здесь: демонстрационные данные
+        let batch = RecordBatch::try_new(
+            self.schema.clone(),
+            vec![
+                Arc::new(StringArray::from(vec!["Moscow", "Berlin", "Tokyo"])),
+                Arc::new(Float64Array::from(vec![5.2, 12.8, 18.5])),
+                Arc::new(Float64Array::from(vec![78.0, 65.0, 72.0])),
+            ],
+        )?;
+
+        Ok(Arc::new(MemoryExec::try_new(
+            &[vec![batch]],
+            self.schema.clone(),
+            projection.cloned(),
+        )?))
+    }
+}
+
+async fn demo_csv_api() -> Result<()> {
+    let ctx = SessionContext::new();
+    ctx.register_table(
+        "weather",
+        Arc::new(CsvApiSource::new("https://api.example.com/weather")),
+    )?;
+
+    // Стандартный SQL — DataFusion не знает, что за источником стоит HTTP API
+    let df = ctx.sql("SELECT city, temperature FROM weather WHERE humidity > 70").await?;
+    df.show().await
+}
+```
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `TableProvider::scan()` — ключевой метод: принимает projection, filters, limit и возвращает `ExecutionPlan`
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `MemoryExec` — встроенный план для данных в памяти; для ленивой загрузки реализуйте свой `ExecutionPlan`
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `PlanProperties` описывает ordering, partitioning и execution mode для оптимизатора
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Filter pushdown: `Exact` (источник фильтрует), `Inexact` (с проверкой), `Unsupported` (DataFusion фильтрует)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Projection pushdown через параметр `projection` в `scan()` — читайте только нужные колонки
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `insert_into` + `DataSink` превращает источник в writable target для INSERT INTO

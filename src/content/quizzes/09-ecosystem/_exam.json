@@ -1,0 +1,189 @@
+{
+  "lessonSlug": "09-ecosystem/_exam",
+  "moduleId": "09-ecosystem",
+  "examTitle": "Экзамен: Экосистема DataFusion",
+  "passThreshold": 70,
+  "_meta": { "idPrefix": "df-m09-exam" },
+  "questions": [
+    {
+      "id": "df-m09-exam-q1",
+      "type": "multiple-choice",
+      "question": "Стартап строит observability-платформу (логи + метрики + трейсы). Команда выбирает между написанием собственного query engine и использованием DataFusion. Какое преимущество FDAP-подхода наиболее критично для observability-сценария?",
+      "options": [
+        { "id": "a", "text": "Стандартизация: данные хранятся в Parquet, обрабатываются DataFusion, передаются по Flight — каждый компонент заменяем, а улучшения ядра DataFusion (новые оптимизации, типы данных, UDF) автоматически распространяются на платформу" },
+        { "id": "b", "text": "FDAP обеспечивает автоматическую совместимость с Elasticsearch API" },
+        { "id": "c", "text": "FDAP включает встроенный alerting и dashboarding" },
+        { "id": "d", "text": "FDAP-стек работает только с observability-данными и не подходит для других задач" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "FDAP-подход даёт observability-платформе: стандартизированное хранение (Parquet), обработку (DataFusion) и передачу (Flight). Каждый компонент заменяем и улучшается независимо. OpenObserve уже реализовал этот подход: DataFusion + Parquet для аналитики логов/метрик, кастомные ScalarUDF для full-text search, OptimizerRule для time-range pruning. Собственный query engine пришлось бы поддерживать и оптимизировать самостоятельно.",
+      "bloomLevel": "analytical",
+      "studyHint": "FDAP = стандартизация + автообновления ядра. OpenObserve: DataFusion (аналитика) + Parquet (хранение) + кастомные UDF (full-text) + OptimizerRule (pruning)."
+    },
+    {
+      "id": "df-m09-exam-q2",
+      "type": "multiple-choice",
+      "question": "Arroyo перешёл на DataFusion для stream processing. Какой архитектурный паттерн позволяет использовать batch-ориентированный query engine для стриминга?",
+      "options": [
+        { "id": "a", "text": "Arroyo использует DataFusion для SQL-парсинга и оптимизации (predicate/projection pushdown), а стриминговые расширения (watermarks, window semantics, session windows) реализованы через кастомные LogicalPlan узлы и ExecutionPlan — расширяемость DataFusion позволяет добавлять новую семантику без модификации ядра" },
+        { "id": "b", "text": "DataFusion автоматически определяет streaming и переключается в стриминговый режим" },
+        { "id": "c", "text": "Arroyo буферизирует весь поток в память и обрабатывает как batch" },
+        { "id": "d", "text": "Стриминг невозможен на DataFusion — Arroyo использует его только для batch-запросов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Arroyo реализует стриминг через расширяемость DataFusion: SQL-парсинг и оптимизатор (predicate/projection pushdown) используются из коробки. Стриминговые конструкции (watermarks, window aggregations, session windows) добавлены как кастомные LogicalPlan узлы и ExecutionPlan — через тот же trait-based API, что используют СУБД для специализации. Результат: 3x рост throughput по сравнению с собственным движком.",
+      "bloomLevel": "analytical",
+      "studyHint": "DataFusion batch → streaming: SQL-парсинг + оптимизатор из коробки, streaming semantics через кастомные LogicalPlan + ExecutionPlan."
+    },
+    {
+      "id": "df-m09-exam-q3",
+      "type": "multiple-choice",
+      "question": "Компания использует Cube как семантический слой между BI-инструментами и Snowflake. Tesseract (DataFusion) выполняет часть запросов локально. В каком сценарии Tesseract выполнит запрос без обращения к Snowflake?",
+      "options": [
+        { "id": "a", "text": "Запрос по pre-aggregated данным, которые уже закешированы в Tesseract — например, суточные агрегации total_revenue и avg_order_value, рассчитанные заранее. DataFusion выполняет запрос по локальному кешу без обращения к Snowflake" },
+        { "id": "b", "text": "Tesseract всегда обращается к Snowflake — локальное выполнение невозможно" },
+        { "id": "c", "text": "Только когда Snowflake недоступен — Tesseract работает как fallback" },
+        { "id": "d", "text": "Tesseract выполняет локально только COUNT(*), все остальные запросы идут в Snowflake" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Tesseract использует DataFusion для трёх задач: (1) локальное выполнение по кешированным/pre-aggregated данным — DataFusion обрабатывает запрос без обращения к Snowflake, (2) оптимизация плана перед отправкой в целевую СУБД, (3) multi-source join из разных источников. Pre-aggregation ключевой сценарий: суточные агрегации рассчитываются заранее и хранятся локально.",
+      "bloomLevel": "applied",
+      "studyHint": "Tesseract выполняет локально: pre-aggregated кеш, multi-source join. Не обращается к СУБД, когда данные уже рассчитаны."
+    },
+    {
+      "id": "df-m09-exam-q4",
+      "type": "multiple-choice",
+      "question": "Аналогия «DataFusion как LLVM» подразумевает, что улучшения в ядре автоматически распространяются на всю экосистему. Какой конкретный пример из курса демонстрирует этот эффект?",
+      "options": [
+        { "id": "a", "text": "Comet (PhysicalPlanner) маппит protobuf-операторы на стандартные DataFusion ExecutionPlan (FilterExec, HashJoinExec). При обновлении DataFusion Comet автоматически получает улучшения execution primitives без изменения собственного кода — через cargo update" },
+        { "id": "b", "text": "ClickBench автоматически обновляет результаты при новых версиях DataFusion" },
+        { "id": "c", "text": "SIGMOD paper автоматически цитируется в новых публикациях" },
+        { "id": "d", "text": "ASF автоматически присваивает TLP-статус проектам на DataFusion" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Comet (модуль 7) — наглядный пример LLVM-аналогии: PhysicalPlanner маппит protobuf Operator на стандартные DataFusion ExecutionPlan (FilterExec, ProjectionExec, HashJoinExec). При каждом обновлении DataFusion (новые оптимизации, исправления, поддержка типов) Comet получает улучшения автоматически через cargo update. Минимальный maintenance cost — архитектурный leverage.",
+      "bloomLevel": "analytical",
+      "studyHint": "LLVM-эффект в Comet: стандартные DataFusion nodes → cargo update → автоулучшения. Тот же паттерн у InfluxDB, GreptimeDB, GlareDB."
+    },
+    {
+      "id": "df-m09-exam-q5",
+      "type": "multiple-choice",
+      "question": "Substrait позволяет DataFusion экспортировать и импортировать query plans. Компания хочет использовать dbt Fusion (DataFusion) для планирования, а Spark для выполнения. Какие ограничения Substrait нужно учесть?",
+      "options": [
+        { "id": "a", "text": "Базовые операторы (Scan/Filter/Project/Aggregate/Join) поддерживаются, но некоторые сложные конструкции (window functions, lateral joins) могут быть ещё не реализованы. Покрытие постоянно растёт, но паритет с полным SQL пока не достигнут" },
+        { "id": "b", "text": "Ограничений нет — Substrait поддерживает весь SQL стандарт полностью" },
+        { "id": "c", "text": "Substrait работает только между двумя экземплярами DataFusion, не с Spark" },
+        { "id": "d", "text": "Substrait поддерживает только SELECT — DML (INSERT, UPDATE) невозможен" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Substrait в DataFusion (crate datafusion-substrait): базовые Scan/Filter/Project/Aggregate/Join поддерживаются produce/consume. Ограничение: некоторые сложные конструкции (window functions, lateral joins) могут быть ещё не реализованы — покрытие постоянно расширяется. Для сценария dbt Fusion → Spark: нужно проверить, что конкретные операторы в планах покрыты Substrait-спецификацией обеих сторон.",
+      "bloomLevel": "applied",
+      "studyHint": "Substrait: базовые операторы ✓, window/lateral joins — возможно нет. Проверять покрытие для конкретных планов обеих сторон."
+    },
+    {
+      "id": "df-m09-exam-q6",
+      "type": "multiple-choice",
+      "question": "HoraeDB и GreptimeDB — обе time-series СУБД на DataFusion. Компания выбирает между ними для мониторинга инфраструктуры (метрики + логи). Какой критерий выбора наиболее релевантен?",
+      "options": [
+        { "id": "a", "text": "GreptimeDB: мультимодальность (метрики + логи + события), SQL + PromQL + Pipeline — подходит для мониторинга с разнородными данными. HoraeDB: фокус на аналитических time-series (SQL + InfluxQL), более ранняя стадия зрелости — менее предпочтителен для production-мониторинга" },
+        { "id": "b", "text": "HoraeDB быстрее GreptimeDB в любом сценарии благодаря LSM-tree" },
+        { "id": "c", "text": "Выбор неважен — обе системы идентичны по функциональности" },
+        { "id": "d", "text": "Ни одна не подходит — для мониторинга нужен Prometheus" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Для мониторинга (метрики + логи): GreptimeDB предпочтительнее — мультимодальность (метрики + логи + события), поддержка PromQL (совместимость с Prometheus/Grafana), Pipeline для обработки логов, более зрелый проект. HoraeDB фокусируется на аналитических time-series запросах с SQL + InfluxQL, находится на более ранней стадии. Оценивайте: активность сообщества, частоту релизов, production-деплоименты.",
+      "bloomLevel": "analytical",
+      "studyHint": "Мониторинг (метрики + логи) → GreptimeDB (мультимодальность, PromQL). HoraeDB → аналитические time-series (SQL, InfluxQL, ранняя стадия)."
+    },
+    {
+      "id": "df-m09-exam-q7",
+      "type": "multiple-choice",
+      "question": "Все проекты экосистемы (Arroyo, OpenObserve, Cube, HoraeDB) используют trait-based API DataFusion. Какое преимущество trait-based расширяемости перед форком кодовой базы?",
+      "options": [
+        { "id": "a", "text": "Trait-based API позволяет расширять любой компонент (TableProvider, UDF, OptimizerRule, ExecutionPlan) без модификации ядра — проекты получают обновления DataFusion через обычное обновление зависимости, форк требует ручного слияния изменений ядра при каждом обновлении" },
+        { "id": "b", "text": "Trait-based API быстрее в runtime, чем форк" },
+        { "id": "c", "text": "Форк невозможен из-за лицензии Apache 2.0" },
+        { "id": "d", "text": "Преимущества нет — все крупные проекты используют форки DataFusion" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Trait-based расширяемость: TableProvider (хранилище), ScalarUDF/AggregateUDF (функции), OptimizerRule (оптимизация), ExecutionPlan (исполнение) — всё расширяется без модификации ядра. Обновление DataFusion = обновление Cargo-зависимости. Форк: каждое обновление ядра требует ручного merge, конфликты растут экспоненциально. Все проекты экосистемы используют trait API, не форки.",
+      "bloomLevel": "analytical",
+      "studyHint": "Trait API: расширение без модификации → обновление через cargo update. Форк: ручной merge при каждом обновлении → maintenance burden."
+    },
+    {
+      "id": "df-m09-exam-q8",
+      "type": "multiple-choice",
+      "question": "dbt Fusion использует DataFusion для обнаружения SQL-ошибок до отправки запроса в СУБД. Какой компонент DataFusion делает это возможным?",
+      "options": [
+        { "id": "a", "text": "SQL-парсер и логический планировщик: DataFusion парсит SQL, строит LogicalPlan и проверяет типы, ссылки на таблицы/колонки — семантические ошибки обнаруживаются на этапе планирования, без выполнения запроса в production-хранилище" },
+        { "id": "b", "text": "Физический оптимизатор: он сравнивает план с метаданными СУБД" },
+        { "id": "c", "text": "Arrow RecordBatch: данные валидируются на этапе deserialization" },
+        { "id": "d", "text": "Flight SQL: протокол проверяет SQL-синтаксис при передаче" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "dbt Fusion использует SQL-парсер и логический планировщик DataFusion для статического анализа: парсинг SQL → построение LogicalPlan → проверка типов, ссылок на таблицы и колонки, валидация выражений. Семантические ошибки обнаруживаются без отправки в production СУБД. Дополнительно: unit-тесты моделей выполняются в DataFusion локально, оптимизация DAG зависимостей между моделями.",
+      "bloomLevel": "applied",
+      "studyHint": "dbt Fusion: SQL-парсер → LogicalPlan → проверка типов/ссылок = статический анализ без production СУБД. Плюс: локальные тесты в DataFusion."
+    },
+    {
+      "id": "df-m09-exam-q9",
+      "type": "multiple-choice",
+      "question": "Contrib-экосистема DataFusion организована в три уровня: ядро, подпроекты Apache и datafusion-contrib. Разработчик хочет использовать готовый TableProvider для PostgreSQL вместо написания своего. Где его искать?",
+      "options": [
+        { "id": "a", "text": "В datafusion-contrib/datafusion-table-providers — третий уровень экосистемы с готовыми TableProvider для PostgreSQL, MySQL, SQLite. Менее строгий review, чем в ядре, но функциональные компоненты для переиспользования" },
+        { "id": "b", "text": "В ядре apache/datafusion — все TableProvider входят в стандартную поставку" },
+        { "id": "c", "text": "В Apache Arrow — TableProvider являются частью Arrow спецификации" },
+        { "id": "d", "text": "Готовых TableProvider не существует — нужно писать свой" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Три уровня экосистемы: (1) apache/datafusion — ядро (SQL-парсер, оптимизатор, executor), (2) apache/datafusion-* — подпроекты (Ballista, Comet, Ray, Python), (3) datafusion-contrib/* — сообщество (TableProviders, JSON functions, object store). Готовые TableProvider для PostgreSQL, MySQL, SQLite находятся в datafusion-contrib/datafusion-table-providers. Проверяйте contrib перед написанием своего компонента.",
+      "bloomLevel": "applied",
+      "studyHint": "Три уровня: ядро (apache/datafusion), подпроекты (apache/datafusion-*), сообщество (datafusion-contrib/*). TableProviders → contrib."
+    },
+    {
+      "id": "df-m09-exam-q10",
+      "type": "multiple-choice",
+      "question": "WASM-компиляция DataFusion и DuckDB-WASM оба позволяют запускать SQL в браузере. Какое уникальное преимущество DataFusion-WASM перед DuckDB-WASM?",
+      "options": [
+        { "id": "a", "text": "Расширяемость: кастомные UDF и TableProvider в браузере через trait-based API DataFusion. DuckDB-WASM — конечный продукт с фиксированной функциональностью, DataFusion-WASM — расширяемый движок, который можно специализировать под конкретный сценарий" },
+        { "id": "b", "text": "DataFusion-WASM быстрее DuckDB-WASM в бенчмарках" },
+        { "id": "c", "text": "DataFusion-WASM production-ready, DuckDB-WASM — экспериментальный" },
+        { "id": "d", "text": "Преимущества нет — DuckDB-WASM превосходит DataFusion-WASM во всех аспектах" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion-WASM: расширяемость через trait-based API — кастомные UDF и TableProvider прямо в браузере. Можно специализировать движок под конкретный сценарий. DuckDB-WASM — конечный продукт с более зрелой WASM-реализацией, но фиксированной функциональностью. На данный момент DuckDB-WASM более зрелый для production-использования, DataFusion-WASM — перспективное направление (GSoC 2025).",
+      "bloomLevel": "analytical",
+      "studyHint": "DataFusion-WASM: расширяемость (UDF + TableProvider в браузере). DuckDB-WASM: более зрелый, но фиксированный. Ключевое различие = библиотека vs продукт."
+    },
+    {
+      "id": "df-m09-exam-q11",
+      "type": "multiple-choice",
+      "question": "Разработчик хочет начать контрибьютить в DataFusion. Он нашёл issue с меткой 'good first issue', реализовал fix и открыл PR. Какой обязательный шаг workflow он не должен пропустить?",
+      "options": [
+        { "id": "a", "text": "Написать тесты (обязательно), запустить cargo fmt && cargo clippy, описать PR по формату What/Why/How. Без тестов PR не будет принят — даже для исправления одной строки нужен regression test" },
+        { "id": "b", "text": "Получить предварительное одобрение PMC до начала работы" },
+        { "id": "c", "text": "Оплатить взнос Apache Software Foundation для получения CLA" },
+        { "id": "d", "text": "Написать SIGMOD-статью о своём изменении" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Workflow: найти issue → комментарий 'I'd like to work on this' → fork → branch → implement → написать тесты (обязательно!) → cargo fmt && cargo clippy → открыть PR с описанием What/Why/How → code review от коммиттера (1-3 дня) → address feedback → merge. Тесты обязательны для любого изменения. Предварительное одобрение не нужно — lazy consensus.",
+      "bloomLevel": "applied",
+      "studyHint": "Обязательно: тесты + cargo fmt + cargo clippy + PR описание (What/Why/How). Review 1-3 дня. Lazy consensus = предварительное одобрение не нужно."
+    },
+    {
+      "id": "df-m09-exam-q12",
+      "type": "multiple-choice",
+      "question": "OpenObserve использует OptimizerRule для time-range pruning: запрос 'логи за последний час' пропускает Parquet-файлы с данными за прошлую неделю. Какой компонент DataFusion позволяет реализовать это без модификации ядра?",
+      "options": [
+        { "id": "a", "text": "Кастомный OptimizerRule: анализирует WHERE-условие с timestamp, сопоставляет с метаданными Parquet-файлов (min/max timestamp в footer), исключает файлы вне временного окна из плана до начала выполнения — DataFusion применяет правило наравне со встроенными через SessionConfig" },
+        { "id": "b", "text": "Встроенный predicate pushdown DataFusion автоматически выполняет time-range pruning для всех типов хранилищ" },
+        { "id": "c", "text": "Arrow RecordBatch хранит timestamp каждого файла и фильтрует при десериализации" },
+        { "id": "d", "text": "Flight SQL протокол передаёт только файлы, попадающие в временной диапазон" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "OpenObserve реализует time-range pruning через кастомный OptimizerRule: (1) анализирует WHERE-условие с timestamp, (2) сопоставляет с метаданными Parquet-файлов (min/max статистики в footer), (3) исключает файлы вне временного окна из логического плана. DataFusion применяет кастомные правила наравне со встроенными. Дополнительно: PhysicalOptimizerRule для partition pruning по метаданным.",
+      "bloomLevel": "analytical",
+      "studyHint": "Time-range pruning: кастомный OptimizerRule → WHERE timestamp → min/max из Parquet footer → исключение файлов из плана. Без модификации ядра."
+    }
+  ]
+}

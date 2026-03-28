@@ -1,0 +1,243 @@
+---
+title: "PhysicalPlan: от логики к алгоритмам выполнения"
+description: "ExecutionPlan trait, партиционирование, SendableRecordBatchStream, выбор алгоритмов join и агрегации в DataFusion"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 17
+topics: ["ExecutionPlan", "PhysicalPlan", "Partitioning", "SendableRecordBatchStream", "HashJoin", "SortMergeJoin"]
+---
+
+# PhysicalPlan: от логики к алгоритмам выполнения
+
+Логический план описывает **что** вычислить. Физический план описывает **как**: конкретные алгоритмы, порядок операций, параллелизм. `PhysicalPlanner` преобразует каждый узел `LogicalPlan` в реализацию `ExecutionPlan`.
+
+## Trait ExecutionPlan
+
+Все физические операторы реализуют trait `ExecutionPlan`:
+
+```rust
+pub trait ExecutionPlan: Send + Sync + Debug {
+    /// Выходная схема (Arrow SchemaRef)
+    fn schema(&self) -> SchemaRef;
+
+    /// Как данные распределены по партициям
+    fn output_partitioning(&self) -> Partitioning;
+
+    /// Требования к порядку входных данных
+    fn required_input_ordering(&self) -> Vec<Option<Vec<PhysicalSortExpr>>>;
+
+    /// Дочерние операторы
+    fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>>;
+
+    /// Запуск выполнения для одной партиции
+    fn execute(
+        &self,
+        partition: usize,
+        context: Arc<TaskContext>,
+    ) -> Result<SendableRecordBatchStream>;
+
+    /// Статистика (кардинальность, размер) для оптимизатора
+    fn statistics(&self) -> Result<Statistics>;
+}
+```
+
+Метод `execute(partition, context)` — точка входа: для каждой партиции возвращается асинхронный поток RecordBatch. Это позволяет обрабатывать партиции параллельно — tokio runtime распределяет их по потокам.
+
+## Модель партиционирования
+
+Каждый `ExecutionPlan` объявляет свою стратегию партиционирования:
+
+```rust
+pub enum Partitioning {
+    RoundRobinBatch(usize),        // N партиций, строки распределены равномерно
+    Hash(Vec<Arc<dyn PhysicalExpr>>, usize), // Партиционирование по hash ключа
+    UnknownPartitioning(usize),    // N партиций, распределение неизвестно
+}
+```
+
+<DiagramContainer title="Партиционирование и параллелизм" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="process">CoalescePartitionsExec</FlowNode>
+    <Arrow direction="down" label="1 партиция" />
+    <FlowNode variant="process">SortExec (ORDER BY total DESC)</FlowNode>
+    <Arrow direction="down" />
+    <FlowNode variant="process">AggregateExec (final merge)</FlowNode>
+    <Arrow direction="down" label="N партиций" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowColumn className="gap-1 items-center">
+        <FlowNode variant="process">AggregateExec (partial)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode variant="input">ParquetExec (part 0)</FlowNode>
+      </FlowColumn>
+      <FlowColumn className="gap-1 items-center">
+        <FlowNode variant="process">AggregateExec (partial)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode variant="input">ParquetExec (part 1)</FlowNode>
+      </FlowColumn>
+      <FlowColumn className="gap-1 items-center">
+        <FlowNode variant="process">AggregateExec (partial)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode variant="input">ParquetExec (part 2)</FlowNode>
+      </FlowColumn>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+В этой схеме:
+- `ParquetExec` создаёт по одной партиции на файл (или row group)
+- `AggregateExec (partial)` вычисляет промежуточные агрегаты в каждой партиции параллельно
+- `AggregateExec (final)` объединяет промежуточные результаты
+- `CoalescePartitionsExec` сводит N партиций в одну для глобальной сортировки
+
+### Repartition
+
+Когда операция требует данные, распределённые по определённому ключу (например, Hash Join), планировщик вставляет `RepartitionExec`:
+
+```rust
+// Перераспределяет данные по Hash(user_id) на 8 партиций
+RepartitionExec::try_new(
+    input,
+    Partitioning::Hash(vec![col("user_id")], 8),
+)?
+```
+
+Repartition — дорогая операция (перемешивание данных между партициями), поэтому оптимизатор старается минимизировать количество repartition.
+
+## SendableRecordBatchStream
+
+Результат `execute()` — это `SendableRecordBatchStream`:
+
+```rust
+pub type SendableRecordBatchStream = Pin<Box<dyn RecordBatchStream + Send>>;
+
+pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
+    fn schema(&self) -> SchemaRef;
+}
+```
+
+Это асинхронный поток с гарантированной схемой. Каждый вызов `.next().await` возвращает следующий `RecordBatch` или `None` (конец потока). Ошибки передаются inline — каждый элемент потока это `Result<RecordBatch>`.
+
+### Pull-модель выполнения
+
+DataFusion использует **pull-модель** (volcano model): потребитель запрашивает данные у производителя:
+
+```
+SortExec.next()          →  AggregateExec.next()    →  FilterExec.next()   →  ParquetExec.next()
+         ← RecordBatch   ←            RecordBatch    ←          RecordBatch ←          RecordBatch
+```
+
+Преимущества pull-модели:
+- **Ленивость** — данные обрабатываются по мере запроса
+- **Ограничение памяти** — в любой момент в памяти только текущие batch-и каждого оператора
+- **Back-pressure** — медленный потребитель автоматически замедляет производителя
+
+## Физические выражения: PhysicalExpr
+
+Аналог `Expr` из логического плана, но работающий с реальными Arrow-данными:
+
+```rust
+pub trait PhysicalExpr: Send + Sync {
+    fn evaluate(&self, batch: &RecordBatch) -> Result<ColumnarValue>;
+    fn data_type(&self, input_schema: &Schema) -> Result<DataType>;
+    fn nullable(&self, input_schema: &Schema) -> Result<bool>;
+}
+```
+
+`evaluate()` принимает `RecordBatch` и возвращает `ColumnarValue`:
+- `ColumnarValue::Array(ArrayRef)` — массив значений (по одному на строку)
+- `ColumnarValue::Scalar(ScalarValue)` — одно значение, broadcast на все строки
+
+Скалярная оптимизация существенна: выражение `price * 1.2` не создаёт массив из одинаковых `1.2` — скаляр применяется поэлементно без аллокации.
+
+## Выбор алгоритмов: Join
+
+Физический планировщик выбирает алгоритм join на основе характеристик входов:
+
+| Алгоритм | ExecutionPlan | Когда используется |
+|----------|---------------|-------------------|
+| **Hash Join** | `HashJoinExec` | Один вход помещается в память. Build-сторона создаёт hash table, probe-сторона ищет совпадения |
+| **Sort-Merge Join** | `SortMergeJoinExec` | Оба входа большие. Требует сортировки по ключу join, но не держит всё в памяти |
+| **Nested Loop Join** | `NestedLoopJoinExec` | Для non-equi joins (ON a.x > b.y) или cross join. O(n*m), используется редко |
+| **Symmetric Hash Join** | `SymmetricHashJoinExec` | Для streaming joins, когда оба входа — бесконечные потоки |
+
+```rust
+// Hash Join: build hash table из правого входа, probe левым
+// Подходит когда правый вход маленький (dimension table)
+HashJoinExec::try_new(
+    left,           // probe side (большая таблица)
+    right,          // build side (маленькая таблица, hash table в памяти)
+    on,             // пары ключей
+    join_type,      // Inner, Left, Right, Full, Semi, Anti
+)?
+```
+
+<Callout type="note">
+DataFusion автоматически выбирает build-сторону Hash Join на основе статистики. Если статистика недоступна, по умолчанию правый вход — build-сторона. Можно переопределить через `SessionConfig::with_prefer_existing_sort(true)`.
+</Callout>
+
+## Выбор алгоритмов: Aggregate
+
+Агрегация в DataFusion — двухфазная:
+
+1. **Partial** — каждая партиция вычисляет промежуточные аккумуляторы
+2. **Final** — аккумуляторы объединяются
+
+Для `GROUP BY` используется hash-агрегация: DataFusion строит hash table по ключам группировки. Если данные уже отсортированы по ключу — используется streaming агрегация (без hash table).
+
+```rust
+// Partial: в каждой партиции
+AggregateExec::try_new(
+    AggregateMode::Partial,         // Промежуточные результаты
+    group_by,
+    aggr_expr,
+    input,
+)?
+
+// Final: объединение
+AggregateExec::try_new(
+    AggregateMode::Final,           // Финальное объединение
+    group_by,
+    aggr_expr,
+    partial_aggregate,
+)?
+```
+
+## Обменные операторы
+
+Планировщик вставляет специальные операторы для управления партиционированием:
+
+| Оператор | Назначение |
+|----------|-----------|
+| `RepartitionExec` | Перераспределяет данные (Hash, RoundRobin) |
+| `CoalescePartitionsExec` | Сводит N партиций в одну |
+| `CoalesceBatchesExec` | Объединяет мелкие batch в target_batch_size |
+| `SortPreservingMergeExec` | Merge-сортировка из N отсортированных партиций |
+
+Эти операторы не вычисляют новые данные — они перемещают и объединяют RecordBatch между партициями.
+
+## Инспекция физического плана
+
+```rust
+let ctx = SessionContext::new();
+let df = ctx.sql("EXPLAIN SELECT region, SUM(amount) FROM orders GROUP BY region").await?;
+// Logical plan:
+//   Aggregate: groupBy=[[orders.region]], aggr=[[SUM(orders.amount)]]
+//     TableScan: orders
+//
+// Physical plan:
+//   AggregateExec: mode=Final, gby=[region@0 as region], aggr=[SUM(orders.amount)]
+//     CoalescePartitionsExec
+//       AggregateExec: mode=Partial, gby=[region@0 as region], aggr=[SUM(orders.amount)]
+//         ParquetExec: file_groups={...}, projection=[region, amount]
+```
+
+Обратите внимание: физический план содержит два `AggregateExec` (Partial + Final) и `CoalescePartitionsExec` между ними — деталей, которых нет в логическом плане.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `ExecutionPlan` trait определяет физический оператор: `schema()`, `execute()`, `output_partitioning()`
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `execute(partition)` возвращает `SendableRecordBatchStream` — асинхронный поток RecordBatch
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Партиционирование определяет параллелизм: больше партиций = больше потоков
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Join: HashJoin (по умолчанию), SortMergeJoin (для больших входов), NestedLoop (для non-equi)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Агрегация: двухфазная (Partial → Final) с hash table или streaming
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Обменные операторы (Repartition, Coalesce, Merge) управляют потоком данных между партициями

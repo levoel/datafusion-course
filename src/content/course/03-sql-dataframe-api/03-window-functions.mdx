@@ -1,0 +1,296 @@
+---
+title: "Window функции"
+description: "Оконные функции в DataFusion: ранжирование, навигация, фреймы ROWS/RANGE/GROUPS, PARTITION BY и ORDER BY"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["Window Functions", "ROW_NUMBER", "RANK", "LAG", "LEAD", "Frame Specification", "PARTITION BY"]
+---
+
+# Window функции
+
+Оконные (window) функции вычисляют значение для каждой строки на основе группы связанных строк — «окна». В отличие от GROUP BY, оконные функции не схлопывают строки: исходный набор данных сохраняется, а результат функции добавляется как новая колонка.
+
+## Анатомия оконной функции
+
+```sql
+функция(...) OVER (
+    PARTITION BY колонки_раздела
+    ORDER BY колонки_сортировки
+    спецификация_фрейма
+)
+```
+
+Три компонента OVER-клаузы:
+
+- **PARTITION BY** — разбивает строки на независимые группы (аналог GROUP BY, но без схлопывания)
+- **ORDER BY** — определяет порядок строк внутри каждого раздела
+- **Frame** — определяет, какие строки относительно текущей входят в окно (ROWS, RANGE, GROUPS)
+
+<DiagramContainer title="Концепция оконного фрейма" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center">
+      <DataBox label="Partition: region = 'EU'" className="border-blue-500/30 w-80">
+        <div className="text-xs font-mono space-y-1">
+          <div className="opacity-50">row 1: amount=100</div>
+          <div className="opacity-50">row 2: amount=200</div>
+          <div className="border border-emerald-500/50 rounded px-2 py-0.5">row 3: amount=350 <span className="text-emerald-400">(current)</span></div>
+          <div className="opacity-50">row 4: amount=400</div>
+          <div className="opacity-50">row 5: amount=500</div>
+        </div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" label="ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING" />
+    <FlowRow className="gap-3 justify-center">
+      <DataBox label="Фрейм для row 3" className="border-emerald-500/30 w-80">
+        <div className="text-xs font-mono space-y-1">
+          <div>row 2: amount=200</div>
+          <div className="text-emerald-400">row 3: amount=350 (current)</div>
+          <div>row 4: amount=400</div>
+        </div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" label="AVG(amount)" />
+    <FlowNode variant="output">316.67</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+Фрейм определяет «скользящее окно» вокруг текущей строки. Для каждой строки функция применяется к набору строк, определённому фреймом.
+
+## Ранжирующие функции
+
+Эти функции присваивают порядковый номер каждой строке:
+
+```sql
+SELECT
+    region,
+    customer_id,
+    SUM(amount) AS total,
+    ROW_NUMBER() OVER (PARTITION BY region ORDER BY SUM(amount) DESC) AS rn,
+    RANK()       OVER (PARTITION BY region ORDER BY SUM(amount) DESC) AS rnk,
+    DENSE_RANK() OVER (PARTITION BY region ORDER BY SUM(amount) DESC) AS drnk
+FROM orders
+GROUP BY region, customer_id;
+```
+
+Различия между функциями при одинаковых значениях:
+
+| total | ROW_NUMBER | RANK | DENSE_RANK |
+|-------|-----------|------|------------|
+| 5000 | 1 | 1 | 1 |
+| 5000 | 2 | 1 | 1 |
+| 3000 | 3 | 3 | 2 |
+| 2000 | 4 | 4 | 3 |
+
+- **ROW_NUMBER** — всегда уникальный, при равенстве порядок недетерминирован
+- **RANK** — одинаковые значения получают одинаковый ранг, следующий ранг пропускается
+- **DENSE_RANK** — как RANK, но без пропусков
+
+### Практика: Top-N на группу
+
+```sql
+-- Топ-3 клиента по выручке в каждом регионе
+WITH ranked AS (
+    SELECT
+        region,
+        customer_id,
+        SUM(amount) AS total,
+        ROW_NUMBER() OVER (PARTITION BY region ORDER BY SUM(amount) DESC) AS rn
+    FROM orders
+    GROUP BY region, customer_id
+)
+SELECT region, customer_id, total
+FROM ranked
+WHERE rn <= 3;
+```
+
+## Навигационные функции
+
+Доступ к значениям соседних строк без self-join:
+
+```sql
+SELECT
+    order_date,
+    revenue,
+    LAG(revenue, 1)  OVER (ORDER BY order_date) AS prev_day_revenue,
+    LEAD(revenue, 1) OVER (ORDER BY order_date) AS next_day_revenue,
+    revenue - LAG(revenue, 1) OVER (ORDER BY order_date) AS day_over_day
+FROM daily_revenue;
+```
+
+| Функция | Описание |
+|---------|----------|
+| `LAG(col, n, default)` | Значение col на n строк назад (по ORDER BY) |
+| `LEAD(col, n, default)` | Значение col на n строк вперёд |
+| `FIRST_VALUE(col)` | Первое значение в окне |
+| `LAST_VALUE(col)` | Последнее значение в окне |
+| `NTH_VALUE(col, n)` | N-е значение в окне |
+
+<Callout type="warning">
+`LAST_VALUE` по умолчанию использует фрейм `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`, поэтому «последнее значение» — это текущая строка, а не конец раздела. Чтобы получить реальное последнее значение, укажите фрейм явно: `ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING`.
+</Callout>
+
+### Практика: процент изменения
+
+```sql
+-- Ежемесячная выручка с процентом изменения
+SELECT
+    month,
+    revenue,
+    LAG(revenue) OVER (ORDER BY month) AS prev_month,
+    ROUND(
+        (revenue - LAG(revenue) OVER (ORDER BY month)) * 100.0
+        / LAG(revenue) OVER (ORDER BY month),
+        1
+    ) AS pct_change
+FROM monthly_revenue;
+```
+
+## Спецификация фрейма
+
+Фрейм определяет диапазон строк для каждого вычисления. Три типа:
+
+### ROWS
+
+Считает физические строки от текущей позиции:
+
+```sql
+-- Скользящее среднее за 7 дней (7 строк)
+SELECT
+    day,
+    revenue,
+    AVG(revenue) OVER (
+        ORDER BY day
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS moving_avg_7d
+FROM daily_revenue;
+```
+
+### RANGE
+
+Считает строки по значению ORDER BY. Полезно при пропусках:
+
+```sql
+-- RANGE учитывает значения, а не позиции
+-- Если есть пропуски дат, RANGE корректно обработает диапазон
+SELECT
+    day,
+    revenue,
+    SUM(revenue) OVER (
+        ORDER BY day
+        RANGE BETWEEN INTERVAL '7' DAY PRECEDING AND CURRENT ROW
+    ) AS rolling_7d_sum
+FROM daily_revenue;
+```
+
+### GROUPS
+
+Считает группы одинаковых значений ORDER BY:
+
+```sql
+-- Сумма по текущей и двум предыдущим группам
+SELECT
+    score_bucket,
+    count,
+    SUM(count) OVER (
+        ORDER BY score_bucket
+        GROUPS BETWEEN 2 PRECEDING AND CURRENT ROW
+    ) AS cumulative
+FROM score_distribution;
+```
+
+### Границы фрейма
+
+| Граница | Значение |
+|---------|----------|
+| `UNBOUNDED PRECEDING` | Начало раздела |
+| `n PRECEDING` | n строк/единиц назад |
+| `CURRENT ROW` | Текущая строка |
+| `n FOLLOWING` | n строк/единиц вперёд |
+| `UNBOUNDED FOLLOWING` | Конец раздела |
+
+```sql
+-- Кумулятивная сумма (от начала до текущей строки)
+SUM(amount) OVER (ORDER BY day ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+
+-- Центрированное окно (3 строки до, текущая, 3 после)
+AVG(amount) OVER (ORDER BY day ROWS BETWEEN 3 PRECEDING AND 3 FOLLOWING)
+
+-- Полный раздел
+MAX(amount) OVER (PARTITION BY region ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+```
+
+## Агрегатные функции в окне
+
+Обычные агрегатные функции работают как оконные с добавлением OVER:
+
+```sql
+SELECT
+    order_date,
+    region,
+    amount,
+    -- Накопительная сумма по региону
+    SUM(amount) OVER (
+        PARTITION BY region
+        ORDER BY order_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_total,
+    -- Доля в общей выручке региона
+    ROUND(
+        amount * 100.0 / SUM(amount) OVER (PARTITION BY region),
+        2
+    ) AS pct_of_region
+FROM orders;
+```
+
+<Callout type="note">
+Если OVER() пуст (без PARTITION BY и ORDER BY), окно — вся таблица. `SUM(amount) OVER ()` вернёт общую сумму в каждой строке. Это удобно для вычисления процентных долей.
+</Callout>
+
+## Практический пример: аналитический отчёт
+
+```sql
+WITH daily AS (
+    SELECT
+        DATE_TRUNC('day', order_date) AS day,
+        region,
+        SUM(amount) AS revenue,
+        COUNT(*) AS orders
+    FROM orders
+    WHERE order_date >= '2024-01-01'
+    GROUP BY DATE_TRUNC('day', order_date), region
+)
+SELECT
+    day,
+    region,
+    revenue,
+    orders,
+    -- Скользящее среднее выручки (7 дней)
+    ROUND(AVG(revenue) OVER w, 2) AS avg_7d,
+    -- Кумулятивная выручка с начала
+    SUM(revenue) OVER (
+        PARTITION BY region ORDER BY day
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cumulative_revenue,
+    -- Ранг дня по выручке в регионе
+    RANK() OVER (PARTITION BY region ORDER BY revenue DESC) AS revenue_rank
+FROM daily
+WINDOW w AS (
+    PARTITION BY region ORDER BY day
+    ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+)
+ORDER BY day DESC, revenue DESC;
+```
+
+<Callout type="tip">
+Именованное окно (`WINDOW w AS (...)`) позволяет переиспользовать одну спецификацию в нескольких оконных функциях, сокращая дублирование.
+</Callout>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Оконные функции вычисляют значение для каждой строки без схлопывания (в отличие от GROUP BY)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> PARTITION BY разбивает данные, ORDER BY задаёт порядок, фрейм ограничивает диапазон
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Ранжирование: ROW_NUMBER (уникальный), RANK (с пропусками), DENSE_RANK (без пропусков)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Навигация: LAG/LEAD, FIRST_VALUE/LAST_VALUE, NTH_VALUE
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Фреймы: ROWS (физические строки), RANGE (по значению), GROUPS (группы значений)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Агрегатные функции (SUM, AVG, COUNT) работают как оконные с OVER()

@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "03-sql-dataframe-api/06-sql-vs-dataframe",
+  "moduleId": "03-sql-dataframe-api",
+  "_meta": { "idPrefix": "df-m03-06" },
+  "questions": [
+    {
+      "id": "df-m03-06-q1",
+      "type": "multiple-choice",
+      "question": "В каком сценарии DataFrame API предпочтительнее SQL?",
+      "options": [
+        { "id": "a", "text": "Когда запрос строится программно — условия фильтрации, колонки и join-ы определяются в рантайме на основе конфигурации" },
+        { "id": "b", "text": "Когда запрос фиксирован и не меняется" },
+        { "id": "c", "text": "Когда нужно максимально быстрое выполнение" },
+        { "id": "d", "text": "Когда разработчик не знает Rust" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFrame API позволяет программно строить запросы: условно добавлять фильтры, динамически выбирать колонки, параметризировать join-ы. Со строками SQL это требует конкатенации и подвержено SQL-инъекциям. DataFrame — это типизированный query builder.",
+      "bloomLevel": "applied",
+      "studyHint": "SQL для фиксированных запросов и ad-hoc анализа. DataFrame для программно-генерируемых запросов."
+    },
+    {
+      "id": "df-m03-06-q2",
+      "type": "multiple-choice",
+      "question": "Аналитик написал сложный SQL-запрос, а бэкенд-разработчик хочет использовать DataFrame API. Как они могут работать совместно?",
+      "options": [
+        { "id": "a", "text": "Невозможно — нужно выбрать один подход" },
+        { "id": "b", "text": "ctx.sql() возвращает DataFrame — SQL-запрос можно дополнить DataFrame-операциями (дополнительные фильтры, join-ы) без переписывания" },
+        { "id": "c", "text": "Нужно конвертировать весь SQL в DataFrame API вручную" },
+        { "id": "d", "text": "DataFrame автоматически преобразуется в SQL для выполнения" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "ctx.sql() парсит SQL и возвращает DataFrame (обёртку над LogicalPlan). Далее к этому DataFrame можно применять любые DataFrame-операции: filter(), join(), select(). Это мост между SQL и программным API — аналитик пишет SQL, разработчик дополняет его в коде.",
+      "bloomLevel": "applied",
+      "studyHint": "Мост: ctx.sql(\"SELECT ...\") → DataFrame → .filter() → .join() → .collect(). SQL и DataFrame комбинируются свободно."
+    },
+    {
+      "id": "df-m03-06-q3",
+      "type": "multiple-choice",
+      "question": "Почему Expr можно переиспользовать между SQL и DataFrame API?",
+      "options": [
+        { "id": "a", "text": "Оба подхода используют одну систему выражений (Expr) и один LogicalPlan — различается только синтаксис построения плана" },
+        { "id": "b", "text": "Expr автоматически компилируется в SQL-строку" },
+        { "id": "c", "text": "DataFrame копирует Expr при каждом вызове" },
+        { "id": "d", "text": "Переиспользование невозможно — это разные системы типов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SQL-запросы и DataFrame API в DataFusion сходятся на одном уровне абстракции: LogicalPlan из Expr-узлов. SQL парсится в LogicalPlan, DataFrame строит тот же LogicalPlan программно. Поэтому Expr (col, lit, функции) работает в обоих контекстах — это единый фундамент.",
+      "bloomLevel": "conceptual",
+      "studyHint": "SQL и DataFrame — два фасада над одним и тем же LogicalPlan. Expr — общий язык выражений."
+    },
+    {
+      "id": "df-m03-06-q4",
+      "type": "multiple-choice",
+      "question": "При написании unit-тестов для data pipeline, какой подход удобнее и почему?",
+      "options": [
+        { "id": "a", "text": "DataFrame API — каждую трансформацию можно вызвать и проверить отдельно, без парсинга SQL" },
+        { "id": "b", "text": "SQL — тесты проще читать, так как запросы самодокументируемые" },
+        { "id": "c", "text": "Оба одинаково удобны для тестирования" },
+        { "id": "d", "text": "Тестирование pipeline невозможно без полной базы данных" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFrame API позволяет тестировать каждую трансформацию изолированно: создать DataFrame из вектора RecordBatch, применить одну операцию, проверить результат. Нет необходимости регистрировать таблицы и писать полные SQL-запросы. Это упрощает unit-тесты и делает их более гранулярными.",
+      "bloomLevel": "analytical",
+      "studyHint": "Для интеграционных тестов — SQL (проверяет весь pipeline). Для unit-тестов — DataFrame (изоляция трансформаций)."
+    },
+    {
+      "id": "df-m03-06-q5",
+      "type": "multiple-choice",
+      "question": "Какой подход рекомендуется для реализации пользовательских выражений, которые нужны и в SQL, и в DataFrame API?",
+      "options": [
+        { "id": "a", "text": "Написать два отдельных модуля — один для SQL, другой для DataFrame" },
+        { "id": "b", "text": "Создать пользовательские функции (UDF) и зарегистрировать их в SessionContext — они будут доступны из обоих API" },
+        { "id": "c", "text": "Использовать SQL-макросы для генерации кода" },
+        { "id": "d", "text": "Это невозможно — нужно выбрать один API" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "UDF (User-Defined Function), зарегистрированная через ctx.register_udf(), доступна как в SQL (SELECT my_udf(col)), так и в DataFrame API (df.select(my_udf.call(vec![col(\"x\")]))). Это общий механизм расширения, работающий на уровне Expr.",
+      "bloomLevel": "applied",
+      "studyHint": "UDF — единая точка расширения. Зарегистрируйте один раз — используйте и из SQL, и из DataFrame."
+    }
+  ]
+}

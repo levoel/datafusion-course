@@ -1,0 +1,223 @@
+---
+title: "Установка и первые шаги"
+description: "Установка DataFusion Python, SessionContext, чтение файлов, создание данных из словарей и глобальные функции"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["pip install", "SessionContext", "read_csv", "read_parquet", "from_pydict", "Python API"]
+---
+
+# Установка и первые шаги
+
+DataFusion предоставляет полноценные Python-биндинги, позволяющие использовать тот же движок запросов из Python-кода. Вы получаете производительность Rust с удобством Python.
+
+## Установка
+
+Пакет `datafusion` доступен на PyPI. Требуется Python 3.10 или выше:
+
+```bash
+pip install datafusion
+```
+
+<Callout type="note">
+Начиная с версии 52.x, пакет `datafusion` включает все основные модули: SQL, DataFrame API, UDF/UDAF и поддержку Arrow. Отдельный пакет `datafusion-python` не нужен.
+</Callout>
+
+Проверка установки:
+
+```python
+import datafusion
+print(datafusion.__version__)  # 52.3.0
+```
+
+## SessionContext в Python
+
+Точка входа в DataFusion Python --- `SessionContext`. Это Python-обёртка над Rust `SessionContext`, предоставляющая те же возможности:
+
+```python
+from datafusion import SessionContext
+
+ctx = SessionContext()
+
+# Выполнить SQL
+df = ctx.sql("SELECT 1 + 2 AS result")
+df.show()
+# +--------+
+# | result |
+# +--------+
+# | 3      |
+# +--------+
+```
+
+<DiagramContainer title="SessionContext: точка входа Python API" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input">SessionContext()</FlowNode>
+    <Arrow direction="down" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <DataBox label="Чтение файлов" className="border-blue-500/30 w-48">
+        <div className="text-xs font-mono">read_csv, read_parquet, read_json</div>
+      </DataBox>
+      <DataBox label="SQL-запросы" className="border-emerald-500/30 w-48">
+        <div className="text-xs font-mono">ctx.sql("SELECT ...")</div>
+      </DataBox>
+      <DataBox label="Создание данных" className="border-yellow-500/30 w-48">
+        <div className="text-xs font-mono">from_pydict, from_pylist</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowNode variant="output">DataFrame</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+## Чтение файлов
+
+SessionContext предоставляет методы для чтения основных форматов:
+
+### CSV
+
+```python
+ctx = SessionContext()
+df = ctx.read_csv("data/orders.csv")
+df.show()
+```
+
+По умолчанию DataFusion определяет типы колонок автоматически. Для явного указания схемы:
+
+```python
+import pyarrow as pa
+
+schema = pa.schema([
+    ("order_id", pa.int64()),
+    ("region", pa.utf8()),
+    ("amount", pa.float64()),
+])
+
+df = ctx.read_csv("data/orders.csv", schema=schema)
+```
+
+### Parquet
+
+```python
+df = ctx.read_parquet("data/orders.parquet")
+df.show()
+```
+
+Parquet-файлы содержат схему внутри, поэтому указание типов не требуется. DataFusion использует predicate pushdown и projection pruning при чтении Parquet.
+
+### JSON (NDJSON)
+
+```python
+df = ctx.read_json("data/events.json")
+df.show()
+```
+
+<Callout type="warning">
+`read_json` ожидает формат NDJSON (Newline Delimited JSON) --- по одному JSON-объекту на строку, а не массив JSON.
+</Callout>
+
+## Регистрация таблиц
+
+Для повторного использования данных в SQL-запросах удобно регистрировать файлы как именованные таблицы:
+
+```python
+ctx = SessionContext()
+
+ctx.register_csv("orders", "data/orders.csv")
+ctx.register_parquet("events", "data/events.parquet")
+
+# Теперь доступны в SQL
+df = ctx.sql("SELECT * FROM orders WHERE amount > 100")
+df.show()
+```
+
+## Создание данных из Python-структур
+
+Когда данные уже в Python, можно создать DataFrame без файлов:
+
+### from_pydict
+
+```python
+ctx = SessionContext()
+
+data = {
+    "name": ["Alice", "Bob", "Carol"],
+    "score": [95, 82, 91],
+}
+
+df = ctx.from_pydict(data, name="students")
+df.show()
+# +-------+-------+
+# | name  | score |
+# +-------+-------+
+# | Alice | 95    |
+# | Bob   | 82    |
+# | Carol | 91    |
+# +-------+-------+
+```
+
+### from_pylist
+
+```python
+rows = [
+    {"name": "Alice", "score": 95},
+    {"name": "Bob", "score": 82},
+    {"name": "Carol", "score": 91},
+]
+
+df = ctx.from_pylist(rows, name="students")
+```
+
+<Callout type="tip">
+Параметр `name` в `from_pydict`/`from_pylist` регистрирует DataFrame как таблицу, доступную для SQL-запросов через `ctx.sql()`.
+</Callout>
+
+## Глобальные функции контекста
+
+Начиная с версии 46.0, DataFusion Python предоставляет глобальные функции для быстрого старта без явного создания SessionContext:
+
+```python
+import datafusion
+
+# Глобальный контекст создаётся автоматически
+df = datafusion.read_csv("data/orders.csv")
+df.show()
+
+df2 = datafusion.read_parquet("data/events.parquet")
+```
+
+Глобальные функции удобны для скриптов и notebook-ов, но для production-кода рекомендуется явно создавать `SessionContext` --- это даёт контроль над конфигурацией и изоляцию между сессиями.
+
+## Полный пример: загрузка и анализ
+
+```python
+from datafusion import SessionContext
+
+ctx = SessionContext()
+
+# Регистрация данных
+ctx.register_csv("orders", "data/orders.csv")
+ctx.register_parquet("products", "data/products.parquet")
+
+# Комбинирование SQL и DataFrame
+df = ctx.sql("""
+    SELECT o.region, p.category, SUM(o.amount) as total
+    FROM orders o
+    JOIN products p ON o.product_id = p.id
+    GROUP BY o.region, p.category
+    ORDER BY total DESC
+    LIMIT 10
+""")
+
+# Результат --- DataFrame, можно продолжить обработку
+result = df.collect()
+print(f"Rows: {sum(batch.num_rows for batch in result)}")
+```
+
+## Итоги
+
+- `pip install datafusion` --- единственная зависимость для начала работы
+- `SessionContext` --- центральный объект для чтения данных и выполнения запросов
+- `read_csv`, `read_parquet`, `read_json` --- чтение файлов в DataFrame
+- `from_pydict`, `from_pylist` --- создание DataFrame из Python-структур
+- `register_csv`, `register_parquet` --- регистрация файлов как SQL-таблиц
+- Глобальные функции (с v46.0) --- быстрый старт без явного SessionContext

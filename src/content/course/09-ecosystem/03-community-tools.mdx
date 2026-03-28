@@ -1,0 +1,276 @@
+---
+title: "Инструменты и интеграции сообщества"
+description: "datafusion-dft (CLI/TUI), dbt Fusion, Auron (ускоритель Spark/Flink), Substrait, WASM-компиляция, contrib-репозитории DataFusion"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 14
+topics: ["datafusion-dft", "dbt Fusion", "Auron", "Substrait", "WASM", "contrib", "community tools"]
+---
+
+# Инструменты и интеграции сообщества
+
+Помимо СУБД и аналитических платформ ([урок 2](/course/09-ecosystem/02-ecosystem-databases)), экосистема DataFusion включает инструменты для разработчиков, интеграционные стандарты и проекты сообщества.
+
+## datafusion-dft: CLI, TUI и сервер
+
+datafusion-dft (DataFusion Desktop/Terminal) — «batteries-included» инструмент для работы с DataFusion. Три режима:
+
+<DiagramContainer title="datafusion-dft: три режима" className="my-6">
+  <Grid columns={3} className="gap-3 text-sm">
+    <DataBox label="CLI" className="border-blue-500/30">
+      <div className="text-xs"><b>Режим:</b> командная строка</div>
+      <div className="text-xs mt-1"><b>Использование:</b> скрипты, пайплайны, CI</div>
+      <div className="text-xs mt-1 font-mono text-xs">dft -c "SELECT * FROM 'data.parquet'"</div>
+    </DataBox>
+    <DataBox label="TUI" className="border-emerald-500/30">
+      <div className="text-xs"><b>Режим:</b> интерактивный терминал</div>
+      <div className="text-xs mt-1"><b>Использование:</b> исследование данных, ad-hoc запросы</div>
+      <div className="text-xs mt-1 font-mono text-xs">dft</div>
+    </DataBox>
+    <DataBox label="Server" className="border-amber-500/30">
+      <div className="text-xs"><b>Режим:</b> Flight SQL сервер</div>
+      <div className="text-xs mt-1"><b>Использование:</b> BI-инструменты, JDBC-клиенты</div>
+      <div className="text-xs mt-1 font-mono text-xs">dft serve --port 50051</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+### Возможности
+
+datafusion-dft — не просто обёртка над `SessionContext`. Инструмент добавляет:
+
+- **Автоматическое определение формата**: Parquet, CSV, JSON, Avro — по расширению файла
+- **S3/GCS/Azure Blob**: чтение из облачных хранилищ
+- **Результаты в таблице/JSON/CSV**: выбор формата вывода
+- **История запросов**: сохранение и поиск
+- **Flight SQL сервер**: подключение BI-инструментов (DBeaver, Tableau, Superset)
+
+```bash
+# Установка
+cargo install datafusion-dft
+
+# CLI: запрос к Parquet-файлу
+dft -c "SELECT count(*), avg(price) FROM 'sales.parquet' WHERE year = 2025"
+
+# TUI: интерактивный режим с автодополнением
+dft
+
+# Server: Flight SQL на порту 50051
+dft serve --port 50051
+```
+
+<Callout type="tip">
+datafusion-dft — отличный инструмент для быстрого исследования данных. Вместо написания Rust-программы или Python-скрипта можно выполнить SQL-запрос к Parquet-файлу одной командой.
+</Callout>
+
+### Для кого
+
+- **Аналитики**: ad-hoc запросы к файлам без настройки СУБД
+- **Разработчики**: прототипирование SQL-логики перед встраиванием в приложение
+- **DevOps**: проверка Parquet/CSV-данных в пайплайнах
+
+## dbt Fusion: нативный SQL engine для dbt
+
+dbt (data build tool) — стандарт в data engineering для SQL-трансформаций. dbt Fusion — новый engine на Rust с нативным пониманием SQL, в отличие от классического dbt, который делегирует выполнение целевой СУБД.
+
+<DiagramContainer title="dbt Classic vs dbt Fusion" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="dbt Classic" className="border-gray-500/30">
+      <div className="text-xs"><b>Подход:</b> компилирует Jinja → SQL, отправляет в СУБД</div>
+      <div className="text-xs mt-1"><b>Выполнение:</b> целевая СУБД (Snowflake, BigQuery, Postgres)</div>
+      <div className="text-xs mt-1"><b>Скорость:</b> зависит от СУБД и сети</div>
+      <div className="text-xs mt-1"><b>Язык:</b> Python</div>
+    </DataBox>
+    <DataBox label="dbt Fusion" className="border-emerald-500/30">
+      <div className="text-xs"><b>Подход:</b> нативный Rust engine, понимает SQL структурно</div>
+      <div className="text-xs mt-1"><b>Выполнение:</b> DataFusion для локальных данных, СУБД для удалённых</div>
+      <div className="text-xs mt-1"><b>Скорость:</b> компиляция моделей в 10-100x быстрее</div>
+      <div className="text-xs mt-1"><b>Язык:</b> Rust</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+### Что даёт DataFusion в dbt Fusion
+
+- **Статический анализ SQL**: DataFusion парсит SQL и строит план, что позволяет dbt Fusion обнаруживать ошибки до отправки в СУБД
+- **Локальное выполнение тестов**: unit-тесты моделей выполняются в DataFusion без обращения к production-хранилищу
+- **Оптимизация pipeline**: DataFusion анализирует зависимости между моделями и строит оптимальный DAG выполнения
+
+<Callout type="note">
+dbt Fusion — коммерческий продукт компании dbt Labs. DataFusion используется как компонент, но сам dbt Fusion не является open-source. Тем не менее, это значимый сигнал adoption: ведущая компания в data engineering выбрала DataFusion как основу для следующего поколения движка.
+</Callout>
+
+## Auron: ускоритель Spark и Flink
+
+Auron — проект, ускоряющий существующие Spark и Flink нагрузки через DataFusion, по аналогии с Comet ([модуль 7](/course/07-comet/01-comet-overview)).
+
+<DiagramContainer title="Auron vs Comet" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="Comet" className="border-amber-500/30">
+      <div className="text-xs"><b>Целевая платформа:</b> Apache Spark</div>
+      <div className="text-xs mt-1"><b>Интеграция:</b> Spark plugin (columnar → native execution)</div>
+      <div className="text-xs mt-1"><b>Зрелость:</b> 0.13.0, production-ориентирован</div>
+      <div className="text-xs mt-1"><b>Поддержка:</b> Apple (основной контрибьютор)</div>
+      <div className="text-xs mt-1 text-gray-400">Подробно: модуль 7</div>
+    </DataBox>
+    <DataBox label="Auron" className="border-blue-500/30">
+      <div className="text-xs"><b>Целевая платформа:</b> Spark + Flink</div>
+      <div className="text-xs mt-1"><b>Интеграция:</b> ускорение через DataFusion runtime</div>
+      <div className="text-xs mt-1"><b>Зрелость:</b> ранняя стадия</div>
+      <div className="text-xs mt-1"><b>Поддержка:</b> open-source community</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Auron расширяет идею Comet на Flink — платформу, для которой нативных DataFusion-ускорителей раньше не было. Подробное сравнение Comet с другими стратегиями распределения — в [уроке по выбору стратегии](/course/08-distributed-execution/05-choosing-strategy).
+
+<Callout type="warning">
+Auron — более ранний проект, чем Comet. Для production-использования с Spark рекомендуется Comet (0.13.0). Auron интересен как эксперимент по ускорению Flink через DataFusion.
+</Callout>
+
+## Substrait: кросс-системный обмен планами
+
+Substrait — стандарт для сериализации query plans, не привязанный к конкретному движку. DataFusion поддерживает Substrait для обмена планами с другими системами.
+
+<DiagramContainer title="Substrait: обмен планами между системами" className="my-6">
+  <FlowRow className="gap-3 text-sm justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode className="bg-blue-950/60 p-2 text-xs">DataFusion</FlowNode>
+      <Arrow direction="down" label="produce" />
+      <FlowNode className="bg-emerald-900/60 p-2 text-xs border border-emerald-400/30">Substrait Plan (Protobuf)</FlowNode>
+      <Arrow direction="down" label="consume" />
+      <FlowNode className="bg-amber-950/60 p-2 text-xs">Другая система</FlowNode>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center ml-6">
+      <DataBox label="Substrait Plan" className="border-emerald-500/30 w-56">
+        <div className="text-xs">Стандартизированное представление:</div>
+        <div className="text-xs mt-1">Scan, Filter, Project, Aggregate,</div>
+        <div className="text-xs mt-1">Join, Sort, Limit — в Protobuf</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+### Зачем Substrait
+
+Без Substrait каждая пара систем изобретает свой формат обмена. С Substrait:
+
+- **Планировщик одной системы** строит оптимальный план
+- **Executor другой системы** выполняет этот план
+- **Формат стандартизирован** — Protobuf-схема, поддерживаемая комьюнити
+
+Практические сценарии:
+- dbt Fusion строит план, Spark выполняет его
+- Аналитический инструмент генерирует план, DataFusion или DuckDB выполняет
+- Федеративная система передаёт фрагмент плана удалённому движку
+
+```rust
+// DataFusion → Substrait (produce)
+use datafusion_substrait::logical_plan::producer;
+
+let plan = ctx.sql("SELECT a, sum(b) FROM t GROUP BY a").await?.into_optimized_plan()?;
+let substrait_plan = producer::to_substrait_plan(&plan, &ctx)?;
+
+// Сериализация в Protobuf
+let bytes = substrait_plan.encode_to_vec();
+
+// Substrait → DataFusion (consume)
+use datafusion_substrait::logical_plan::consumer;
+
+let restored_plan = consumer::from_substrait_plan(&ctx, &substrait_plan).await?;
+```
+
+<Callout type="note">
+Поддержка Substrait в DataFusion находится в crate `datafusion-substrait`. Покрытие операторов постоянно растёт — базовые Scan/Filter/Project/Aggregate/Join поддерживаются, но некоторые сложные конструкции (window functions, lateral joins) могут быть ещё не реализованы.
+</Callout>
+
+## WASM: DataFusion в браузере
+
+DataFusion компилируется в WebAssembly (WASM), что позволяет запускать SQL-запросы прямо в браузере или в Edge-функциях.
+
+<DiagramContainer title="DataFusion WASM: сценарии" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="Браузер" className="border-blue-500/30">
+      <div className="text-xs"><b>Сценарий:</b> SQL-аналитика в клиентском приложении</div>
+      <div className="text-xs mt-1"><b>Данные:</b> Parquet-файлы, загруженные через HTTP</div>
+      <div className="text-xs mt-1"><b>Преимущество:</b> нет серверных затрат на аналитику</div>
+    </DataBox>
+    <DataBox label="Edge Functions" className="border-emerald-500/30">
+      <div className="text-xs"><b>Сценарий:</b> SQL-обработка на edge (Cloudflare Workers, Deno Deploy)</div>
+      <div className="text-xs mt-1"><b>Данные:</b> локальные Parquet, KV-хранилища</div>
+      <div className="text-xs mt-1"><b>Преимущество:</b> минимальная latency</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+WASM-компиляция DataFusion — одно из направлений GSoC (Google Summer of Code) 2025. Основные задачи:
+
+- Компиляция `datafusion` crate в `wasm32-wasi` target
+- Асинхронный I/O через WASI filesystem API
+- Оптимизация размера WASM-модуля (исключение неиспользуемых features)
+
+<Callout type="tip">
+WASM-компиляция DataFusion пока на стадии активной разработки. Для production-использования в браузере на данный момент более зрелой альтернативой является DuckDB-WASM. Но направление перспективное — DataFusion в WASM откроет уникальные сценарии благодаря расширяемости (кастомные UDF и TableProvider в браузере).
+</Callout>
+
+## Contrib-репозитории
+
+Экосистема DataFusion организована в несколько уровней:
+
+<DiagramContainer title="Уровни экосистемы DataFusion" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <DataBox label="apache/datafusion (ядро)" className="border-emerald-500/30 mx-auto w-80">
+      <div className="text-xs">SQL-парсер, оптимизатор, executor, Arrow интеграция</div>
+      <div className="text-xs mt-1">Строгий review, стабильность API, релизы каждые 1–2 месяца</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="apache/datafusion-* (подпроекты)" className="border-blue-500/30 mx-auto w-80">
+      <div className="text-xs">datafusion-ballista, datafusion-comet, datafusion-ray, datafusion-python</div>
+      <div className="text-xs mt-1">Собственные релизные циклы, Apache governance</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="datafusion-contrib/* (сообщество)" className="border-amber-500/30 mx-auto w-80">
+      <div className="text-xs">datafusion-substrait, datafusion-objectstore, datafusion-dft и др.</div>
+      <div className="text-xs mt-1">Менее строгий review, экспериментальные features</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+### Ключевые contrib-проекты
+
+| Репозиторий | Назначение |
+|------------|-----------|
+| `datafusion-contrib/datafusion-dft` | CLI/TUI/Server для DataFusion (описан выше) |
+| `apache/datafusion-sqlparser-rs` | SQL-парсер, используемый DataFusion (и PostgreSQL-совместимые проекты) |
+| `apache/datafusion-substrait` | Substrait producer/consumer (описан выше) |
+| `datafusion-contrib/datafusion-objectstore-*` | Интеграция с S3, GCS, Azure Blob |
+| `datafusion-contrib/datafusion-table-providers` | Готовые TableProvider для PostgreSQL, MySQL, SQLite |
+| `datafusion-contrib/datafusion-functions-json` | JSON-функции (jsonb_extract, json_array и др.) |
+
+Contrib-экосистема даёт возможность переиспользовать готовые компоненты вместо написания с нуля. Если вы строите систему на DataFusion — проверьте contrib-репозитории перед тем, как реализовывать свой TableProvider или UDF.
+
+## Полная картина инструментов
+
+<DiagramContainer title="Инструменты экосистемы DataFusion" className="my-6">
+  <Grid columns={1} className="text-sm">
+    <DataBox label="Категории инструментов" className="border-gray-500/30">
+      <div className="text-xs space-y-2">
+        <div><b>Интерактивная работа:</b> datafusion-dft (CLI/TUI/Server), DataFusion Python REPL ([модуль 4](/course/04-datafusion-python/01-installation-and-context))</div>
+        <div><b>Data Engineering:</b> dbt Fusion (SQL-трансформации), Substrait (обмен планами)</div>
+        <div><b>Ускорение:</b> Comet ([модуль 7](/course/07-comet/01-comet-overview)), Auron (Spark/Flink)</div>
+        <div><b>Распределение:</b> Ballista, DataFusion Ray ([модуль 8](/course/08-distributed-execution/05-choosing-strategy))</div>
+        <div><b>Runtime:</b> WASM (браузер, Edge), Python bindings</div>
+        <div><b>Библиотеки:</b> contrib TableProviders, JSON functions, object store integration</div>
+      </div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> datafusion-dft: CLI/TUI/Server для интерактивной работы с DataFusion и Flight SQL
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> dbt Fusion: нативный Rust-движок для dbt, использующий DataFusion для парсинга, анализа и выполнения SQL
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Auron: ускорение Spark/Flink через DataFusion (ранняя стадия, ср. с Comet в модуле 7)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Substrait: стандарт обмена query plans между системами, DataFusion поддерживает produce/consume
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> WASM: DataFusion компилируется в WebAssembly для браузера и Edge-функций (в разработке)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Contrib-экосистема: готовые TableProvider, UDF, object store integration для переиспользования

@@ -1,0 +1,335 @@
+{
+  "lessonSlug": "01-arrow-foundation/_exam",
+  "moduleId": "01-arrow-foundation",
+  "examTitle": "Экзамен: Apache Arrow Foundation",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "df-m01-exam"
+  },
+  "questions": [
+    {
+      "id": "df-m01-exam-q1",
+      "type": "multiple-choice",
+      "question": "Аналитический запрос читает 2 колонки из таблицы с 10 колонками и 100 миллионами строк. Какое сочетание преимуществ колоночного формата даёт наибольший выигрыш?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Column pruning (читаются 2 из 10 буферов) + cache locality (значения одной колонки sequential в памяти) + SIMD-векторизация (contiguous values обрабатываются пакетами)"
+        },
+        {
+          "id": "b",
+          "text": "Run-Length Encoding + Dictionary Encoding — сжатие доминирует"
+        },
+        {
+          "id": "c",
+          "text": "Параллелизм: каждая колонка обрабатывается отдельным потоком"
+        },
+        {
+          "id": "d",
+          "text": "Lazy evaluation: данные загружаются только при обращении"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Три преимущества работают вместе: column pruning сокращает объём данных в 5 раз (2/10), cache locality обеспечивает 8 значений int64 за одну загрузку cache line (64 байт), SIMD обрабатывает 4–8 значений за инструкцию. Компрессия (RLE, dictionary) — дополнительный бонус, но column pruning + cache + SIMD дают основной выигрыш для compute-bound запросов.",
+      "studyHint": "Повторите урок 1: четыре преимущества колоночного формата и их взаимодействие.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m01-exam-q2",
+      "type": "multiple-choice",
+      "question": "Arrow Utf8 массив содержит 4 строки суммарным размером 1.9 GB. При добавлении пятой строки на 200 MB суммарный размер превысит 2 GB. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Arrow автоматически переключится на LargeUtf8"
+        },
+        {
+          "id": "b",
+          "text": "Переполнение int32 offset buffer — нужно заранее использовать LargeUtf8 (int64 offsets) для колонок с суммарным объёмом текста > 2 GB"
+        },
+        {
+          "id": "c",
+          "text": "Arrow сожмёт существующие строки для освобождения места"
+        },
+        {
+          "id": "d",
+          "text": "Arrow создаст новый chunk и продолжит работу"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Utf8 использует int32 offsets — максимальный суммарный размер данных ~2 GB. При превышении этого лимита int32 переполняется. Автоматического переключения на LargeUtf8 нет — тип определяется при создании схемы. Если ожидается > 2 GB текста в колонке, нужно сразу указывать LargeUtf8 (int64 offsets, до 2^63 байт).",
+      "studyHint": "Повторите уроки 2 (offset buffer) и 3 (Utf8 vs LargeUtf8).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m01-exam-q3",
+      "type": "multiple-choice",
+      "question": "Вы проектируете Arrow-схему для JSON-данных с полями: id (целое), tags (массив строк), metadata (произвольные key-value пары). Какая правильная Arrow-схема?",
+      "options": [
+        {
+          "id": "a",
+          "text": "id: Int64, tags: Utf8 (теги через запятую), metadata: Utf8 (JSON строка)"
+        },
+        {
+          "id": "b",
+          "text": "id: Int64, tags: List<Utf8>, metadata: Map<Utf8, Utf8>"
+        },
+        {
+          "id": "c",
+          "text": "id: Int64, tags: Struct{tag1, tag2, tag3}, metadata: List<Utf8>"
+        },
+        {
+          "id": "d",
+          "text": "Все три поля как Utf8 — Arrow не поддерживает вложенные типы"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "List<Utf8> для массива строк (tags) и Map<Utf8, Utf8> для key-value пар (metadata) — корректное использование вложенных типов Arrow. Хранение JSON как Utf8 теряет структуру и требует парсинга на каждом запросе. Struct фиксирует набор полей, а List допускает произвольное количество элементов.",
+      "studyHint": "Повторите урок 3: List для массивов, Map для key-value, Struct для фиксированных полей.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m01-exam-q4",
+      "type": "multiple-choice",
+      "question": "DataFusion обрабатывает запрос SELECT name, salary * 1.1 FROM employees WHERE salary > 50000. Как schema propagation помогает оптимизации?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Schema propagation не влияет на оптимизацию — это только для отображения результатов"
+        },
+        {
+          "id": "b",
+          "text": "TableScan знает, что нужны только name и salary (projection pushdown) — остальные колонки не читаются из файла. Тип salary (Float64) определяет выбор compute kernel для умножения"
+        },
+        {
+          "id": "c",
+          "text": "Schema сжимает данные перед передачей между операторами"
+        },
+        {
+          "id": "d",
+          "text": "Schema позволяет пропустить FilterExec, если все строки подходят"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Schema propagation позволяет: 1) ProjectionExec сообщает вверх по плану, что нужны только name и salary → TableScan не читает остальные колонки (projection pushdown). 2) Тип salary (Float64) известен до выполнения → выбирается оптимизированный kernel multiply_scalar для Float64. Ошибки типов ловятся на этапе планирования.",
+      "studyHint": "Повторите урок 6: Schema Propagation через план и projection pushdown.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m01-exam-q5",
+      "type": "multiple-choice",
+      "question": "Компания передаёт 500 миллионов строк аналитических данных между микросервисами. Какой протокол передачи оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "REST API + JSON — универсальный и простой"
+        },
+        {
+          "id": "b",
+          "text": "gRPC + Protobuf — стандарт для микросервисов"
+        },
+        {
+          "id": "c",
+          "text": "Arrow Flight — gRPC transport с Arrow IPC payload. Данные передаются как нативные Arrow буферы, без Protobuf-сериализации. Endpoints поддерживают параллельное чтение"
+        },
+        {
+          "id": "d",
+          "text": "FTP + CSV файлы — batch передача"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Для 500M строк overhead сериализации JSON или Protobuf доминирует. Arrow Flight передаёт Arrow IPC буферы напрямую через gRPC streams: zero-copy десериализация, поддержка параллельного чтения через endpoints, опциональное LZ4/ZSTD сжатие. gRPC + Protobuf — хорош для скалярных RPC, но не для массовой передачи данных.",
+      "studyHint": "Повторите урок 4: Arrow IPC zero-copy + Flight endpoints для параллелизма.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m01-exam-q6",
+      "type": "multiple-choice",
+      "question": "Validity bitmap массива из 8 элементов: [1, 0, 1, 1, 0, 1, 1, 1]. Сколько NULL-значений содержит массив и как это вычислить эффективно?",
+      "options": [
+        {
+          "id": "a",
+          "text": "2 значения NULL. Нужно сканировать data buffer и считать нулевые элементы"
+        },
+        {
+          "id": "b",
+          "text": "2 значения NULL. Вычисляется через popcount (подсчёт единичных битов): 8 - popcount(bitmap) = 8 - 6 = 2. Побитовая операция, O(1) на byte"
+        },
+        {
+          "id": "c",
+          "text": "6 значений NULL. Единицы в bitmap обозначают NULL"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно определить без чтения data buffer"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "В validity bitmap: 1 = значение присутствует, 0 = NULL. Подсчёт NULL — побитовая операция popcount: 8 (всего) - 6 (единичных бит) = 2 NULL. Это O(1) на байт, не зависит от значений в data buffer. Arrow использует null_count() для быстрого подсчёта, и если null_count = 0, bitmap может отсутствовать.",
+      "studyHint": "Повторите урок 2: Null Handling — bitmap, popcount, оптимизация для массивов без NULL.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m01-exam-q7",
+      "type": "multiple-choice",
+      "question": "Python-приложение получает данные из PostgreSQL через ADBC, обрабатывает в DataFusion Python и отдаёт в Pandas. Сколько раз данные конвертируются между форматами?",
+      "options": [
+        {
+          "id": "a",
+          "text": "3 раза: PostgreSQL → ADBC → DataFusion → Pandas"
+        },
+        {
+          "id": "b",
+          "text": "0 раз: все компоненты работают с Arrow RecordBatch. ADBC возвращает PyArrow таблицы, DataFusion Python принимает и возвращает PyArrow, Pandas 2.0+ поддерживает ArrowDtype"
+        },
+        {
+          "id": "c",
+          "text": "2 раза: на входе (PostgreSQL → Arrow) и на выходе (Arrow → Pandas)"
+        },
+        {
+          "id": "d",
+          "text": "1 раз: только PostgreSQL → Arrow, дальше zero-copy"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "PostgreSQL хранит данные в row-формате — конвертация в Arrow происходит один раз (в ADBC-драйвере). Дальше: ADBC → PyArrow Table → DataFusion Python (принимает PyArrow) → PyArrow Table → Pandas (ArrowDtype, zero-copy для числовых колонок). После первой конвертации данные остаются в Arrow формате.",
+      "studyHint": "Повторите урок 5: ADBC + PyArrow + DataFusion Python цепочка.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m01-exam-q8",
+      "type": "multiple-choice",
+      "question": "Почему DataFusion имеет архитектурное преимущество перед Spark и Presto в работе с Arrow?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion написан на более быстром языке"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion построен на Arrow с первого дня: каждый оператор принимает и возвращает RecordBatch, нет промежуточных форматов и legacy-слоёв конвертации"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion поддерживает больше типов данных"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не использует SQL, что упрощает обработку"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion — Arrow-native query engine: каждый оператор работает с RecordBatch, compute kernels применяются напрямую к Arrow-буферам. Spark и Presto добавили Arrow-поддержку позже поверх существующих внутренних форматов (Tungsten, Pages), что создаёт legacy-слои конвертации на каждой границе.",
+      "studyHint": "Повторите урок 6: DataFusion = Arrow Native Query Engine и сравнение с Spark.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m01-exam-q9",
+      "type": "multiple-choice",
+      "question": "Вы пишете UDF celsius_to_fahrenheit для DataFusion. Функция получает Float64Array с NULL-значениями. Как правильно обработать NULL?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Проверить каждое значение на NaN и заменить на 0"
+        },
+        {
+          "id": "b",
+          "text": "Использовать iter() с map(|v| v.map(|t| t * 9.0/5.0 + 32.0)) — iter() возвращает Option, map внутри Option пропускает NULL автоматически"
+        },
+        {
+          "id": "c",
+          "text": "Отфильтровать NULL перед вычислением и добавить обратно после"
+        },
+        {
+          "id": "d",
+          "text": "Выбросить ошибку, если в массиве есть NULL"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Arrow-массив iter() возвращает итератор Option<T>: Some(value) для валидных, None для NULL. map внутри Option (v.map(|t| ...)) применяет трансформацию только к Some, пропуская None. Результирующий массив сохраняет NULL в тех же позициях. Это стандартный паттерн null propagation в UDF.",
+      "studyHint": "Повторите урок 6: пример UDF celsius_to_fahrenheit и iter().map() паттерн.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m01-exam-q10",
+      "type": "multiple-choice",
+      "question": "Arrow IPC file format начинается и заканчивается magic bytes ARROW1. Footer содержит block index. Какое преимущество даёт такая структура?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Проверка целостности файла — если оба magic совпадают, файл не повреждён"
+        },
+        {
+          "id": "b",
+          "text": "Footer с block index (offset + size каждого RecordBatch) позволяет читать конкретный batch без сканирования всего файла — произвольный доступ к любому RecordBatch по номеру"
+        },
+        {
+          "id": "c",
+          "text": "Двойной magic позволяет читать файл в обоих направлениях"
+        },
+        {
+          "id": "d",
+          "text": "Footer нужен для совместимости с Parquet-ридерами"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Footer содержит block index: offset и size каждого RecordBatch. Это позволяет seek к конкретному batch без сканирования файла — аналог row group index в Parquet. Stream format не имеет footer и поддерживает только последовательное чтение.",
+      "studyHint": "Повторите урок 4: IPC File Format (Feather) vs Stream Format.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m01-exam-q11",
+      "type": "multiple-choice",
+      "question": "Struct-тип в Arrow имеет собственный validity bitmap. Как он взаимодействует с nullable полями внутри структуры?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Struct-уровневый bitmap заменяет bitmap полей — если структура NULL, поля не проверяются"
+        },
+        {
+          "id": "b",
+          "text": "Struct-уровневый bitmap определяет, является ли вся структура NULL, отдельно от nullable полей внутри. Два уровня null: вся структура может быть NULL, и отдельные поля внутри не-NULL структуры тоже могут быть NULL"
+        },
+        {
+          "id": "c",
+          "text": "Struct не может иметь собственный validity bitmap — только поля"
+        },
+        {
+          "id": "d",
+          "text": "Bitmap структуры — это AND bitmap всех полей"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Struct в Arrow имеет два уровня null: struct-уровневый validity bitmap определяет, является ли вся структура NULL (все поля не определены), а bitmap каждого child array определяет null отдельных полей внутри не-NULL структуры. Это не вложенный RecordBatch — каждое поле хранится как отдельный child array.",
+      "studyHint": "Повторите урок 3: Struct — два уровня null (struct-level + field-level).",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m01-exam-q12",
+      "type": "multiple-choice",
+      "question": "DataFusion использует batch_size = 8192 по умолчанию. Инженер хочет уменьшить его до 256 для interactive-запросов с низкой латентностью. Какие trade-offs?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только плюсы: меньше памяти, быстрее первый результат"
+        },
+        {
+          "id": "b",
+          "text": "Латентность первого результата снизится, но эффективность SIMD-векторизации уменьшится (меньше значений за инструкцию), overhead per-batch (schema validation, buffer allocation) увеличится, общий throughput упадёт"
+        },
+        {
+          "id": "c",
+          "text": "Никаких trade-offs — batch_size не влияет на производительность"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не позволяет менять batch_size"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Уменьшение batch_size — trade-off: быстрее первый результат (256 строк вместо 8192), но ниже SIMD-эффективность (меньше contiguous values для AVX), больше per-batch overhead (schema propagation, buffer allocation, async poll на каждый batch). Для interactive OLAP (дашборды) — разумный компромисс. Для batch analytics — потеря throughput.",
+      "studyHint": "Повторите урок 1 (SIMD + cache) и урок 6 (batch_size и SessionConfig).",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

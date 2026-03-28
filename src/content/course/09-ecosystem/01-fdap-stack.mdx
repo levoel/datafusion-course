@@ -1,0 +1,215 @@
+---
+title: "FDAP-стек и позиция DataFusion"
+description: "Flight/DataFusion/Arrow/Parquet как архитектурный тезис, DataFusion как LLVM аналитических систем, ClickBench #1, SIGMOD paper, top-level ASF проект"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 14
+topics: ["FDAP stack", "Flight", "DataFusion", "Arrow", "Parquet", "ClickBench", "SIGMOD", "ASF", "library vs framework"]
+---
+
+# FDAP-стек и позиция DataFusion
+
+На протяжении курса мы изучали DataFusion как query engine — от Arrow-основ до распределённого выполнения. В этом модуле мы взглянём на DataFusion в контексте экосистемы: где он находится, кто его использует, и почему он становится де-факто стандартом аналитических систем нового поколения.
+
+## FDAP: архитектурный тезис
+
+FDAP — **Flight, DataFusion, Arrow, Parquet** — четыре проекта Apache, которые вместе формируют полный стек для построения аналитических систем:
+
+<DiagramContainer title="FDAP-стек" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <DataBox label="Arrow Flight / Flight SQL" className="border-blue-500/30 mx-auto w-80">
+      <div className="text-xs">Сетевой протокол: передача Arrow-данных по gRPC</div>
+      <div className="text-xs mt-1">Замена ODBC/JDBC для columnar-данных</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="DataFusion" className="border-emerald-500/30 mx-auto w-80">
+      <div className="text-xs">Query engine: SQL-парсинг, оптимизация, выполнение</div>
+      <div className="text-xs mt-1">Расширяемый через TableProvider, UDF, OptimizerRule</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Apache Arrow" className="border-amber-500/30 mx-auto w-80">
+      <div className="text-xs">In-memory формат: columnar layout, zero-copy</div>
+      <div className="text-xs mt-1">Единое представление данных между компонентами</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Apache Parquet" className="border-purple-500/30 mx-auto w-80">
+      <div className="text-xs">On-disk формат: columnar, compressed, predicate pushdown</div>
+      <div className="text-xs mt-1">Стандарт хранения для data lake и analytics</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+Каждый уровень решает свою задачу:
+
+- **Parquet** — как данные хранятся на диске (подробно — [модуль 1, Arrow Foundation](/course/01-arrow-foundation/01-what-is-apache-arrow))
+- **Arrow** — как данные представлены в памяти (подробно — [модуль 1, экосистема Arrow](/course/01-arrow-foundation/05-arrow-ecosystem))
+- **DataFusion** — как данные обрабатываются (модули 2–8 этого курса)
+- **Flight** — как данные передаются по сети между узлами и клиентами
+
+До появления FDAP каждая аналитическая система изобретала свой формат хранения, свой wire protocol и свой query planner. FDAP предлагает стандартизированные, совместимые компоненты — как LAMP-стек стандартизировал веб-разработку в 2000-х.
+
+## DataFusion как «LLVM аналитических систем»
+
+Аналогия с LLVM точно отражает архитектурную роль DataFusion:
+
+<DiagramContainer title="Аналогия: LLVM vs DataFusion" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="LLVM (компиляторы)" className="border-blue-500/30">
+      <div className="text-xs"><b>Frontend:</b> Clang (C/C++), rustc, Swift</div>
+      <div className="text-xs mt-1"><b>Middle:</b> LLVM IR — общий оптимизатор</div>
+      <div className="text-xs mt-1"><b>Backend:</b> x86, ARM, WASM</div>
+      <div className="text-xs mt-1 text-gray-400">Каждый язык получает оптимизации бесплатно</div>
+    </DataBox>
+    <DataBox label="DataFusion (аналитика)" className="border-emerald-500/30">
+      <div className="text-xs"><b>Frontend:</b> SQL, DataFrame, PromQL, пользовательский DSL</div>
+      <div className="text-xs mt-1"><b>Middle:</b> LogicalPlan — общий оптимизатор</div>
+      <div className="text-xs mt-1"><b>Backend:</b> Локальное, Ballista, Ray, кастомное</div>
+      <div className="text-xs mt-1 text-gray-400">Каждая система получает оптимизации бесплатно</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Как LLVM позволяет создателям языков сосредоточиться на frontend (синтаксис, семантика), а оптимизации и кодогенерацию получить из коробки, DataFusion позволяет создателям баз данных сосредоточиться на хранилище и специфике предметной области, а SQL-парсинг, планирование и выполнение получить из коробки.
+
+Результат: десятки проектов строятся поверх DataFusion, и каждое улучшение в ядре (новое правило оптимизации, ускорение join, поддержка нового типа данных) автоматически распространяется на всю экосистему.
+
+## Библиотека, не СУБД
+
+Критическое различие DataFusion от других query engine:
+
+<DiagramContainer title="DataFusion vs традиционные СУБД" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="Традиционная СУБД" className="border-red-500/30">
+      <div className="text-xs"><b>Модель:</b> конечный продукт</div>
+      <div className="text-xs mt-1"><b>Что получаете:</b> сервер, протокол, хранилище, query engine — всё в комплекте</div>
+      <div className="text-xs mt-1"><b>Расширение:</b> плагины, хуки (ограниченные)</div>
+      <div className="text-xs mt-1"><b>Примеры:</b> PostgreSQL, MySQL, ClickHouse</div>
+    </DataBox>
+    <DataBox label="DataFusion" className="border-emerald-500/30">
+      <div className="text-xs"><b>Модель:</b> библиотека / строительный материал</div>
+      <div className="text-xs mt-1"><b>Что получаете:</b> SQL-парсер, оптимизатор, executor — без хранилища и сервера</div>
+      <div className="text-xs mt-1"><b>Расширение:</b> trait-based API, замена любого компонента</div>
+      <div className="text-xs mt-1"><b>Примеры:</b> InfluxDB, GreptimeDB, GlareDB, Comet</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Мы подробно разбирали два паттерна использования — библиотека (embedding) и фреймворк (extension) — в [уроке по паттернам расширяемости](/course/05-extensibility/06-extensibility-patterns). DataFusion предоставляет:
+
+- SQL-парсер (полноценный SQL + расширения)
+- Логический и физический планировщик
+- Каскадный оптимизатор ([модуль 6](/course/06-query-optimization/01-why-optimization-matters))
+- Выполнение на Arrow RecordBatch
+- Расширяемость через Rust traits
+
+Вы добавляете: хранилище, сетевой протокол, управление пользователями, репликацию — то, что специфично для вашей системы.
+
+## ClickBench: #1 для Parquet-запросов
+
+DataFusion v43.0.0 занял **первое место** в ClickBench — независимом бенчмарке аналитических систем, созданном командой ClickHouse:
+
+<DiagramContainer title="ClickBench: DataFusion на Parquet" className="my-6">
+  <Grid columns={1} className="text-sm">
+    <DataBox label="ClickBench результаты (Parquet, single node)" className="border-emerald-500/30">
+      <div className="text-xs space-y-1">
+        <div><b>DataFusion 43.0.0</b> — #1 по совокупному времени выполнения 43 запросов</div>
+        <div><b>Контекст:</b> бенчмарк тестирует реальные аналитические запросы по web-аналитике</div>
+        <div><b>Формат:</b> Parquet-файлы, 100M строк, single node execution</div>
+        <div><b>Конкуренты:</b> DuckDB, ClickHouse (local), Polars, Hyper</div>
+      </div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+<Callout type="note">
+ClickBench тестирует конкретный сценарий — аналитические запросы по одной широкой таблице в Parquet. DataFusion лидирует именно в этой нише. Для других сценариев (OLTP, многотабличные join, streaming) результаты будут другими. Бенчмарки — не рейтинг лучших СУБД, а инструмент для сравнения конкретных нагрузок.
+</Callout>
+
+Результат ClickBench важен не столько как «первое место», сколько как доказательство зрелости: DataFusion-библиотека конкурирует с production-оптимизированными СУБД вроде ClickHouse и DuckDB на их поле.
+
+## SIGMOD paper и академическое признание
+
+DataFusion опубликовал статью на SIGMOD — одной из ведущих конференций в области баз данных. Статья описывает архитектуру расширяемого query engine и обосновывает дизайн-решения, которые мы разбирали в курсе:
+
+- Модульный оптимизатор с пользовательскими правилами
+- Trait-based расширяемость вместо плагинной системы
+- Partitioned execution model с автоматическим параллелизмом
+- Arrow как единый формат данных на всех этапах pipeline
+
+Академическое признание дополняет производственную зрелость: DataFusion — не просто «быстрый проект на GitHub», а архитектурно обоснованная система с рецензированным дизайном.
+
+## Top-Level ASF-проект
+
+С 2024 года DataFusion — **top-level проект** Apache Software Foundation (TLP), наравне с Kafka, Spark и Flink. Путь от подпроекта Arrow:
+
+<DiagramContainer title="Путь DataFusion в ASF" className="my-6">
+  <FlowRow className="gap-3 text-sm justify-center flex-wrap">
+    <FlowNode className="bg-gray-800/60 p-2">2017: донация в Arrow</FlowNode>
+    <Arrow direction="right" />
+    <FlowNode className="bg-gray-800/60 p-2">2019–2023: подпроект Arrow</FlowNode>
+    <Arrow direction="right" />
+    <FlowNode className="bg-emerald-900/60 p-2 border border-emerald-400/30">2024: Top-Level Project</FlowNode>
+  </FlowRow>
+</DiagramContainer>
+
+TLP-статус означает:
+
+- **Собственный PMC** (Project Management Committee) — независимое управление
+- **Собственный релизный цикл** — мажорные версии каждые 1–2 месяца (текущая: 52.3.0)
+- **Отдельные подпроекты**: Ballista, Comet, DataFusion Ray, DataFusion Python — каждый со своим темпом
+- **Масштаб сообщества**: ~1600 PR от 206 контрибьюторов за 6 месяцев (между v40 и v45)
+
+## Скорость развития
+
+DataFusion — один из самых активно развивающихся open-source проектов в data-инфраструктуре:
+
+<DiagramContainer title="Активность сообщества (v40–v45, ~6 месяцев)" className="my-6">
+  <Grid columns={3} className="gap-3 text-sm">
+    <DataBox label="Pull Requests" className="border-blue-500/30">
+      <div className="text-2xl font-bold text-blue-400">~1600</div>
+      <div className="text-xs">PR за 6 месяцев</div>
+    </DataBox>
+    <DataBox label="Контрибьюторы" className="border-emerald-500/30">
+      <div className="text-2xl font-bold text-emerald-400">206</div>
+      <div className="text-xs">уникальных авторов</div>
+    </DataBox>
+    <DataBox label="Релизный цикл" className="border-amber-500/30">
+      <div className="text-2xl font-bold text-amber-400">1–2</div>
+      <div className="text-xs">месяца между мажорными версиями</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+При этом DataFusion — не продукт одной компании. В отличие от Spark (Databricks), Flink (Alibaba/Confluent) или ClickHouse (ClickHouse Inc.), DataFusion не имеет единого корпоративного спонсора. Контрибьюторы приходят из InfluxData, Apple, NVIDIA, Cloudflare, Cube и десятков других компаний и индивидуальных разработчиков.
+
+<Callout type="tip">
+Отсутствие «DataFusion Company» — и сила, и ограничение. Сила: нейтральная площадка, любая компания может строить бизнес поверх DataFusion. Ограничение: нет единого roadmap-владельца, приоритеты определяются консенсусом сообщества.
+</Callout>
+
+## Место DataFusion в ландшафте
+
+<DiagramContainer title="DataFusion в ландшафте аналитических систем" className="my-6">
+  <Grid columns={1} className="text-sm">
+    <DataBox label="Категории систем" className="border-gray-500/30">
+      <div className="text-xs space-y-2">
+        <div><b>Конечные СУБД</b> (используют DataFusion как движок): InfluxDB, GreptimeDB, GlareDB, HoraeDB, OpenObserve</div>
+        <div><b>Ускорители</b> (DataFusion внутри существующих систем): Comet (Spark), Auron (Spark/Flink)</div>
+        <div><b>Семантические слои</b>: Cube / Tesseract</div>
+        <div><b>Распределённые рантаймы</b>: Ballista, DataFusion Ray</div>
+        <div><b>Инструменты</b>: datafusion-dft (CLI/TUI), dbt Fusion</div>
+        <div><b>Стриминг</b>: Arroyo (stream processing)</div>
+      </div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Мы уже подробно разобрали паттерны расширения InfluxDB, GreptimeDB, GlareDB и Spice AI в [уроке по расширяемости](/course/05-extensibility/06-extensibility-patterns), а стратегии распределения Ballista, DataFusion Ray и Comet — в [модуле 8](/course/08-distributed-execution/05-choosing-strategy). В следующих уроках этого модуля мы рассмотрим проекты экосистемы, которые ещё не были охвачены в курсе.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> FDAP (Flight/DataFusion/Arrow/Parquet) — стандартизированный стек для аналитических систем нового поколения
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion — «LLVM аналитики»: общий оптимизатор и executor, поверх которого строятся специализированные системы
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Библиотека, не СУБД: DataFusion предоставляет парсер, оптимизатор и executor — хранилище и сервер добавляете вы
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> ClickBench #1 для Parquet-запросов — DataFusion конкурирует с production СУБД
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Top-level ASF проект с ~1600 PR / 206 контрибьюторов за 6 месяцев
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Нейтральная площадка без единого корпоративного спонсора — десятки компаний строят бизнес поверх DataFusion

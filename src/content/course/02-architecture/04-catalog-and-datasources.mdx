@@ -1,0 +1,268 @@
+---
+title: "Каталог и источники данных"
+description: "CatalogProvider, SchemaProvider, TableProvider: трёхуровневая система каталогов DataFusion, регистрация источников данных и ListingTable"
+order: 4
+difficulty: "intermediate"
+estimatedTime: 14
+topics: ["CatalogProvider", "SchemaProvider", "TableProvider", "ListingTable", "MemTable", "Data Sources"]
+---
+
+# Каталог и источники данных
+
+Когда DataFusion видит `SELECT * FROM orders`, он должен знать, что такое `orders`: какая у неё схема, где лежат данные, как их читать. За это отвечает **система каталогов** — трёхуровневая иерархия провайдеров.
+
+## Трёхуровневая иерархия
+
+DataFusion использует модель именования `catalog.schema.table`, аналогичную PostgreSQL:
+
+<DiagramContainer title="Catalog Hierarchy" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <DataBox label="CatalogProvider" className="border-blue-500/30 w-64 mx-auto">
+      <div className="text-xs font-mono">name: "datafusion" (по умолчанию)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="SchemaProvider" className="border-yellow-500/30 w-64 mx-auto">
+      <div className="text-xs font-mono">name: "public" (по умолчанию)</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <DataBox label="TableProvider" className="border-emerald-500/30 w-36">
+        <div className="text-xs font-mono">orders</div>
+      </DataBox>
+      <DataBox label="TableProvider" className="border-emerald-500/30 w-36">
+        <div className="text-xs font-mono">users</div>
+      </DataBox>
+      <DataBox label="TableProvider" className="border-emerald-500/30 w-36">
+        <div className="text-xs font-mono">products</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+При запросе `SELECT * FROM orders` DataFusion ищет таблицу как `datafusion.public.orders`. Полное имя можно указать явно: `SELECT * FROM my_catalog.my_schema.orders`.
+
+## CatalogProvider
+
+Верхний уровень — каталог. Содержит коллекцию схем:
+
+```rust
+pub trait CatalogProvider: Send + Sync {
+    /// Список доступных схем
+    fn schema_names(&self) -> Vec<String>;
+
+    /// Получить провайдер схемы по имени
+    fn schema(&self, name: &str) -> Option<Arc<dyn SchemaProvider>>;
+
+    /// Зарегистрировать новую схему
+    fn register_schema(
+        &self,
+        name: &str,
+        schema: Arc<dyn SchemaProvider>,
+    ) -> Result<Option<Arc<dyn SchemaProvider>>>;
+}
+```
+
+По умолчанию DataFusion создаёт каталог `datafusion` с одной схемой `public`. Для мультитенантных систем можно создать каталог на клиента.
+
+## SchemaProvider
+
+Средний уровень — схема. Содержит коллекцию таблиц:
+
+```rust
+pub trait SchemaProvider: Send + Sync {
+    /// Список таблиц в схеме
+    fn table_names(&self) -> Vec<String>;
+
+    /// Получить провайдер таблицы по имени
+    async fn table(&self, name: &str) -> Result<Option<Arc<dyn TableProvider>>>;
+
+    /// Зарегистрировать таблицу
+    fn register_table(
+        &self,
+        name: String,
+        table: Arc<dyn TableProvider>,
+    ) -> Result<Option<Arc<dyn TableProvider>>>;
+
+    /// Проверить существование таблицы
+    fn table_exist(&self, name: &str) -> bool;
+}
+```
+
+<Callout type="note">
+Метод `table()` — асинхронный. Это позволяет реализовать lazy loading: схема может загружать метаданные таблицы из remote catalog (Hive Metastore, Iceberg REST, Unity Catalog) только при первом обращении.
+</Callout>
+
+## TableProvider: ключевой trait
+
+`TableProvider` — самый важный trait для расширения DataFusion. Он определяет, как читать данные из источника:
+
+```rust
+pub trait TableProvider: Send + Sync {
+    /// Схема таблицы (колонки и типы)
+    fn schema(&self) -> SchemaRef;
+
+    /// Тип таблицы (Base, View, Temporary)
+    fn table_type(&self) -> TableType;
+
+    /// Создать план сканирования
+    async fn scan(
+        &self,
+        state: &dyn Session,
+        projection: Option<&Vec<usize>>,  // Какие колонки читать
+        filters: &[Expr],                 // Предикаты для pushdown
+        limit: Option<usize>,             // LIMIT для pushdown
+    ) -> Result<Arc<dyn ExecutionPlan>>;
+
+    /// Какие фильтры источник может обработать сам
+    fn supports_filters_pushdown(
+        &self,
+        filters: &[&Expr],
+    ) -> Result<Vec<TableProviderFilterPushDown>>;
+}
+```
+
+Метод `scan()` возвращает `ExecutionPlan` — физический оператор, который будет встроен в дерево выполнения. Параметры `projection`, `filters`, `limit` позволяют источнику оптимизировать чтение: читать только нужные колонки, пропускать ненужные строки, ограничивать количество.
+
+## Встроенные реализации
+
+### ListingTable: файловые источники
+
+`ListingTable` — универсальный провайдер для файловых источников (Parquet, CSV, JSON, Avro):
+
+```rust
+use datafusion::datasource::listing::{ListingTable, ListingTableConfig, ListingOptions};
+use datafusion::datasource::file_format::parquet::ParquetFormat;
+
+let config = ListingTableConfig::new(
+    ListingTableUrl::parse("s3://bucket/data/")?
+)
+.with_listing_options(
+    ListingOptions::new(Arc::new(ParquetFormat::default()))
+        .with_file_extension(".parquet")
+        .with_target_partitions(8)
+)
+.infer_schema(&state).await?;
+
+let table = ListingTable::try_new(config)?;
+```
+
+`ListingTable` умеет:
+- Обнаруживать файлы по паттерну в директории
+- Инферить схему из первого файла (или принимать явную)
+- Partition pruning по Hive-style partitioning (`year=2024/month=03/`)
+- Predicate pushdown в Parquet (row group statistics)
+
+### MemTable: данные в памяти
+
+`MemTable` хранит данные как `Vec<RecordBatch>`:
+
+```rust
+use datafusion::datasource::MemTable;
+
+let schema = Arc::new(Schema::new(vec![
+    Field::new("id", DataType::Int64, false),
+    Field::new("name", DataType::Utf8, true),
+]));
+
+let batch = RecordBatch::try_new(schema.clone(), vec![
+    Arc::new(Int64Array::from(vec![1, 2, 3])),
+    Arc::new(StringArray::from(vec!["A", "B", "C"])),
+])?;
+
+let table = MemTable::try_new(schema, vec![vec![batch]])?;
+ctx.register_table("test", Arc::new(table))?;
+```
+
+`MemTable` полезен для тестирования, временных таблиц (`CREATE TABLE ... AS SELECT`) и небольших lookup-таблиц.
+
+### StreamTable: потоковые источники
+
+`StreamTable` представляет бесконечный поток данных (Kafka, WebSocket):
+
+```rust
+// Создание StreamTable из пользовательского потока
+let provider = StreamTable::new(schema, vec![streaming_source]);
+```
+
+Streaming-источники работают в модели «producer push, consumer pull» — DataFusion интегрирует их через `SendableRecordBatchStream`.
+
+## Регистрация источников через SessionContext
+
+На практике регистрация источников происходит через удобные методы `SessionContext`:
+
+```rust
+let ctx = SessionContext::new();
+
+// Parquet-файл → ListingTable автоматически
+ctx.register_parquet("orders", "data/orders.parquet", Default::default()).await?;
+
+// CSV с опциями
+ctx.register_csv("users", "data/users.csv", CsvReadOptions::new().has_header(true)).await?;
+
+// RecordBatch в память
+ctx.register_batch("lookup", batch)?;
+
+// JSON
+ctx.register_json("events", "data/events/*.json", Default::default()).await?;
+```
+
+Каждый `register_*` метод создаёт соответствующий `TableProvider` и регистрирует его в каталоге по умолчанию (`datafusion.public`).
+
+## Пользовательский TableProvider
+
+Для нестандартных источников данных вы реализуете `TableProvider`:
+
+```rust
+struct ApiTable {
+    schema: SchemaRef,
+    endpoint: String,
+}
+
+#[async_trait]
+impl TableProvider for ApiTable {
+    fn schema(&self) -> SchemaRef { self.schema.clone() }
+    fn table_type(&self) -> TableType { TableType::Base }
+
+    async fn scan(
+        &self,
+        _state: &dyn Session,
+        projection: Option<&Vec<usize>>,
+        _filters: &[Expr],
+        limit: Option<usize>,
+    ) -> Result<Arc<dyn ExecutionPlan>> {
+        // Создаём custom ExecutionPlan, который вызывает API
+        Ok(Arc::new(ApiExec::new(
+            self.endpoint.clone(),
+            self.schema.clone(),
+            projection.cloned(),
+            limit,
+        )))
+    }
+}
+```
+
+Это мощный паттерн: вы можете обернуть любой источник — REST API, gRPC, базу данных, очередь — в `TableProvider` и работать с ним через SQL.
+
+<Callout type="tip">
+Модуль 05 (Расширяемость) подробно покрывает реализацию пользовательских `TableProvider`, включая filter pushdown, partition pruning и кастомные `ExecutionPlan`. Здесь мы рассматриваем архитектурную модель.
+</Callout>
+
+## Как каталог участвует в планировании
+
+Когда `SqlToRel` встречает имя таблицы в SQL, он:
+
+1. Разрешает имя через `catalog.schema.table` (с учётом search path)
+2. Вызывает `SchemaProvider::table()` для получения `TableProvider`
+3. Читает `TableProvider::schema()` для построения `DFSchema`
+4. Создаёт узел `LogicalPlan::TableScan` с ссылкой на `TableProvider`
+
+Позже, при физическом планировании, `TableProvider::scan()` вызывается для создания реального `ExecutionPlan`.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Три уровня каталога: `CatalogProvider` → `SchemaProvider` → `TableProvider`
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `TableProvider::scan()` — ключевой метод: возвращает `ExecutionPlan` для чтения данных
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `ListingTable` — универсальный провайдер для файлов (Parquet, CSV, JSON) с pushdown
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `MemTable` — in-memory хранение для тестов и lookup-таблиц
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Пользовательский `TableProvider` позволяет обернуть любой источник в SQL-интерфейс
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `SessionContext::register_*` — удобные методы для регистрации стандартных форматов

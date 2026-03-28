@@ -1,0 +1,196 @@
+---
+title: "SQL-движок DataFusion"
+description: "Парсинг SQL через sqlparser-rs, построение LogicalPlan, поддерживаемые SQL-конструкции, типы данных и отличия от PostgreSQL"
+order: 1
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["SQL Engine", "sqlparser-rs", "SQL Parsing", "LogicalPlan", "DDL", "Data Types", "DataFusion SQL"]
+---
+
+# SQL-движок DataFusion
+
+DataFusion принимает стандартный SQL и превращает его в план выполнения. В этом уроке разберём, как устроен SQL-движок: от текста запроса до LogicalPlan, какие SQL-конструкции поддерживаются, и чем диалект DataFusion отличается от PostgreSQL.
+
+## Pipeline: SQL-текст до LogicalPlan
+
+Каждый SQL-запрос проходит три трансформации до того, как начнётся оптимизация:
+
+<DiagramContainer title="SQL → LogicalPlan Pipeline" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input">SQL Text</FlowNode>
+    <Arrow direction="down" label="sqlparser-rs (парсинг)" />
+    <FlowNode variant="process">AST (Statement)</FlowNode>
+    <Arrow direction="down" label="SqlToRel (семантический анализ)" />
+    <FlowNode variant="process">Unoptimized LogicalPlan</FlowNode>
+    <Arrow direction="down" label="Optimizer (цепочка правил)" />
+    <FlowNode variant="output">Optimized LogicalPlan</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+**Парсинг** — чисто синтаксический. Парсер не знает о таблицах, колонках или типах данных. Его задача — превратить текст в дерево синтаксиса (AST).
+
+**Семантический анализ** (`SqlToRel`) — привязка AST к реальным данным: проверка существования таблиц в каталоге, разрешение колонок, проверка типов, разрешение имён функций.
+
+**Оптимизация** — трансформация LogicalPlan без изменения семантики: pushdown фильтров, elimination неиспользуемых колонок, constant folding.
+
+## Парсинг: sqlparser-rs
+
+DataFusion использует библиотеку `sqlparser-rs` — Rust-парсер SQL, поддерживающий множество диалектов. Парсер возвращает `Vec<Statement>` — набор AST-узлов.
+
+```rust
+use datafusion::sql::sqlparser::parser::Parser;
+use datafusion::sql::sqlparser::dialect::GenericDialect;
+
+let sql = "SELECT region, SUM(amount) FROM orders GROUP BY region";
+let dialect = GenericDialect {};
+let statements = Parser::parse_sql(&dialect, sql)?;
+// statements[0]: Statement::Query { body: Select { ... } }
+```
+
+AST содержит структуру запроса — какие выражения в SELECT, какая таблица в FROM, какие условия в WHERE — но не проверяет, существуют ли эти объекты.
+
+<Callout type="note">
+`sqlparser-rs` поддерживает диалекты: PostgreSQL, MySQL, Hive, Snowflake, BigQuery, Redshift и другие. DataFusion по умолчанию использует `GenericDialect`. Переключить диалект можно через `SessionConfig`.
+</Callout>
+
+## Семантический анализ: SqlToRel
+
+Компонент `SqlToRel` берёт AST и превращает его в `LogicalPlan`. На этом этапе выполняются проверки:
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Таблица существует в каталоге (CatalogProvider)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Колонки есть в схеме таблицы
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Типы данных совместимы (нельзя сравнить INT с STRUCT)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Функции зарегистрированы (SUM, AVG, пользовательские UDF)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> GROUP BY корректен (все не-агрегатные выражения в SELECT есть в GROUP BY)
+
+Если любая проверка не пройдена — возвращается ошибка с описанием проблемы, а не тихий сбой на этапе выполнения.
+
+## Поддерживаемые SQL-конструкции
+
+### DDL (Data Definition Language)
+
+```sql
+-- Внешняя таблица: DataFusion читает данные из файлов
+CREATE EXTERNAL TABLE logs
+STORED AS PARQUET
+LOCATION 's3://bucket/logs/';
+
+-- С указанием схемы и опций формата
+CREATE EXTERNAL TABLE events (
+    event_id   VARCHAR NOT NULL,
+    timestamp  TIMESTAMP,
+    payload    VARCHAR
+)
+STORED AS CSV
+LOCATION '/data/events/'
+OPTIONS (
+    'has_header' 'true',
+    'delimiter'  ','
+);
+
+-- CREATE TABLE AS — материализация запроса в Parquet
+CREATE TABLE top_regions
+AS SELECT region, SUM(amount) AS total
+   FROM orders
+   GROUP BY region
+   ORDER BY total DESC
+   LIMIT 100;
+
+-- VIEW — логическое представление (не материализуется)
+CREATE VIEW active_orders AS
+SELECT * FROM orders WHERE status = 'active';
+
+-- Удаление
+DROP TABLE top_regions;
+DROP VIEW active_orders;
+```
+
+<Callout type="warning">
+`CREATE EXTERNAL TABLE` не копирует данные — DataFusion читает файлы напрямую. Если файлы изменятся или исчезнут, запросы к таблице вернут ошибку. Для устойчивого хранения используйте `CREATE TABLE AS`, которая записывает данные в управляемый формат.
+</Callout>
+
+### DML (Data Manipulation Language)
+
+DataFusion поддерживает INSERT для записи результатов запросов:
+
+```sql
+-- Вставка из запроса
+INSERT INTO archive_orders
+SELECT * FROM orders WHERE created_at < '2024-01-01';
+
+-- COPY — экспорт в файл
+COPY (SELECT * FROM orders WHERE region = 'EU')
+TO '/data/export/eu_orders.parquet';
+```
+
+### Типы данных
+
+DataFusion использует систему типов Apache Arrow. Основные типы:
+
+| SQL-тип | Arrow-тип | Примечание |
+|---------|-----------|-----------|
+| `BOOLEAN` | `Boolean` | true / false |
+| `INT` / `INTEGER` | `Int32` | 32-bit целое |
+| `BIGINT` | `Int64` | 64-bit целое |
+| `FLOAT` / `REAL` | `Float32` | 32-bit вещественное |
+| `DOUBLE` | `Float64` | 64-bit вещественное |
+| `VARCHAR` / `TEXT` | `Utf8` | Строка UTF-8 |
+| `TIMESTAMP` | `Timestamp` | Наносекунды, с/без timezone |
+| `DATE` | `Date32` | Дни с эпохи |
+| `DECIMAL(p, s)` | `Decimal128` | Точная арифметика |
+| `BINARY` / `BYTEA` | `Binary` | Байтовый массив |
+
+## Отличия от PostgreSQL
+
+DataFusion реализует стандартный SQL, но не является полным клоном PostgreSQL. Основные различия:
+
+| Аспект | PostgreSQL | DataFusion |
+|--------|-----------|------------|
+| Хранение | Встроенный storage engine | Внешние файлы (Parquet, CSV, JSON) |
+| Транзакции | ACID, MVCC | Нет транзакций — read-only аналитика |
+| UPDATE / DELETE | Полная поддержка | Ограниченная (зависит от TableProvider) |
+| Индексы | B-tree, Hash, GIN, GiST | Нет индексов — predicate pushdown |
+| PL/pgSQL | Хранимые процедуры | Нет — UDF на Rust или Python |
+| JSON | `jsonb` с индексами | Базовый JSON через Arrow |
+| Расширения | PostgreSQL extensions | `TableProvider`, `OptimizerRule`, UDF |
+
+<Callout type="tip">
+DataFusion не конкурирует с PostgreSQL как OLTP-база. Его ниша — встраиваемый аналитический движок: Parquet-аналитика, data lake querying, построение собственных query engines.
+</Callout>
+
+## Регистрация таблиц через API
+
+SQL DDL — не единственный путь. Таблицы можно регистрировать программно:
+
+```rust
+use datafusion::prelude::*;
+
+let ctx = SessionContext::new();
+
+// Parquet
+ctx.register_parquet("orders", "data/orders.parquet", ParquetReadOptions::default()).await?;
+
+// CSV
+ctx.register_csv("events", "data/events.csv", CsvReadOptions::new().has_header(true)).await?;
+
+// JSON
+ctx.register_json("logs", "data/logs.json", NdJsonReadOptions::default()).await?;
+
+// In-memory RecordBatch
+let batch = RecordBatch::try_from_iter(vec![
+    ("id", Arc::new(Int32Array::from(vec![1, 2, 3])) as ArrayRef),
+    ("name", Arc::new(StringArray::from(vec!["a", "b", "c"]))),
+])?;
+ctx.register_batch("test", batch)?;
+```
+
+После регистрации таблицы доступны в SQL-запросах и через DataFrame API одинаково.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> SQL-запрос проходит парсинг (sqlparser-rs), семантический анализ (SqlToRel) и оптимизацию
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Парсинг синтаксический — не проверяет существование таблиц и колонок
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> SqlToRel привязывает AST к каталогу: таблицы, типы, функции
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DDL: CREATE EXTERNAL TABLE, CREATE TABLE AS, CREATE VIEW, DROP
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Типы данных основаны на Apache Arrow — BOOLEAN, INT, BIGINT, VARCHAR, TIMESTAMP, DECIMAL
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion — аналитический движок, не OLTP-база: нет транзакций, индексов и PL/pgSQL

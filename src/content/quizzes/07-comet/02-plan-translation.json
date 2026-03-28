@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "07-comet/02-plan-translation",
+  "moduleId": "07-comet",
+  "_meta": { "idPrefix": "df-m07-02" },
+  "questions": [
+    {
+      "id": "df-m07-02-q1",
+      "type": "multiple-choice",
+      "question": "CometExecRule обходит физический план Spark снизу вверх (bottom-up). Почему выбран именно этот порядок?",
+      "options": [
+        { "id": "a", "text": "Bottom-up гарантирует, что к моменту замены родительского оператора все его потомки уже заменены или помечены как incompatible — это нужно для all-or-nothing fallback на уровне stage" },
+        { "id": "b", "text": "Bottom-up быстрее top-down для деревьев с глубиной > 5" },
+        { "id": "c", "text": "Top-down не поддерживается в Spark transformUp API" },
+        { "id": "d", "text": "Порядок обхода не имеет значения — результат одинаков" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "При bottom-up обходе (transformUp) потомки обрабатываются первыми. Когда CometExecRule доходит до родительского оператора, он уже знает, заменены ли все дочерние узлы. Если хотя бы один потомок не заменён — весь stage откатывается к Spark (all-or-nothing). Top-down не дал бы этой информации.",
+      "bloomLevel": "analytical",
+      "studyHint": "Bottom-up: потомки обработаны → родитель знает их статус. Критично для all-or-nothing fallback решения."
+    },
+    {
+      "id": "df-m07-02-q2",
+      "type": "multiple-choice",
+      "question": "Protobuf-сериализация плана в Comet передаёт данные между JVM и Rust. Когда происходит JNI-вызов?",
+      "options": [
+        { "id": "a", "text": "Один раз на query stage — protobuf blob передаётся при создании плана, дальнейшее исполнение полностью нативное без обратных вызовов в JVM" },
+        { "id": "b", "text": "На каждую строку данных — JNI передаёт строки по одной" },
+        { "id": "c", "text": "На каждый RecordBatch — JNI вызывается для каждого batch" },
+        { "id": "d", "text": "JNI не используется — данные передаются через shared memory" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "JNI-вызов Native.createPlan() передаёт один protobuf blob (обычно несколько КБ) на старте query stage. Rust-сторона десериализует план и строит DataFusion ExecutionPlan. Дальнейшее исполнение идёт полностью нативно — JNI не вызывается до возврата результата. JNI-overhead минимален.",
+      "bloomLevel": "conceptual",
+      "studyHint": "JNI: один вызов на stage (protobuf blob) → нативное исполнение → возврат результата. Нет per-row или per-batch JNI вызовов."
+    },
+    {
+      "id": "df-m07-02-q3",
+      "type": "multiple-choice",
+      "question": "PhysicalPlanner на Rust-стороне строит стандартные DataFusion ExecutionPlan. Почему Comet не создаёт кастомные execution nodes?",
+      "options": [
+        { "id": "a", "text": "Использование стандартных примитивов (FilterExec, ProjectionExec, HashJoinExec) позволяет получать обновления и оптимизации DataFusion без изменения Comet-кода" },
+        { "id": "b", "text": "DataFusion не позволяет создавать кастомные ExecutionPlan" },
+        { "id": "c", "text": "Кастомные nodes быстрее, но Comet предпочитает совместимость" },
+        { "id": "d", "text": "Comet создаёт кастомные nodes для каждого оператора" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "PhysicalPlanner маппит protobuf Operator на стандартные DataFusion FilterExec, ProjectionExec, HashJoinExec и т.д. Это позволяет Comet автоматически получать улучшения DataFusion (новые оптимизации, исправления, поддержка типов) без изменения собственного кода. Каждое обновление DataFusion улучшает Comet.",
+      "bloomLevel": "applied",
+      "studyHint": "Стандартные DataFusion nodes → автоматические улучшения при обновлении DataFusion. Минимальный maintenance cost."
+    },
+    {
+      "id": "df-m07-02-q4",
+      "type": "multiple-choice",
+      "question": "Fallback в Comet работает по принципу all-or-nothing на уровне query stage. Почему частичная замена операторов невыгодна?",
+      "options": [
+        { "id": "a", "text": "Частичная замена требует ColumnarToRow / RowToColumnar конвертации на каждой границе между нативным и JVM-исполнением, что съедает выигрыш от нативных операторов" },
+        { "id": "b", "text": "Spark API не позволяет смешивать нативные и JVM-операторы" },
+        { "id": "c", "text": "Частичная замена вызывает deadlock между JVM и Rust" },
+        { "id": "d", "text": "DataFusion не может исполнять частичные планы" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "При частичной замене каждая граница CometExec ↔ SparkExec требует конвертации: CometExec выдаёт Arrow RecordBatch (columnar), SparkExec ожидает InternalRow (row-based). Конвертация ColumnarToRow / RowToColumnar на каждой границе дороже, чем выигрыш от нескольких нативных операторов. Поэтому Comet проверяет весь stage целиком.",
+      "bloomLevel": "analytical",
+      "studyHint": "All-or-nothing: ColumnarToRow на каждой границе > выигрыш нативных операторов. Лучше весь stage нативно или весь на JVM."
+    },
+    {
+      "id": "df-m07-02-q5",
+      "type": "multiple-choice",
+      "question": "Для добавления поддержки нового Spark-выражения в Comet нужно реализовать CometExpressionSerde. Какие шаги необходимы?",
+      "options": [
+        { "id": "a", "text": "Добавить protobuf-сообщение в expr.proto, реализовать Scala-сериализацию в CometExecRule, реализовать Rust-десериализацию через CometExpressionSerde и маппинг в DataFusion PhysicalExpr" },
+        { "id": "b", "text": "Только добавить ветку в PhysicalPlanner на Rust-стороне" },
+        { "id": "c", "text": "Только добавить protobuf-сообщение — остальное генерируется автоматически" },
+        { "id": "d", "text": "Написать новый SparkPlugin вместо CometPlugin" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Три слоя: (1) Protobuf — добавить сообщение в expr.proto для нового выражения. (2) Scala — добавить ветку в CometExecRule для сериализации Spark-выражения в protobuf. (3) Rust — реализовать CometExpressionSerde::to_datafusion() для десериализации protobuf и маппинга в DataFusion PhysicalExpr.",
+      "bloomLevel": "applied",
+      "studyHint": "Три слоя: protobuf (expr.proto) → Scala (CometExecRule) → Rust (CometExpressionSerde). Каждый слой — отдельный шаг."
+    }
+  ]
+}

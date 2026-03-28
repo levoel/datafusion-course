@@ -1,0 +1,323 @@
+---
+title: "SELECT и аналитические запросы"
+description: "SELECT, агрегатные функции, подзапросы, CTE и операции над множествами в DataFusion SQL"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["SELECT", "Aggregate Functions", "Subqueries", "CTE", "UNION", "DataFusion SQL"]
+---
+
+# SELECT и аналитические запросы
+
+DataFusion поддерживает полноценный SQL для аналитики. В этом уроке разберём SELECT со всеми основными конструкциями: фильтрация, группировка, подзапросы, CTE и операции над множествами.
+
+## Базовый SELECT
+
+Структура SELECT-запроса в DataFusion:
+
+```sql
+SELECT колонки
+FROM таблица
+WHERE условие
+GROUP BY группировка
+HAVING условие_на_группы
+ORDER BY сортировка
+LIMIT ограничение;
+```
+
+Каждая клауза опциональна, кроме SELECT и FROM (для запросов к таблицам). Вычисления без FROM тоже возможны:
+
+```sql
+SELECT 1 + 2 AS result, NOW() AS current_time;
+```
+
+## Фильтрация: WHERE
+
+WHERE принимает булево выражение. DataFusion поддерживает все стандартные операторы:
+
+```sql
+-- Сравнение и логика
+SELECT * FROM orders
+WHERE amount > 1000
+  AND status = 'completed'
+  AND region IN ('EU', 'US');
+
+-- BETWEEN
+SELECT * FROM events
+WHERE timestamp BETWEEN '2024-01-01' AND '2024-12-31';
+
+-- LIKE для текстового поиска
+SELECT * FROM logs
+WHERE message LIKE '%timeout%';
+
+-- IS NULL / IS NOT NULL
+SELECT * FROM users
+WHERE email IS NOT NULL AND phone IS NULL;
+```
+
+<Callout type="note">
+DataFusion выполняет predicate pushdown: если источник данных поддерживает фильтрацию (Parquet с row group statistics), WHERE-условие спускается до уровня файла. Это может на порядки сократить объём читаемых данных.
+</Callout>
+
+## Агрегатные функции
+
+Агрегатные функции вычисляют одно значение из группы строк:
+
+```sql
+SELECT
+    region,
+    COUNT(*)            AS order_count,
+    SUM(amount)         AS total_amount,
+    AVG(amount)         AS avg_amount,
+    MIN(amount)         AS min_amount,
+    MAX(amount)         AS max_amount,
+    COUNT(DISTINCT customer_id) AS unique_customers
+FROM orders
+WHERE status = 'completed'
+GROUP BY region
+HAVING SUM(amount) > 10000
+ORDER BY total_amount DESC;
+```
+
+DataFusion поддерживает стандартные агрегаты:
+
+| Функция | Описание |
+|---------|----------|
+| `COUNT(*)` / `COUNT(col)` | Количество строк / не-NULL значений |
+| `SUM(col)` | Сумма |
+| `AVG(col)` | Среднее |
+| `MIN(col)` / `MAX(col)` | Минимум / максимум |
+| `COUNT(DISTINCT col)` | Количество уникальных значений |
+| `ARRAY_AGG(col)` | Собрать значения в массив |
+| `STDDEV(col)` | Стандартное отклонение |
+| `MEDIAN(col)` | Медиана |
+| `APPROX_DISTINCT(col)` | Приближённое количество уникальных (HyperLogLog) |
+| `APPROX_PERCENTILE_CONT(col, p)` | Приближённый перцентиль |
+
+<Callout type="tip">
+`APPROX_DISTINCT` использует алгоритм HyperLogLog и работает значительно быстрее `COUNT(DISTINCT)` на больших данных с небольшой погрешностью (обычно менее 2%).
+</Callout>
+
+## GROUP BY и HAVING
+
+GROUP BY группирует строки по указанным колонкам. Все не-агрегатные выражения в SELECT должны быть в GROUP BY:
+
+```sql
+-- GROUP BY с несколькими колонками
+SELECT region, product_category, SUM(amount) AS total
+FROM orders
+GROUP BY region, product_category
+ORDER BY region, total DESC;
+
+-- HAVING фильтрует группы (после агрегации)
+SELECT region, COUNT(*) AS cnt
+FROM orders
+GROUP BY region
+HAVING COUNT(*) > 100;
+```
+
+Разница между WHERE и HAVING:
+- **WHERE** фильтрует строки до группировки
+- **HAVING** фильтрует группы после агрегации
+
+```sql
+-- WHERE: исключить отменённые заказы ДО группировки
+-- HAVING: оставить только регионы с суммой > 50000
+SELECT region, SUM(amount) AS total
+FROM orders
+WHERE status != 'cancelled'
+GROUP BY region
+HAVING SUM(amount) > 50000;
+```
+
+## Подзапросы
+
+DataFusion поддерживает несколько типов подзапросов:
+
+### Скалярный подзапрос
+
+Возвращает одно значение. Используется в SELECT или WHERE:
+
+```sql
+-- В WHERE: заказы с суммой выше средней
+SELECT * FROM orders
+WHERE amount > (SELECT AVG(amount) FROM orders);
+
+-- В SELECT: процент от общего
+SELECT
+    region,
+    SUM(amount) AS total,
+    ROUND(
+        SUM(amount) * 100.0 / (SELECT SUM(amount) FROM orders),
+        2
+    ) AS pct_of_total
+FROM orders
+GROUP BY region;
+```
+
+### Подзапрос с IN / NOT IN
+
+Проверяет вхождение в набор значений:
+
+```sql
+-- Клиенты, сделавшие хотя бы один заказ
+SELECT * FROM customers
+WHERE customer_id IN (SELECT DISTINCT customer_id FROM orders);
+
+-- Товары без заказов
+SELECT * FROM products
+WHERE product_id NOT IN (
+    SELECT DISTINCT product_id FROM order_items
+);
+```
+
+### Коррелированный подзапрос с EXISTS
+
+Подзапрос, ссылающийся на внешний запрос:
+
+```sql
+-- Клиенты с заказами на сумму > 5000
+SELECT c.name, c.email
+FROM customers c
+WHERE EXISTS (
+    SELECT 1 FROM orders o
+    WHERE o.customer_id = c.customer_id
+      AND o.amount > 5000
+);
+```
+
+## CTE: Common Table Expressions
+
+CTE (WITH-клауза) структурирует сложные запросы, разбивая их на именованные шаги:
+
+```sql
+WITH monthly_totals AS (
+    SELECT
+        DATE_TRUNC('month', order_date) AS month,
+        region,
+        SUM(amount) AS total
+    FROM orders
+    WHERE status = 'completed'
+    GROUP BY DATE_TRUNC('month', order_date), region
+),
+ranked AS (
+    SELECT
+        month,
+        region,
+        total,
+        ROW_NUMBER() OVER (PARTITION BY month ORDER BY total DESC) AS rn
+    FROM monthly_totals
+)
+SELECT month, region, total
+FROM ranked
+WHERE rn <= 3
+ORDER BY month, rn;
+```
+
+CTE делает запрос читаемым: каждый шаг имеет имя и чёткую ответственность. DataFusion может оптимизировать CTE — переместить фильтры внутрь или объединить шаги.
+
+<Callout type="note">
+DataFusion поддерживает рекурсивные CTE (`WITH RECURSIVE`) для запросов с иерархической структурой (деревья, графы).
+</Callout>
+
+## Операции над множествами
+
+Объединение результатов нескольких запросов:
+
+```sql
+-- UNION ALL: все строки, включая дубликаты
+SELECT customer_id, amount, 'online' AS channel FROM online_orders
+UNION ALL
+SELECT customer_id, amount, 'retail' AS channel FROM retail_orders;
+
+-- UNION: уникальные строки (дороже — требует дедупликации)
+SELECT region FROM orders_2023
+UNION
+SELECT region FROM orders_2024;
+
+-- INTERSECT: строки, присутствующие в обоих запросах
+SELECT customer_id FROM premium_customers
+INTERSECT
+SELECT customer_id FROM active_customers;
+
+-- EXCEPT: строки из первого, отсутствующие во втором
+SELECT customer_id FROM all_customers
+EXCEPT
+SELECT customer_id FROM churned_customers;
+```
+
+<Callout type="tip">
+`UNION ALL` всегда быстрее `UNION`, потому что не требует дедупликации. Используйте `UNION` только когда дубликаты действительно нужно исключить.
+</Callout>
+
+## JOIN
+
+DataFusion поддерживает все стандартные типы JOIN:
+
+```sql
+-- INNER JOIN: только совпадающие строки
+SELECT o.order_id, c.name, o.amount
+FROM orders o
+INNER JOIN customers c ON o.customer_id = c.customer_id;
+
+-- LEFT JOIN: все строки из левой таблицы
+SELECT c.name, COALESCE(SUM(o.amount), 0) AS total
+FROM customers c
+LEFT JOIN orders o ON c.customer_id = o.customer_id
+GROUP BY c.name;
+
+-- Множественные JOIN
+SELECT o.order_id, c.name, p.product_name, oi.quantity
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id
+WHERE o.order_date >= '2024-01-01';
+```
+
+Физический планировщик DataFusion выбирает алгоритм JOIN автоматически:
+- **HashJoin** — для equi-join, когда одна сторона помещается в память
+- **SortMergeJoin** — для больших таблиц, когда обе стороны не помещаются в память
+- **NestedLoopJoin** — для non-equi join (условия без `=`)
+
+## Практический пример: аналитический отчёт
+
+Комбинация всех конструкций в одном запросе:
+
+```sql
+WITH daily_stats AS (
+    SELECT
+        DATE_TRUNC('day', order_date) AS day,
+        region,
+        COUNT(*) AS orders,
+        SUM(amount) AS revenue
+    FROM orders
+    WHERE status IN ('completed', 'shipped')
+      AND order_date >= '2024-01-01'
+    GROUP BY DATE_TRUNC('day', order_date), region
+)
+SELECT
+    day,
+    region,
+    orders,
+    revenue,
+    AVG(revenue) OVER (
+        PARTITION BY region
+        ORDER BY day
+        ROWS BETWEEN 6 PRECEDING AND CURRENT ROW
+    ) AS revenue_7d_avg
+FROM daily_stats
+ORDER BY day DESC, revenue DESC
+LIMIT 50;
+```
+
+Этот запрос: фильтрует заказы → группирует по дням и регионам → вычисляет 7-дневное скользящее среднее → сортирует и ограничивает результат.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion поддерживает полный SQL SELECT: WHERE, GROUP BY, HAVING, ORDER BY, LIMIT
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Агрегатные функции: SUM, AVG, COUNT, MIN, MAX, APPROX_DISTINCT, MEDIAN
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Подзапросы: скалярные, IN/NOT IN, EXISTS (коррелированные)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> CTE (WITH) структурируют сложные запросы и поддерживают рекурсию
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> UNION / INTERSECT / EXCEPT для операций над множествами
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> JOIN: INNER, LEFT, RIGHT, FULL, CROSS — с автоматическим выбором алгоритма

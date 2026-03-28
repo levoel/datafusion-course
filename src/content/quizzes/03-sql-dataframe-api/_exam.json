@@ -1,0 +1,191 @@
+{
+  "lessonSlug": "03-sql-dataframe-api/_exam",
+  "moduleId": "03-sql-dataframe-api",
+  "examTitle": "Экзамен: SQL и DataFrame API",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "df-m03-exam"
+  },
+  "questions": [
+    {
+      "id": "df-m03-exam-q1",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT region, SUM(amount) FROM orders WHERE status = 'completed' GROUP BY region проходит pipeline. В каком порядке работают стадии SqlToRel и Optimizer?",
+      "options": [
+        { "id": "a", "text": "SqlToRel строит LogicalPlan (Scan → Filter → Aggregate → Projection), затем Optimizer применяет filter pushdown (фильтр опускается к Scan) и projection pushdown (читаются только region, amount, status)" },
+        { "id": "b", "text": "Optimizer работает до SqlToRel — сначала оптимизация, потом семантический анализ" },
+        { "id": "c", "text": "SqlToRel и Optimizer работают одновременно в одном проходе" },
+        { "id": "d", "text": "SqlToRel строит PhysicalPlan напрямую, минуя LogicalPlan" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SqlToRel конвертирует AST в LogicalPlan без оптимизаций: TableScan → Filter → Aggregate → Projection. Затем Optimizer применяет цепочку правил: filter pushdown перемещает предикат status = 'completed' ближе к TableScan, projection pushdown ограничивает читаемые колонки. Порядок строго последовательный.",
+      "bloomLevel": "analytical",
+      "studyHint": "Pipeline строго последовательный: парсинг → SqlToRel → Optimizer → PhysicalPlanner → execute. Оптимизация всегда после построения плана."
+    },
+    {
+      "id": "df-m03-exam-q2",
+      "type": "multiple-choice",
+      "question": "Запрос использует CTE: WITH monthly AS (SELECT date_trunc('month', dt) AS m, SUM(amount) AS total FROM sales GROUP BY 1) SELECT m, total, AVG(total) OVER (ORDER BY m ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) FROM monthly. Какие узлы LogicalPlan создаются?",
+      "options": [
+        { "id": "a", "text": "SubqueryAlias(monthly) → Aggregate(date_trunc + SUM) → Projection + WindowAggr(AVG OVER ROWS)" },
+        { "id": "b", "text": "Только один Aggregate — CTE и оконная функция объединяются в один узел" },
+        { "id": "c", "text": "CTE материализуется как временная таблица, затем выполняется отдельный запрос" },
+        { "id": "d", "text": "Два последовательных WindowAggr — CTE реализуется как оконная функция" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "CTE создаёт SubqueryAlias с вложенным Aggregate (группировка по месяцу, SUM). Внешний запрос добавляет WindowAggr для скользящего среднего (AVG OVER ROWS BETWEEN 2 PRECEDING AND CURRENT ROW) и Projection для выбора колонок. CTE не материализуется — это подстановка в LogicalPlan.",
+      "bloomLevel": "analytical",
+      "studyHint": "CTE = SubqueryAlias + вложенный план. Оконные функции = отдельный узел WindowAggr. Они комбинируются, не заменяют друг друга."
+    },
+    {
+      "id": "df-m03-exam-q3",
+      "type": "multiple-choice",
+      "question": "Разработчик написал: let df = ctx.sql(\"SELECT * FROM orders\").await?; let filtered = df.filter(col(\"amount\").gt(lit(100)))?; let result = filtered.collect().await?; Сколько раз выполняется запрос к данным?",
+      "options": [
+        { "id": "a", "text": "Один раз — при вызове collect(). sql() и filter() только строят план" },
+        { "id": "b", "text": "Два раза — sql() выполняет SELECT, filter() выполняет фильтрацию" },
+        { "id": "c", "text": "Три раза — каждый вызов выполняет свою часть" },
+        { "id": "d", "text": "Ноль — данные загружаются лениво при итерации по result" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "sql() парсит SQL и строит LogicalPlan (без выполнения). filter() добавляет узел Filter к плану (без выполнения). Только collect() запускает весь pipeline: оптимизация → физический план → выполнение. Результат — один проход по данным с уже объединённым фильтром.",
+      "bloomLevel": "analytical",
+      "studyHint": "Ленивость DataFrame: все трансформации (sql, filter, select, join) строят план. Только terminal-операция (collect, show, write) выполняет его."
+    },
+    {
+      "id": "df-m03-exam-q4",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает: ParquetExec (output_rows: 5000000), FilterExec (output_rows: 500), SortExec (output_rows: 500), GlobalLimitExec (output_rows: 10). Какой узел является главным узким местом и как его оптимизировать?",
+      "options": [
+        { "id": "a", "text": "ParquetExec — читает 5M строк, из которых нужно 500. Нужно проверить predicate pushdown и статистики row group в Parquet-файле" },
+        { "id": "b", "text": "SortExec — сортировка 500 строк неэффективна" },
+        { "id": "c", "text": "GlobalLimitExec — LIMIT 10 можно заменить на TopK" },
+        { "id": "d", "text": "FilterExec — фильтрация слишком агрессивна" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ParquetExec читает 5M строк, но FilterExec пропускает только 500 — селективность 0.01%. Это означает, что predicate pushdown не сработал или row group статистики отсутствуют. При работающем pushdown ParquetExec пропустил бы целые row groups, сократив чтение в десятки раз.",
+      "bloomLevel": "analytical",
+      "studyHint": "Ищите узлы с наибольшим ratio input/output. ParquetExec 5M → FilterExec 500 = pushdown не работает."
+    },
+    {
+      "id": "df-m03-exam-q5",
+      "type": "multiple-choice",
+      "question": "Команда хочет реализовать: SQL-аналитик пишет базовый запрос, backend-разработчик добавляет программные фильтры на основе прав доступа пользователя. Какой паттерн использовать?",
+      "options": [
+        { "id": "a", "text": "ctx.sql(базовый_запрос) → DataFrame → .filter(динамические_условия) → .collect(). SQL и DataFrame API комбинируются через общий LogicalPlan" },
+        { "id": "b", "text": "Генерировать финальный SQL через конкатенацию строк с условиями WHERE" },
+        { "id": "c", "text": "Выполнить SQL, загрузить результат в Vec, затем фильтровать в Rust-коде" },
+        { "id": "d", "text": "Создать отдельные SQL View для каждой роли пользователя" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ctx.sql() возвращает DataFrame, к которому можно программно добавить filter() с условиями, построенными в рантайме. Это безопасно (нет SQL-инъекций), типизировано и использует оптимизатор — фильтры объединяются в один LogicalPlan. Конкатенация SQL-строк создаёт риск инъекций.",
+      "bloomLevel": "analytical",
+      "studyHint": "Мост SQL → DataFrame — ключевой паттерн. Аналитик пишет SQL, разработчик дополняет программно."
+    },
+    {
+      "id": "df-m03-exam-q6",
+      "type": "multiple-choice",
+      "question": "Оконная функция SUM(amount) OVER (PARTITION BY region ORDER BY date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) вычисляет нарастающий итог. Что изменится, если заменить ROWS на RANGE?",
+      "options": [
+        { "id": "a", "text": "При дубликатах даты RANGE включит все строки с одинаковой датой в текущий фрейм, а ROWS — только строки до текущей физической позиции. Нарастающий итог будет скачкообразным при RANGE" },
+        { "id": "b", "text": "Ничего не изменится — ROWS и RANGE идентичны с ORDER BY" },
+        { "id": "c", "text": "RANGE будет работать быстрее, так как обрабатывает группы" },
+        { "id": "d", "text": "RANGE не поддерживается с UNBOUNDED PRECEDING" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ROWS считает физические позиции: каждая строка имеет уникальную позицию. RANGE работает по значению ORDER BY: все строки с одинаковой датой включаются в фрейм одновременно. При дубликатах дат RANGE даёт скачок суммы (сразу включает все строки той же даты), ROWS — плавное нарастание.",
+      "bloomLevel": "analytical",
+      "studyHint": "ROWS = физические строки (порядок), RANGE = одинаковые значения обрабатываются вместе. Разница видна только при дубликатах."
+    },
+    {
+      "id": "df-m03-exam-q7",
+      "type": "multiple-choice",
+      "question": "Разработчик строит pipeline: df.filter(expr1)?.select(cols)?.join(other_df, ...)?.aggregate(groups, aggs)?. Где в этой цепочке находится оптимизация filter pushdown?",
+      "options": [
+        { "id": "a", "text": "В каждом вызове filter() — фильтр немедленно оптимизируется" },
+        { "id": "b", "text": "Нигде в цепочке — оптимизация происходит при вызове collect(), когда Optimizer обрабатывает весь LogicalPlan целиком" },
+        { "id": "c", "text": "В вызове join() — join автоматически оптимизирует связанные фильтры" },
+        { "id": "d", "text": "Оптимизация невозможна в DataFrame API — только в SQL" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Все вызовы (filter, select, join, aggregate) строят LogicalPlan без оптимизации. Оптимизация происходит при вызове terminal-операции (collect, show, write): Optimizer получает полный LogicalPlan и применяет все правила, включая filter pushdown через join. Это преимущество ленивой модели.",
+      "bloomLevel": "analytical",
+      "studyHint": "Ленивость = вся оптимизация отложена до collect(). Optimizer видит полную картину и принимает лучшие решения."
+    },
+    {
+      "id": "df-m03-exam-q8",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT department, employee, salary, RANK() OVER (PARTITION BY department ORDER BY salary DESC) AS rnk FROM employees WHERE rnk <= 3 возвращает ошибку. Почему?",
+      "options": [
+        { "id": "a", "text": "WHERE выполняется до оконной функции — алиас rnk ещё не существует. Нужно обернуть в подзапрос и фильтровать во внешнем WHERE" },
+        { "id": "b", "text": "RANK() не поддерживает DESC" },
+        { "id": "c", "text": "PARTITION BY нельзя использовать с WHERE" },
+        { "id": "d", "text": "Алиас rnk конфликтует с зарезервированным словом" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Логический порядок SQL: FROM → WHERE → GROUP BY → HAVING → SELECT (оконные функции) → ORDER BY. WHERE выполняется до вычисления оконных функций, поэтому алиас rnk недоступен. Решение: SELECT * FROM (... RANK() ... ) sub WHERE sub.rnk <= 3.",
+      "bloomLevel": "analytical",
+      "studyHint": "Оконные функции вычисляются на этапе SELECT — после WHERE. Фильтрация по результату оконной функции требует подзапроса."
+    },
+    {
+      "id": "df-m03-exam-q9",
+      "type": "multiple-choice",
+      "question": "UDF normalize_email зарегистрирована через ctx.register_udf(). Как вызвать её из DataFrame API?",
+      "options": [
+        { "id": "a", "text": "normalize_email.call(vec![col(\"email\")]) — UDF реализует ScalarUDFImpl с методом call(), возвращающим Expr" },
+        { "id": "b", "text": "df.apply_udf(\"normalize_email\", \"email\")" },
+        { "id": "c", "text": "df.sql(\"SELECT normalize_email(email) FROM table\")" },
+        { "id": "d", "text": "UDF доступны только из SQL, не из DataFrame API" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Зарегистрированная UDF доступна как объект ScalarUDF с методом call(). Он принимает вектор Expr и возвращает Expr, который можно использовать в select(), filter() и других DataFrame-методах. Это общий механизм — одна регистрация, два API.",
+      "bloomLevel": "applied",
+      "studyHint": "UDF.call(vec![col(\"x\")]) → Expr. Один и тот же UDF работает и в SQL (SELECT udf(x)), и в DataFrame (.select(udf.call(...)))."
+    },
+    {
+      "id": "df-m03-exam-q10",
+      "type": "multiple-choice",
+      "question": "DataFusion использует GenericDialect для парсинга SQL. Аналитик привык к PostgreSQL-синтаксису и пишет SELECT 'hello'::TEXT. Что произойдёт?",
+      "options": [
+        { "id": "a", "text": "Запрос выполнится — GenericDialect поддерживает оператор :: для приведения типов" },
+        { "id": "b", "text": "Ошибка парсинга — DataFusion использует CAST(expr AS type) вместо :: нотации" },
+        { "id": "c", "text": "Запрос выполнится, но тип не будет приведён" },
+        { "id": "d", "text": "DataFusion автоматически определит тип без явного приведения" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "sqlparser-rs с GenericDialect поддерживает оператор :: для приведения типов — это PostgreSQL-совместимый синтаксис. Оба варианта ('hello'::TEXT и CAST('hello' AS TEXT)) работают в DataFusion и создают одинаковый LogicalPlan с узлом Cast.",
+      "bloomLevel": "applied",
+      "studyHint": "DataFusion поддерживает и CAST(), и :: для приведения типов. Оба синтаксиса создают одинаковый Cast в LogicalPlan."
+    },
+    {
+      "id": "df-m03-exam-q11",
+      "type": "multiple-choice",
+      "question": "Pipeline обрабатывает CSV-данные: ctx.read_csv() → DataFrame → filter → aggregate → collect. EXPLAIN ANALYZE показывает CsvExec без predicate pushdown. Почему pushdown не работает и что делать?",
+      "options": [
+        { "id": "a", "text": "CSV не поддерживает predicate pushdown — у CSV-файлов нет статистик и метаданных для пропуска строк. Для pushdown нужно конвертировать данные в Parquet" },
+        { "id": "b", "text": "Ошибка в конфигурации SessionContext — pushdown отключён" },
+        { "id": "c", "text": "filter() размещён после aggregate() — нужно переставить" },
+        { "id": "d", "text": "CSV поддерживает pushdown, но только для числовых колонок" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "CSV — текстовый построчный формат без метаданных о содержимом. CsvExec всегда читает все строки и передаёт их FilterExec. Parquet содержит статистики (min/max/null_count) по каждому row group, что позволяет ParquetExec пропускать целые блоки. Конвертация в Parquet — стандартная оптимизация.",
+      "bloomLevel": "analytical",
+      "studyHint": "Predicate pushdown работает с Parquet (статистики row group), но не с CSV (нет метаданных). Конвертация CSV → Parquet — первый шаг оптимизации."
+    },
+    {
+      "id": "df-m03-exam-q12",
+      "type": "multiple-choice",
+      "question": "Разработчик хочет протестировать трансформацию: fn add_tax(df: DataFrame) -> Result<DataFrame>. Какой подход правильный?",
+      "options": [
+        { "id": "a", "text": "Создать SessionContext, зарегистрировать CSV-файл с тестовыми данными, выполнить SQL и сравнить результат" },
+        { "id": "b", "text": "Создать DataFrame из MemTable (in-memory RecordBatch), вызвать add_tax(), собрать результат через collect() и проверить значения в RecordBatch" },
+        { "id": "c", "text": "Вызвать add_tax() с mock DataFrame, проверяя только структуру LogicalPlan" },
+        { "id": "d", "text": "Запустить запрос на production-данных и сравнить результат с эталоном" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для unit-теста: создайте RecordBatch с контролируемыми данными, оберните в MemTable, зарегистрируйте в SessionContext. Передайте полученный DataFrame в add_tax(), вызовите collect() и проверьте значения в результирующих RecordBatch. Это изолированный тест без внешних зависимостей.",
+      "bloomLevel": "analytical",
+      "studyHint": "Паттерн тестирования: MemTable (in-memory данные) → DataFrame → трансформация → collect() → assert на RecordBatch."
+    }
+  ]
+}

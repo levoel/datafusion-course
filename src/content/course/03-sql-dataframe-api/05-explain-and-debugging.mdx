@@ -1,0 +1,225 @@
+---
+title: "EXPLAIN и отладка запросов"
+description: "EXPLAIN и EXPLAIN ANALYZE в DataFusion: чтение LogicalPlan, PhysicalPlan, метрики выполнения и INFORMATION_SCHEMA"
+order: 5
+difficulty: "intermediate"
+estimatedTime: 15
+topics: ["EXPLAIN", "EXPLAIN ANALYZE", "LogicalPlan", "PhysicalPlan", "Execution Metrics", "INFORMATION_SCHEMA", "Debugging"]
+---
+
+# EXPLAIN и отладка запросов
+
+Понимание того, как DataFusion выполняет запрос, критично для оптимизации. `EXPLAIN` показывает план до выполнения, `EXPLAIN ANALYZE` — план с реальными метриками после выполнения. В этом уроке разберём, как читать планы и находить узкие места.
+
+## EXPLAIN: план запроса
+
+`EXPLAIN` показывает два плана: логический (после оптимизации) и физический:
+
+```sql
+EXPLAIN
+SELECT region, SUM(amount) AS total
+FROM orders
+WHERE status = 'completed'
+GROUP BY region
+ORDER BY total DESC
+LIMIT 5;
+```
+
+Результат содержит две секции — логический и физический планы.
+
+### Логический план
+
+```
+Limit: skip=0, fetch=5
+  Sort: total DESC
+    Projection: region, SUM(orders.amount) AS total
+      Aggregate: groupBy=[[orders.region]], aggr=[[SUM(orders.amount)]]
+        Filter: orders.status = Utf8("completed")
+          TableScan: orders projection=[region, amount, status]
+```
+
+Логический план читается снизу вверх:
+
+1. **TableScan** — сканирование таблицы orders, читаются только 3 колонки (projection pushdown)
+2. **Filter** — фильтрация по status = 'completed'
+3. **Aggregate** — группировка по region с вычислением SUM(amount)
+4. **Projection** — выбор колонок region и total (alias для SUM)
+5. **Sort** — сортировка по total DESC
+6. **Limit** — первые 5 строк
+
+<Callout type="note">
+Обратите внимание на `projection=[region, amount, status]` в TableScan. Оптимизатор автоматически убрал ненужные колонки — это projection pushdown. Для Parquet-файлов это означает, что DataFusion физически не читает остальные column chunks.
+</Callout>
+
+### Физический план
+
+```
+GlobalLimitExec: skip=0, fetch=5
+  SortExec: expr=[total@1 DESC], fetch=5
+    ProjectionExec: expr=[region@0 as region, SUM(orders.amount)@1 as total]
+      AggregateExec: mode=FinalPartitioned, gby=[region@0 as region], aggr=[SUM(orders.amount)]
+        CoalesceBatchesExec: target_batch_size=8192
+          RepartitionExec: partitioning=Hash([region@0], 16), input_partitions=16
+            AggregateExec: mode=Partial, gby=[region@0 as region], aggr=[SUM(orders.amount)]
+              CoalesceBatchesExec: target_batch_size=8192
+                FilterExec: status@2 = completed
+                  ParquetExec: file_groups={16 groups}, projection=[region, amount, status], predicate=status@2 = completed
+```
+
+Физический план конкретнее логического:
+
+- **ParquetExec** вместо абстрактного TableScan — DataFusion знает формат файла
+- **AggregateExec** появляется дважды: Partial (на каждой партиции) и FinalPartitioned (объединение)
+- **RepartitionExec** — Hash-перераспределение по region для параллельной агрегации
+- **CoalesceBatchesExec** — объединение мелких RecordBatch до target_batch_size
+
+## EXPLAIN ANALYZE: план с метриками
+
+`EXPLAIN ANALYZE` выполняет запрос и собирает метрики каждого оператора:
+
+```sql
+EXPLAIN ANALYZE
+SELECT region, SUM(amount) AS total
+FROM orders
+WHERE status = 'completed'
+GROUP BY region
+ORDER BY total DESC
+LIMIT 5;
+```
+
+Результат включает реальные числа:
+
+```
+GlobalLimitExec: skip=0, fetch=5, metrics=[output_rows=5, elapsed_compute=1.2µs]
+  SortExec: expr=[total@1 DESC], fetch=5, metrics=[output_rows=5, elapsed_compute=45.3µs]
+    ProjectionExec: expr=[region@0, SUM(orders.amount)@1 as total], metrics=[output_rows=12, elapsed_compute=3.1µs]
+      AggregateExec: mode=FinalPartitioned, metrics=[output_rows=12, elapsed_compute=234.5µs]
+        RepartitionExec: partitioning=Hash([region@0], 16), metrics=[output_rows=192, repart_time=1.2ms, send_time=0.8ms]
+          AggregateExec: mode=Partial, metrics=[output_rows=192, elapsed_compute=45.2ms]
+            FilterExec: status@2 = completed, metrics=[output_rows=487329, elapsed_compute=12.3ms]
+              ParquetExec: file_groups={16 groups}, metrics=[output_rows=1000000, elapsed_compute=89.4ms, bytes_scanned=45.2MB, predicate_evaluation_errors=0, row_groups_pruned=3]
+```
+
+### Ключевые метрики
+
+| Метрика | Описание | На что обращать внимание |
+|---------|----------|------------------------|
+| `output_rows` | Строк на выходе оператора | Резкое сокращение = эффективный фильтр |
+| `elapsed_compute` | Время вычислений | Самый медленный оператор — кандидат на оптимизацию |
+| `bytes_scanned` | Прочитано байт (для scan) | Много = нет predicate pushdown |
+| `row_groups_pruned` | Пропущенные row groups (Parquet) | Больше = лучше (меньше данных прочитано) |
+| `repart_time` | Время перераспределения | Большое значение = bottleneck на сети/памяти |
+| `spill_count` | Количество spill-to-disk | > 0 = нехватка памяти |
+
+### Чтение метрик: на что смотреть
+
+```
+ParquetExec: output_rows=1000000, bytes_scanned=45.2MB
+FilterExec:  output_rows=487329
+```
+
+Фильтр пропустил ~49% строк. Если фильтр по колонке с низкой кардинальностью (status), а row_groups_pruned = 3, можно улучшить: пересортировать Parquet по status, чтобы row group pruning был эффективнее.
+
+## EXPLAIN через DataFrame API
+
+```rust
+let ctx = SessionContext::new();
+ctx.register_parquet("orders", "data/orders.parquet", ParquetReadOptions::default()).await?;
+
+// EXPLAIN
+let explained = ctx.sql("EXPLAIN SELECT region, SUM(amount) FROM orders GROUP BY region").await?;
+explained.show().await?;
+
+// EXPLAIN ANALYZE
+let analyzed = ctx.sql("EXPLAIN ANALYZE SELECT region, SUM(amount) FROM orders GROUP BY region").await?;
+analyzed.show().await?;
+
+// Программный доступ к плану
+let df = ctx.table("orders").await?
+    .aggregate(vec![col("region")], vec![sum(col("amount"))])?;
+
+// Логический план
+let logical = df.logical_plan();
+println!("{}", logical.display_indent());
+
+// Физический план (требует создания)
+let physical = df.create_physical_plan().await?;
+println!("{}", datafusion::physical_plan::displayable(physical.as_ref()).indent(true));
+```
+
+## INFORMATION_SCHEMA
+
+DataFusion поддерживает стандартные представления INFORMATION_SCHEMA для интроспекции:
+
+```sql
+-- Список всех таблиц
+SELECT table_catalog, table_schema, table_name, table_type
+FROM information_schema.tables;
+
+-- Колонки таблицы
+SELECT column_name, data_type, is_nullable
+FROM information_schema.columns
+WHERE table_name = 'orders';
+
+-- Список всех view
+SELECT table_name
+FROM information_schema.views;
+
+-- Настройки DataFusion (полезно для отладки)
+SELECT name, value
+FROM information_schema.df_settings
+WHERE name LIKE '%batch_size%';
+```
+
+<Callout type="warning">
+`INFORMATION_SCHEMA` доступна только если включена через конфигурацию: `SessionConfig::new().with_information_schema(true)`. По умолчанию она выключена.
+</Callout>
+
+## Практический workflow отладки
+
+Пошаговый процесс диагностики медленного запроса:
+
+```sql
+-- 1. Посмотреть план без выполнения
+EXPLAIN SELECT ...;
+
+-- Проверить:
+-- - Есть ли projection pushdown в TableScan?
+-- - Фильтры спущены к источнику?
+-- - Какой алгоритм JOIN выбран?
+
+-- 2. Выполнить с метриками
+EXPLAIN ANALYZE SELECT ...;
+
+-- Проверить:
+-- - Какой оператор самый медленный (elapsed_compute)?
+-- - Сколько строк проходит через каждый этап?
+-- - Есть ли spill_count > 0?
+-- - Сколько row_groups_pruned для Parquet?
+
+-- 3. Проверить конфигурацию
+SELECT name, value FROM information_schema.df_settings
+WHERE name LIKE '%partitions%' OR name LIKE '%batch%';
+
+-- 4. Проверить схему таблицы
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'orders';
+```
+
+<Callout type="tip">
+Типичные проблемы и их признаки в EXPLAIN ANALYZE:
+- Нет projection pushdown — TableScan читает все колонки
+- row_groups_pruned = 0 — данные не отсортированы по колонке фильтрации
+- spill_count > 0 — нехватка памяти, увеличьте FairSpillPool или оптимизируйте запрос
+- Два AggregateExec с RepartitionExec между ними — нормально, это двухфазная агрегация
+</Callout>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `EXPLAIN` показывает логический и физический планы без выполнения запроса
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `EXPLAIN ANALYZE` выполняет запрос и возвращает реальные метрики каждого оператора
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Ключевые метрики: output_rows, elapsed_compute, bytes_scanned, row_groups_pruned, spill_count
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Планы читаются снизу вверх: от TableScan до финального Limit/Sort
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> INFORMATION_SCHEMA для интроспекции таблиц, колонок и настроек
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Workflow: EXPLAIN → EXPLAIN ANALYZE → проверка конфигурации → корректировка

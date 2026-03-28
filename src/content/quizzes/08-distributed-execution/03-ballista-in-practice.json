@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "08-distributed-execution/03-ballista-in-practice",
+  "moduleId": "08-distributed-execution",
+  "_meta": { "idPrefix": "df-m08-03" },
+  "questions": [
+    {
+      "id": "df-m08-03-q1",
+      "type": "multiple-choice",
+      "question": "Ballista предлагает два режима работы. Чем standalone отличается от remote?",
+      "options": [
+        { "id": "a", "text": "SessionContext::standalone() запускает scheduler и executor в одном процессе для разработки, SessionContext::remote() подключается к внешнему кластеру — API запросов идентичен в обоих режимах" },
+        { "id": "b", "text": "standalone не разбивает план на query stages, remote — разбивает" },
+        { "id": "c", "text": "standalone работает только с CSV, remote — с любыми форматами" },
+        { "id": "d", "text": "standalone — синхронный, remote — асинхронный" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SessionContext::standalone() запускает scheduler + executor в одном процессе — полезно для тестирования. Используются те же code paths: план разбивается на query stages, shuffle идёт через Arrow IPC файлы на диске. SessionContext::remote(\"df://host:50050\") подключается к существующему кластеру. Переключение — одна строка, логика запросов не меняется.",
+      "bloomLevel": "conceptual",
+      "studyHint": "standalone = scheduler + executor в одном процессе (те же code paths). remote = подключение к кластеру. Одна строка для переключения."
+    },
+    {
+      "id": "df-m08-03-q2",
+      "type": "multiple-choice",
+      "question": "В кластерном режиме Ballista регистрируется Parquet-таблица по локальному пути /data/orders/. Что необходимо для корректной работы?",
+      "options": [
+        { "id": "a", "text": "Все executor-ы должны иметь доступ к /data/orders/ — локальные пути работают только если файлы доступны на всех узлах. Для production рекомендуется объектное хранилище (S3, GCS)" },
+        { "id": "b", "text": "Scheduler автоматически реплицирует данные на все executor-ы" },
+        { "id": "c", "text": "Локальные пути не поддерживаются в кластерном режиме — только S3" },
+        { "id": "d", "text": "Достаточно, чтобы файлы были на узле scheduler-а" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Ballista не реплицирует данные. Все executor-ы должны иметь доступ к зарегистрированным путям. Локальные пути (/data/...) работают только при наличии файлов на всех узлах (например, NFS). Для production — объектное хранилище (S3, GCS, HDFS), обеспечивающее доступ с любого узла.",
+      "bloomLevel": "applied",
+      "studyHint": "Все executor-ы должны видеть зарегистрированные пути. Локальные → NFS. Production → S3/GCS/HDFS."
+    },
+    {
+      "id": "df-m08-03-q3",
+      "type": "multiple-choice",
+      "question": "Ballista 43.0.0 удалила несколько экспериментальных компонентов. Какие из них были убраны?",
+      "options": [
+        { "id": "a", "text": "Web UI, caching subsystem, plugin subsystem и KV stores (etcd, sled) — фокус перенесён на расширяемое ядро через стандартные механизмы DataFusion" },
+        { "id": "b", "text": "Поддержка Parquet, CSV и Arrow IPC — заменена на новый формат" },
+        { "id": "c", "text": "Flight SQL и JDBC — оставлен только Rust SessionContext" },
+        { "id": "d", "text": "Ничего не удалялось — все компоненты сохранены" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Ballista 43.0.0 убрала четыре экспериментальных компонента: Web UI (используйте внешний мониторинг), caching subsystem (реализуйте через TableProvider), plugin subsystem (компилируйте расширения статически), KV stores (scheduler хранит состояние in-memory). Осознанное решение: расширяемость через стандартные механизмы DataFusion вместо недоработанных внутренних компонентов.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Удалены: Web UI, caching, plugin system, KV stores. Вместо них — стандартные DataFusion: TableProvider, UDF, OptimizerRule."
+    },
+    {
+      "id": "df-m08-03-q4",
+      "type": "multiple-choice",
+      "question": "Для кастомных ExecutionPlan в распределённом контексте Ballista требует реализовать дополнительный интерфейс помимо ExtensionPlanner. Какой?",
+      "options": [
+        { "id": "a", "text": "PhysicalExtensionCodec — кастомные ExecutionPlan должны быть сериализуемы в protobuf для передачи между scheduler и executor" },
+        { "id": "b", "text": "ArrowSerializer — для конвертации в Arrow IPC формат" },
+        { "id": "c", "text": "GrpcHandler — для обработки gRPC-вызовов" },
+        { "id": "d", "text": "Дополнительный интерфейс не требуется — ExtensionPlanner достаточно" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "В распределённом контексте scheduler передаёт физический план executor-у через protobuf-сериализацию. Кастомные ExecutionPlan должны реализовать PhysicalExtensionCodec для сериализации/десериализации. ExtensionPlanner преобразует LogicalPlan → ExecutionPlan, а PhysicalExtensionCodec обеспечивает передачу кастомных узлов по сети.",
+      "bloomLevel": "applied",
+      "studyHint": "ExtensionPlanner = LogicalPlan → ExecutionPlan. PhysicalExtensionCodec = сериализация ExecutionPlan для передачи по сети."
+    },
+    {
+      "id": "df-m08-03-q5",
+      "type": "multiple-choice",
+      "question": "Устаревший BallistaContext заменён на SessionContext в Ballista 43.0.0. Как выглядит миграция для подключения к кластеру?",
+      "options": [
+        { "id": "a", "text": "Замена BallistaContext::remote() на SessionContext::remote(\"df://host:50050\") — API запросов (sql, table, register_parquet, collect) не изменился" },
+        { "id": "b", "text": "Полное переписывание — SessionContext использует другой API запросов" },
+        { "id": "c", "text": "BallistaContext не устарел — оба интерфейса поддерживаются" },
+        { "id": "d", "text": "SessionContext не поддерживает remote-подключение — нужен отдельный RemoteContext" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Миграция минимальна: заменить BallistaContext::remote(url, config) на SessionContext::remote(\"df://host:50050\"). API запросов идентичен: sql(), table(), register_parquet(), collect() работают одинаково. BallistaContext полностью устарел (deprecated) в 43.0.0.",
+      "bloomLevel": "applied",
+      "studyHint": "BallistaContext::remote() → SessionContext::remote(). API запросов не изменился. Одна строка миграции."
+    }
+  ]
+}

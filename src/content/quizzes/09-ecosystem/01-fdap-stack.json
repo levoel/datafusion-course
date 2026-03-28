@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "09-ecosystem/01-fdap-stack",
+  "moduleId": "09-ecosystem",
+  "_meta": { "idPrefix": "df-m09-01" },
+  "questions": [
+    {
+      "id": "df-m09-01-q1",
+      "type": "multiple-choice",
+      "question": "Что означает аббревиатура FDAP и какую роль играет каждый компонент в стеке?",
+      "options": [
+        { "id": "a", "text": "Flight (сетевой протокол передачи Arrow-данных по gRPC), DataFusion (query engine: парсинг, оптимизация, выполнение), Arrow (in-memory columnar формат), Parquet (on-disk columnar формат с компрессией)" },
+        { "id": "b", "text": "Flink, DataFusion, Avro, Parquet — стек для стримингой обработки" },
+        { "id": "c", "text": "Flight, DuckDB, Arrow, Parquet — стек для embedded аналитики" },
+        { "id": "d", "text": "Framework, DataFusion, API, Protocol — абстрактная модель микросервисов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "FDAP — Flight, DataFusion, Arrow, Parquet — четыре проекта Apache. Parquet — хранение на диске, Arrow — представление в памяти, DataFusion — обработка (SQL-парсинг, оптимизация, выполнение), Flight — передача по сети между узлами и клиентами. Вместе они формируют полный стек для аналитических систем нового поколения.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Parquet = диск. Arrow = память. DataFusion = обработка. Flight = сеть. Четыре уровня — полный аналитический стек."
+    },
+    {
+      "id": "df-m09-01-q2",
+      "type": "multiple-choice",
+      "question": "Почему DataFusion называют «LLVM аналитических систем»? Какая структурная аналогия лежит в основе?",
+      "options": [
+        { "id": "a", "text": "Как LLVM позволяет создателям языков получить оптимизации и кодогенерацию из коробки, DataFusion позволяет создателям СУБД получить SQL-парсинг, планирование и выполнение из коробки — сосредоточившись на хранилище и предметной области" },
+        { "id": "b", "text": "DataFusion компилирует SQL в LLVM IR для выполнения на CPU" },
+        { "id": "c", "text": "DataFusion, как и LLVM, написан на C++ и использует JIT-компиляцию" },
+        { "id": "d", "text": "Аналогия только маркетинговая — архитектурного сходства нет" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "LLVM: frontend (Clang, rustc) → LLVM IR (общий оптимизатор) → backend (x86, ARM). DataFusion: frontend (SQL, DataFrame, PromQL) → LogicalPlan (общий оптимизатор) → backend (локальное, Ballista, Ray). Каждая система получает оптимизации DataFusion бесплатно — как языки получают оптимизации LLVM.",
+      "bloomLevel": "analytical",
+      "studyHint": "LLVM: язык → IR → target. DataFusion: query → LogicalPlan → execution. Оба — общие оптимизаторы, специализация через frontend и backend."
+    },
+    {
+      "id": "df-m09-01-q3",
+      "type": "multiple-choice",
+      "question": "В чём ключевое отличие DataFusion от традиционных СУБД (PostgreSQL, ClickHouse) с точки зрения архитектуры?",
+      "options": [
+        { "id": "a", "text": "DataFusion — библиотека (SQL-парсер, оптимизатор, executor без хранилища и сервера), а традиционные СУБД — конечные продукты с сервером, протоколом, хранилищем и query engine в комплекте" },
+        { "id": "b", "text": "DataFusion быстрее ClickHouse во всех бенчмарках" },
+        { "id": "c", "text": "DataFusion не поддерживает SQL — только DataFrame API" },
+        { "id": "d", "text": "Различий нет — DataFusion можно использовать как замену PostgreSQL" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion предоставляет SQL-парсер, оптимизатор и executor с trait-based API для замены любого компонента. Хранилище, сетевой протокол, управление пользователями и репликацию добавляет разработчик. Традиционные СУБД (PostgreSQL, ClickHouse) — готовые продукты с ограниченной расширяемостью через плагины и хуки.",
+      "bloomLevel": "conceptual",
+      "studyHint": "DataFusion = библиотека (добавьте хранилище сами). Традиционная СУБД = конечный продукт. Trait-based API vs плагины."
+    },
+    {
+      "id": "df-m09-01-q4",
+      "type": "multiple-choice",
+      "question": "DataFusion v43.0.0 занял первое место в ClickBench. Какие ограничения этого результата важно учитывать?",
+      "options": [
+        { "id": "a", "text": "ClickBench тестирует конкретный сценарий — аналитические запросы по одной широкой таблице в Parquet на single node. Для других нагрузок (OLTP, многотабличные join, streaming) результаты будут другими" },
+        { "id": "b", "text": "Ограничений нет — DataFusion быстрее всех аналитических СУБД в любом сценарии" },
+        { "id": "c", "text": "ClickBench использует устаревший набор запросов, не отражающий современные нагрузки" },
+        { "id": "d", "text": "Результат недостоверен, так как ClickBench создан командой конкурента (ClickHouse)" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ClickBench тестирует 43 аналитических запроса по одной широкой таблице (web-аналитика) в формате Parquet, single node execution. DataFusion лидирует именно в этой нише. Бенчмарки — инструмент для сравнения конкретных нагрузок, не рейтинг лучших СУБД. Для OLTP, многотабличных join или streaming результаты будут другими.",
+      "bloomLevel": "analytical",
+      "studyHint": "ClickBench = одна таблица, Parquet, single node, аналитические запросы. Не универсальный рейтинг. Контекст бенчмарка определяет ценность результата."
+    },
+    {
+      "id": "df-m09-01-q5",
+      "type": "multiple-choice",
+      "question": "Что означает TLP-статус DataFusion в Apache Software Foundation и какие практические последствия это имеет?",
+      "options": [
+        { "id": "a", "text": "Top-Level Project: собственный PMC (независимое управление), отдельный релизный цикл (мажорные версии каждые 1–2 месяца), подпроекты (Ballista, Comet, Ray, Python) со своими темпами, vendor-neutral governance" },
+        { "id": "b", "text": "TLP означает только формальное признание — практического влияния на проект нет" },
+        { "id": "c", "text": "TLP-статус обязывает DataFusion поддерживать обратную совместимость навечно" },
+        { "id": "d", "text": "TLP даёт DataFusion эксклюзивное финансирование от Apache Foundation" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "С 2024 года DataFusion — Top-Level Project ASF. Это означает: собственный PMC с независимым управлением, отдельный релизный цикл (текущая версия: 52.3.0), подпроекты (Ballista, Comet, DataFusion Ray, DataFusion Python) каждый со своим темпом, масштаб сообщества: ~1600 PR от 206 контрибьюторов за 6 месяцев. Нет единого корпоративного спонсора — нейтральная площадка.",
+      "bloomLevel": "conceptual",
+      "studyHint": "TLP = собственный PMC + релизы + подпроекты. Vendor-neutral: нет «DataFusion Company». Контрибьюторы из InfluxData, Apple, NVIDIA, Cloudflare, Cube."
+    }
+  ]
+}

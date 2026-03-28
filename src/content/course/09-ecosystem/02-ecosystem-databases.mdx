@@ -1,0 +1,281 @@
+---
+title: "Базы данных и аналитика на DataFusion"
+description: "Проекты экосистемы DataFusion: Arroyo (стриминг), OpenObserve (observability), Cube/Tesseract (семантический слой), HoraeDB (time-series). Кросс-ссылки на InfluxDB, GreptimeDB, GlareDB, Spice AI"
+order: 2
+difficulty: "intermediate"
+estimatedTime: 16
+topics: ["Arroyo", "OpenObserve", "Cube", "Tesseract", "HoraeDB", "ecosystem", "streaming", "observability", "semantic layer"]
+---
+
+# Базы данных и аналитика на DataFusion
+
+В [предыдущем уроке](/course/09-ecosystem/01-fdap-stack) мы рассмотрели FDAP-стек и позицию DataFusion как «LLVM аналитики». Теперь — конкретные проекты, которые строят специализированные системы поверх DataFusion.
+
+## Уже разобранные проекты
+
+Четыре крупных проекта мы подробно разобрали в [уроке по паттернам расширяемости](/course/05-extensibility/06-extensibility-patterns):
+
+<DiagramContainer title="Проекты, разобранные в M05" className="my-6">
+  <Grid columns={2} className="gap-3 text-sm">
+    <DataBox label="InfluxDB IOx" className="border-blue-500/30">
+      <div className="text-xs">Time-series СУБД (основа InfluxDB 3.0)</div>
+      <div className="text-xs mt-1">DataFusion как библиотека + собственное хранилище</div>
+      <div className="text-xs mt-1 text-gray-400">Подробно: M05 урок 6</div>
+    </DataBox>
+    <DataBox label="GreptimeDB" className="border-emerald-500/30">
+      <div className="text-xs">Мультимодальная time-series СУБД</div>
+      <div className="text-xs mt-1">Multi-engine: DataFusion (SQL) + PromQL</div>
+      <div className="text-xs mt-1 text-gray-400">Подробно: M05 урок 6</div>
+    </DataBox>
+    <DataBox label="GlareDB" className="border-amber-500/30">
+      <div className="text-xs">Федеративная SQL СУБД (30+ источников)</div>
+      <div className="text-xs mt-1">Dynamic catalog + filter pushdown</div>
+      <div className="text-xs mt-1 text-gray-400">Подробно: M05 урок 6</div>
+    </DataBox>
+    <DataBox label="Spice AI" className="border-purple-500/30">
+      <div className="text-xs">Федеративный аналитический движок</div>
+      <div className="text-xs mt-1">Кастомные TableProvider + federation pushdown</div>
+      <div className="text-xs mt-1 text-gray-400">Подробно: M05 урок 6</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+В этом уроке мы рассмотрим проекты, которые ещё не были охвачены в курсе: стриминг, observability, семантические слои и новые time-series системы.
+
+## Arroyo: стриминг на DataFusion
+
+Arroyo — распределённый stream processing engine, который перешёл на DataFusion в качестве query engine.
+
+<DiagramContainer title="Arroyo: архитектура" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <DataBox label="Arroyo Controller" className="border-blue-500/30 mx-auto w-72">
+      <div className="text-xs">Координация, checkpoint, state management</div>
+    </DataBox>
+    <Arrow direction="down" label="Streaming plan" />
+    <FlowRow className="gap-3 justify-center">
+      <DataBox label="Worker 1" className="border-emerald-500/30">
+        <div className="text-xs">DataFusion SessionContext</div>
+        <div className="text-xs mt-1">Streaming operators</div>
+      </DataBox>
+      <DataBox label="Worker 2" className="border-emerald-500/30">
+        <div className="text-xs">DataFusion SessionContext</div>
+        <div className="text-xs mt-1">Streaming operators</div>
+      </DataBox>
+      <DataBox label="Worker N" className="border-emerald-500/30">
+        <div className="text-xs">DataFusion SessionContext</div>
+        <div className="text-xs mt-1">Streaming operators</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" label="Arrow RecordBatch" />
+    <FlowRow className="gap-3 justify-center">
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">Kafka</FlowNode>
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">Kinesis</FlowNode>
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">WebSocket</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Как Arroyo использует DataFusion
+
+Arroyo не просто «подключил» DataFusion — команда провела глубокую интеграцию:
+
+- **SQL-парсер и планировщик**: Arroyo использует DataFusion для парсинга SQL и построения логического плана. Стриминговые расширения (watermarks, windows, session semantics) добавлены через кастомные `LogicalPlan` узлы
+- **Оптимизатор**: правила оптимизации DataFusion применяются к стриминговым планам — predicate pushdown, projection pushdown работают «из коробки»
+- **Кастомные операторы**: window-агрегации, session windows, watermark tracking реализованы как кастомные `ExecutionPlan`
+
+### Результат миграции на DataFusion
+
+До DataFusion Arroyo использовал собственный query engine. После миграции:
+
+- **3x рост throughput** за счёт оптимизаций Arrow и DataFusion
+- SQL-совместимость «из коробки» — вместо собственного парсера
+- Возможность переиспользовать UDF-экосистему DataFusion
+
+<Callout type="note">
+Arroyo демонстрирует важный паттерн: DataFusion полезен не только для batch-аналитики. Стриминговые системы могут использовать планировщик и оптимизатор DataFusion, добавляя streaming-специфичные операторы через расширяемый API.
+</Callout>
+
+## OpenObserve: observability на DataFusion
+
+OpenObserve — платформа для логов, метрик и трейсов, позиционирующая себя как альтернатива Elasticsearch, Splunk и Datadog. DataFusion — ядро аналитического движка.
+
+<DiagramContainer title="OpenObserve: роль DataFusion" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <FlowRow className="gap-3 justify-center">
+      <FlowNode className="bg-blue-950/60 p-2 text-xs">Логи</FlowNode>
+      <FlowNode className="bg-emerald-950/60 p-2 text-xs">Метрики</FlowNode>
+      <FlowNode className="bg-amber-950/60 p-2 text-xs">Трейсы</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" label="Ingestion" />
+    <DataBox label="Columnar Storage (Parquet)" className="border-gray-500/30 mx-auto w-72">
+      <div className="text-xs">Данные хранятся в Parquet на S3/локальном диске</div>
+    </DataBox>
+    <Arrow direction="down" label="Query" />
+    <DataBox label="DataFusion Query Engine" className="border-emerald-500/30 mx-auto w-72">
+      <div className="text-xs">SQL-запросы поверх Parquet с predicate pushdown</div>
+      <div className="text-xs mt-1">Full-text search через кастомные операторы</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+### Почему DataFusion для observability
+
+Observability-данные — это по сути аналитика:
+
+- **Структура**: логи, метрики и трейсы — колоночные данные с timestamp
+- **Запросы**: агрегации по времени, фильтрация по полям, top-N — классические аналитические паттерны
+- **Объём**: петабайты логов, триллионы записей — нужен эффективный columnar engine
+
+DataFusion + Parquet дают OpenObserve производительность columnar-аналитики на observability-данных, без необходимости писать собственный query engine.
+
+### Точки расширения в OpenObserve
+
+| Компонент DataFusion | Использование в OpenObserve |
+|---------------------|----------------------------|
+| `TableProvider` | Доступ к Parquet-файлам на S3 и локальных дисках |
+| `ScalarUDF` | Full-text search функции (`match_all`, `str_match`) |
+| `OptimizerRule` | Time-range pruning (пропуск файлов вне временного окна) |
+| `PhysicalOptimizerRule` | Partition pruning по метаданным Parquet |
+
+## Cube и Tesseract: семантический слой
+
+Cube — платформа семантического слоя (semantic layer) с 18 000+ звёзд на GitHub. Tesseract — новый query engine Cube, построенный на DataFusion.
+
+<DiagramContainer title="Cube/Tesseract: архитектура" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <DataBox label="Cube Semantic Layer" className="border-blue-500/30 mx-auto w-80">
+      <div className="text-xs">Модель данных: measures, dimensions, joins</div>
+      <div className="text-xs mt-1">API: REST, GraphQL, SQL</div>
+    </DataBox>
+    <Arrow direction="down" label="Cube SQL → DataFusion" />
+    <DataBox label="Tesseract (DataFusion)" className="border-emerald-500/30 mx-auto w-80">
+      <div className="text-xs">Query planning и execution на DataFusion</div>
+      <div className="text-xs mt-1">Pre-aggregation, caching, multi-tenancy</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center">
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">PostgreSQL</FlowNode>
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">BigQuery</FlowNode>
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">Snowflake</FlowNode>
+      <FlowNode className="bg-gray-800/60 p-2 text-xs">ClickHouse</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Что такое семантический слой
+
+Семантический слой — абстракция между бизнес-метриками и физическими таблицами:
+
+```yaml
+# Пример Cube data model
+cubes:
+  - name: orders
+    sql: SELECT * FROM public.orders
+    measures:
+      - name: total_revenue
+        type: sum
+        sql: amount
+      - name: avg_order_value
+        type: avg
+        sql: amount
+    dimensions:
+      - name: status
+        type: string
+        sql: status
+      - name: created_at
+        type: time
+        sql: created_at
+```
+
+Бизнес-пользователь запрашивает `total_revenue по status` — Cube транслирует это в оптимальный SQL для конкретного хранилища.
+
+### Зачем DataFusion в семантическом слое
+
+Tesseract использует DataFusion для:
+
+- **Локального выполнения**: запросы по кешированным/pre-aggregated данным выполняются в DataFusion без обращения к source database
+- **Query planning**: DataFusion оптимизирует план перед отправкой в целевую СУБД
+- **Multi-source join**: когда данные приходят из разных источников, DataFusion выполняет join локально
+
+<Callout type="tip">
+Cube/Tesseract — пример использования DataFusion не как замены СУБД, а как промежуточного вычислительного слоя. DataFusion оптимизирует и кеширует то, что не нужно каждый раз запрашивать из тяжёлого хранилища.
+</Callout>
+
+## HoraeDB: распределённая time-series СУБД
+
+HoraeDB (ранее CeresDB) — распределённая time-series СУБД, использующая DataFusion для SQL-выполнения.
+
+<DiagramContainer title="HoraeDB: архитектура" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <FlowRow className="gap-3 justify-center">
+      <FlowNode className="bg-blue-950/60 p-2 text-xs">SQL API</FlowNode>
+      <FlowNode className="bg-blue-950/60 p-2 text-xs">InfluxQL API</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <DataBox label="DataFusion Query Engine" className="border-emerald-500/30 mx-auto w-72">
+      <div className="text-xs">SQL planning и optimization</div>
+      <div className="text-xs mt-1">Time-series-специфичные правила</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Analytic Storage (columnar)" className="border-amber-500/30 mx-auto w-72">
+      <div className="text-xs">LSM-tree с columnar layout</div>
+      <div className="text-xs mt-1">Compaction, TTL, sharding</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+### Сходство и различие с GreptimeDB
+
+HoraeDB и GreptimeDB ([M05 урок 6](/course/05-extensibility/06-extensibility-patterns)) — оба time-series СУБД на DataFusion, но с разными акцентами:
+
+<DiagramContainer title="HoraeDB vs GreptimeDB" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="HoraeDB" className="border-blue-500/30">
+      <div className="text-xs"><b>Фокус:</b> аналитические time-series запросы</div>
+      <div className="text-xs mt-1"><b>Storage:</b> LSM-tree с columnar layout</div>
+      <div className="text-xs mt-1"><b>API:</b> SQL + InfluxQL</div>
+      <div className="text-xs mt-1"><b>Partition:</b> hash-based sharding по тегам</div>
+    </DataBox>
+    <DataBox label="GreptimeDB" className="border-emerald-500/30">
+      <div className="text-xs"><b>Фокус:</b> мультимодальность (метрики + логи + события)</div>
+      <div className="text-xs mt-1"><b>Storage:</b> собственный SSTable engine</div>
+      <div className="text-xs mt-1"><b>API:</b> SQL + PromQL + Pipeline</div>
+      <div className="text-xs mt-1"><b>Partition:</b> region-based distribution</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Оба проекта подтверждают паттерн: DataFusion — универсальный SQL-движок, поверх которого можно построить time-series СУБД с произвольной storage-моделью.
+
+<Callout type="warning">
+HoraeDB находится на более ранней стадии зрелости, чем GreptimeDB и InfluxDB IOx. При выборе time-series решения на DataFusion оценивайте: активность коммьюнити, частоту релизов, production-деплоименты, документацию.
+</Callout>
+
+## Как проекты расширяют DataFusion
+
+Все рассмотренные проекты следуют одной и той же архитектурной модели — используют trait-based API DataFusion для специализации:
+
+<DiagramContainer title="Паттерн расширения: от общего к специализированному" className="my-6">
+  <Grid columns={1} className="text-sm">
+    <DataBox label="Паттерн расширения по категориям" className="border-gray-500/30">
+      <div className="text-xs space-y-2">
+        <div><b>Стриминг (Arroyo):</b> кастомные LogicalPlan узлы для window semantics + streaming ExecutionPlan</div>
+        <div><b>Observability (OpenObserve):</b> ScalarUDF для full-text search + time-range pruning OptimizerRule</div>
+        <div><b>Семантический слой (Cube):</b> DataFusion как локальный executor для pre-aggregated данных</div>
+        <div><b>Time-series (HoraeDB):</b> TableProvider для LSM-storage + time-series OptimizerRule</div>
+        <div><b>Федерация (GlareDB, Spice AI):</b> CatalogProvider + federation pushdown OptimizerRule</div>
+      </div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Этот паттерн — прямое следствие архитектуры DataFusion как библиотеки: trait-based API позволяет заменить или расширить любой компонент pipeline, не форкая кодовую базу. Подробнее о конкретных точках расширения и их реализации — в [модуле по расширяемости](/course/05-extensibility/06-extensibility-patterns).
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Arroyo: stream processing с 3x ростом throughput после миграции на DataFusion
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> OpenObserve: observability-платформа, использующая DataFusion + Parquet для аналитики логов и метрик
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Cube/Tesseract: семантический слой (18K+ звёзд), DataFusion как промежуточный вычислительный движок
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> HoraeDB: distributed time-series СУБД на DataFusion с LSM-storage
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Все проекты используют trait-based API DataFusion: TableProvider, UDF, OptimizerRule, ExecutionPlan
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Ранее разобранные проекты (InfluxDB, GreptimeDB, GlareDB, Spice AI) — [M05 урок 6](/course/05-extensibility/06-extensibility-patterns)

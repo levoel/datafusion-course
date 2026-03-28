@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "10-capstone/03-course-review",
+  "moduleId": "10-capstone",
+  "_meta": { "idPrefix": "df-m10-03" },
+  "questions": [
+    {
+      "id": "df-m10-03-q1",
+      "type": "multiple-choice",
+      "question": "Курс описывает три траектории после обучения: Rust (ядро), Comet (Spark-экосистема), Python (data science). Какая комбинация модулей составляет базу для Rust-траектории?",
+      "options": [
+        { "id": "a", "text": "M02 (архитектура: LogicalPlan, PhysicalPlan, SessionContext) + M05 (расширяемость: TableProvider, OptimizerRule) + M06 (оптимизация: rule-based, cost-based, кастомные правила) — понимание внутренней структуры движка для контрибьюции и построения кастомных систем" },
+        { "id": "b", "text": "M01 + M03 — Arrow и SQL достаточно для работы с ядром" },
+        { "id": "c", "text": "M04 + M10 — Python-биндинги покрывают весь Rust API" },
+        { "id": "d", "text": "M07 + M08 — Comet и распределённое выполнение требуют Rust" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Rust-траектория — контрибьюция в DataFusion и построение кастомных движков. M02 (архитектура) даёт понимание pipeline: SQL → LogicalPlan → PhysicalPlan → RecordBatch. M05 (расширяемость) — trait-based API для замены компонентов. M06 (оптимизация) — правила оптимизации, которые составляют основную работу над ядром. Вместе: навигация по коду, понимание абстракций, способность расширять движок.",
+      "bloomLevel": "analytical",
+      "studyHint": "Rust-путь: M02 (как устроено) + M05 (как расширять) + M06 (как оптимизировать). Три слоя для контрибьюции в ядро."
+    },
+    {
+      "id": "df-m10-03-q2",
+      "type": "multiple-choice",
+      "question": "За 11 модулей курса знания строились послойно: Arrow (данные) → архитектура (движок) → API → расширяемость → оптимизация → экосистема. Почему Arrow Foundation идёт первым, до архитектуры DataFusion?",
+      "options": [
+        { "id": "a", "text": "Arrow — формат данных, с которым работает каждый компонент DataFusion: RecordBatch = единица обработки в executor, Parquet = формат хранения, Arrow IPC = формат передачи. Без понимания columnar layout невозможно понять, почему vectorized execution быстрее row-based" },
+        { "id": "b", "text": "Arrow проще для изучения — модули расположены по возрастанию сложности" },
+        { "id": "c", "text": "Apache Arrow был создан раньше DataFusion — хронологический порядок" },
+        { "id": "d", "text": "Arrow нужен только для Python-биндингов — модуль можно было поставить перед M04" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Arrow Foundation (M01) — базовый слой всего стека. RecordBatch (Arrow in-memory) — единица обработки в DataFusion executor. Parquet (Arrow on-disk) — формат хранения. Arrow IPC — формат передачи между процессами. Columnar layout объясняет, почему vectorized execution (модуль 2) обрабатывает столбцы целиком с SIMD, а predicate pushdown (модуль 6) использует min/max статистику из Parquet footer.",
+      "bloomLevel": "analytical",
+      "studyHint": "Arrow = фундамент. RecordBatch → executor. Parquet → storage. IPC → transfer. Columnar layout → vectorized execution + predicate pushdown."
+    },
+    {
+      "id": "df-m10-03-q3",
+      "type": "multiple-choice",
+      "question": "DataFusion используется в двух ролях: как конечный инструмент (DataFusion Python для ETL) и как встроенная библиотека (InfluxDB, Comet, Arroyo). Какое свойство архитектуры делает обе роли возможными?",
+      "options": [
+        { "id": "a", "text": "Модульность через trait-based API: каждый компонент (парсер, оптимизатор, executor, каталог, хранилище) — отдельный trait, который можно использовать отдельно или заменить. Как конечный инструмент — используются все компоненты. Как библиотека — заменяются отдельные части (хранилище, парсер)" },
+        { "id": "b", "text": "Наличие Python-биндингов — без них DataFusion мог бы быть только библиотекой" },
+        { "id": "c", "text": "Apache-лицензия позволяет использовать код в любом контексте" },
+        { "id": "d", "text": "Высокая производительность — быстрый движок подходит для любого сценария" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Trait-based модульность (модуль 5): TableProvider (хранилище), CatalogProvider (каталог), OptimizerRule (оптимизация), ExecutionPlan (исполнение) — каждый компонент заменяем. DataFusion Python: все компоненты из коробки → конечный инструмент. InfluxDB IOx: заменяет парсер (InfluxQL → LogicalPlan), добавляет кастомное хранилище. Comet: заменяет парсер (Spark plan → protobuf → DataFusion). Одна архитектура — множество ролей.",
+      "bloomLevel": "analytical",
+      "studyHint": "Trait-based модульность = ключ к двойной роли. Конечный инструмент: всё из коробки. Библиотека: замена компонентов через traits."
+    },
+    {
+      "id": "df-m10-03-q4",
+      "type": "multiple-choice",
+      "question": "Курс упоминает, что DataFusion выпускает мажорные версии каждые 1–2 месяца. Какое практическое следствие такого темпа для проектов экосистемы?",
+      "options": [
+        { "id": "a", "text": "Проекты регулярно обновляют DataFusion-зависимость и автоматически получают новые оптимизации, поддержку типов и исправления — но должны отслеживать breaking changes в trait API и адаптировать свои расширения при обновлении" },
+        { "id": "b", "text": "Частые релизы не влияют на экосистему — проекты используют фиксированные версии" },
+        { "id": "c", "text": "Частые релизы создают нестабильность — большинство проектов остаётся на версии 30.x" },
+        { "id": "d", "text": "Каждый релиз автоматически совместим — breaking changes запрещены" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Быстрый релизный цикл DataFusion — и преимущество, и ответственность. Преимущество: каждый релиз добавляет оптимизации, функции, типы данных — проекты получают их через cargo update. Ответственность: trait API может меняться (новые методы, изменённые сигнатуры) — проекты должны адаптировать свои TableProvider, OptimizerRule и другие расширения. Стратегия: обновляться регулярно, не копить технический долг.",
+      "bloomLevel": "applied",
+      "studyHint": "Быстрые релизы: автоулучшения через cargo update + обязанность адаптировать trait API. Регулярные обновления < накопление долга."
+    },
+    {
+      "id": "df-m10-03-q5",
+      "type": "multiple-choice",
+      "question": "Для карьерной траектории 'стартапы' курс указывает DataFusion как библиотеку для специализированных движков (time-series, observability, semantic layer). Какое преимущество перед созданием движка с нуля?",
+      "options": [
+        { "id": "a", "text": "DataFusion даёт SQL-парсер, оптимизатор и executor из коробки — стартап сосредотачивается на уникальной ценности (хранилище, предметная область, UX), а не на реализации hash join, predicate pushdown и vectorized execution с нуля" },
+        { "id": "b", "text": "DataFusion бесплатен — единственное преимущество перед коммерческими движками" },
+        { "id": "c", "text": "DataFusion автоматически масштабируется на кластер — стартап не думает о распределении" },
+        { "id": "d", "text": "Преимуществ нет — все успешные СУБД написаны с нуля" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "LLVM-аналогия в действии: как LLVM даёт создателям языков кодогенерацию бесплатно, DataFusion даёт создателям СУБД SQL-парсер, оптимизатор (predicate pushdown, join reordering, constant folding) и vectorized executor бесплатно. Стартап реализует: кастомное хранилище (TableProvider), предметный парсер (PromQL, InfluxQL), специализированные оптимизации (time-range pruning). Экономия: годы разработки ядра.",
+      "bloomLevel": "analytical",
+      "studyHint": "DataFusion = SQL + оптимизатор + executor. Стартап = хранилище + предметная область + UX. LLVM-аналогия: общее ядро, специализированные frontend и backend."
+    }
+  ]
+}

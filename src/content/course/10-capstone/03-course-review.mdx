@@ -1,0 +1,195 @@
+---
+title: "Обзор курса и дальнейшие шаги"
+description: "Систематизация пройденного: M00-M10, траектории развития (Rust, Comet, Python), ресурсы сообщества и карьерные перспективы"
+order: 3
+difficulty: "beginner"
+estimatedTime: 12
+topics: ["review", "learning path", "Rust", "Comet", "Python", "community", "career", "certification"]
+---
+
+# Обзор курса и дальнейшие шаги
+
+Вы прошли путь от первого знакомства с Apache Arrow до реализации аналитического движка на DataFusion Python. Этот урок систематизирует пройденное и покажет, куда двигаться дальше.
+
+## Карта пройденного
+
+<DiagramContainer title="Модули курса: M00--M10" className="my-6">
+  <FlowColumn className="gap-2 text-sm">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="M00" className="border-gray-500/30 w-40">
+        <div className="text-xs">Введение в курс</div>
+      </DataBox>
+      <DataBox label="M01" className="border-blue-500/30 w-40">
+        <div className="text-xs">Arrow Foundation</div>
+      </DataBox>
+      <DataBox label="M02" className="border-emerald-500/30 w-40">
+        <div className="text-xs">Архитектура</div>
+      </DataBox>
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="M03" className="border-amber-500/30 w-40">
+        <div className="text-xs">SQL и DataFrame</div>
+      </DataBox>
+      <DataBox label="M04" className="border-purple-500/30 w-40">
+        <div className="text-xs">DataFusion Python</div>
+      </DataBox>
+      <DataBox label="M05" className="border-pink-500/30 w-40">
+        <div className="text-xs">Расширяемость</div>
+      </DataBox>
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="M06" className="border-cyan-500/30 w-40">
+        <div className="text-xs">Оптимизация</div>
+      </DataBox>
+      <DataBox label="M07" className="border-orange-500/30 w-40">
+        <div className="text-xs">Comet</div>
+      </DataBox>
+      <DataBox label="M08" className="border-red-500/30 w-40">
+        <div className="text-xs">Распределённое</div>
+      </DataBox>
+    </FlowRow>
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="M09" className="border-teal-500/30 w-40">
+        <div className="text-xs">Экосистема</div>
+      </DataBox>
+      <DataBox label="M10" className="border-yellow-500/30 w-40">
+        <div className="text-xs">Capstone Project</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Модуль за модулем
+
+**M00: Введение** --- структура курса, предварительные требования, среда разработки.
+
+**M01: Arrow Foundation** ([перейти](/course/01-arrow-foundation/01-what-is-apache-arrow)) --- columnar формат Apache Arrow, типы данных, RecordBatch, Parquet, Arrow IPC, экосистема arrow-rs/PyArrow/ADBC. Фундамент всего стека.
+
+**M02: Архитектура DataFusion** ([перейти](/course/02-architecture/01-high-level-overview)) --- общая картина: SQL/DataFrame вход, LogicalPlan, оптимизация, PhysicalPlan, выполнение. Каталог, MemoryPool, RuntimeEnv.
+
+**M03: SQL и DataFrame API** ([перейти](/course/03-sql-dataframe-api/01-sql-basics)) --- синтаксис SQL в DataFusion, DataFrame API, оконные функции, подзапросы, CTEs, EXPLAIN.
+
+**M04: DataFusion Python** ([перейти](/course/04-datafusion-python/01-installation-and-context)) --- Python-биндинги: SessionContext, чтение файлов, DataFrame, SQL, UDF/UDAF/UDWF, интеграция с PyArrow/Pandas/Polars, advanced-паттерны.
+
+**M05: Расширяемость** ([перейти](/course/05-extensibility/01-extension-points)) --- точки расширения: TableProvider, CatalogProvider, OptimizerRule, PhysicalPlanner, FileFormat. Кейсы: Spice AI, InfluxDB IOx, GreptimeDB, GlareDB.
+
+**M06: Оптимизация запросов** ([перейти](/course/06-query-optimization/01-optimizer-overview)) --- rule-based и cost-based оптимизация, predicate pushdown, join reordering, кастомные правила. Анализ планов, бенчмаркинг.
+
+**M07: Apache Comet** ([перейти](/course/07-comet/01-what-is-comet)) --- DataFusion как ускоритель Spark. Архитектура Comet, установка, Native Shuffle, Parquet native write, мониторинг.
+
+**M08: Распределённое выполнение** ([перейти](/course/08-distributed-execution/01-distributed-computing-basics)) --- Ballista, DataFusion Ray, Comet в кластере, кастомная распределённая обработка. Выбор стратегии.
+
+**M09: Экосистема** ([перейти](/course/09-ecosystem/01-fdap-stack)) --- FDAP-стек, Arroyo, OpenObserve, Cube/Tesseract, HoraeDB, dbt Fusion, Substrait, WASM, сообщество и будущее.
+
+**M10: Capstone** --- проектирование и реализация аналитического движка. Docker-лаборатория. Этот модуль.
+
+## Три траектории развития
+
+В зависимости от вашего фокуса, знания DataFusion применяются по-разному:
+
+<DiagramContainer title="Траектории после курса" className="my-6">
+  <FlowRow className="gap-6 justify-center flex-wrap">
+    <DataBox label="Rust: ядро DataFusion" className="border-orange-500/30 w-64">
+      <div className="text-xs space-y-1">
+        <div>Контрибьюция в apache/datafusion</div>
+        <div>Кастомные движки на DataFusion</div>
+        <div>Расширения: TableProvider, OptimizerRule</div>
+        <div>M02 + M05 + M06 --- ваша база</div>
+      </div>
+    </DataBox>
+    <DataBox label="Comet: Spark-экосистема" className="border-blue-500/30 w-64">
+      <div className="text-xs space-y-1">
+        <div>Ускорение существующих Spark-пайплайнов</div>
+        <div>Миграция с Spark на нативное выполнение</div>
+        <div>DataFusion + JVM-интеграция</div>
+        <div>M07 + M08 --- ваша база</div>
+      </div>
+    </DataBox>
+    <DataBox label="Python: data science" className="border-emerald-500/30 w-64">
+      <div className="text-xs space-y-1">
+        <div>DataFusion Python для ETL/аналитики</div>
+        <div>Замена Pandas/Spark для Parquet-данных</div>
+        <div>UDF/UDAF для бизнес-логики</div>
+        <div>M04 + M10 --- ваша база</div>
+      </div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+### Rust: ядро DataFusion
+
+Если вы хотите строить системы на DataFusion или контрибьютить в сам проект:
+
+- **Освойте Rust** --- DataFusion написан на Rust. Начните с [The Rust Programming Language](https://doc.rust-lang.org/book/).
+- **Изучите arrow-rs** --- Rust-реализация Apache Arrow. Библиотека используется повсеместно в DataFusion.
+- **Модули M02 и M05** --- архитектура и расширяемость --- ваш главный фундамент. Понимание LogicalPlan, PhysicalPlan, TableProvider, OptimizerRule открывает путь к кастомным движкам.
+- **Контрибьюция** --- начните с `good-first-issue` на [GitHub](https://github.com/apache/datafusion). Процесс описан в [уроке 9.4](/course/09-ecosystem/04-contributing-and-future).
+
+### Comet: Spark-экосистема
+
+Если вы работаете со Spark и хотите ускорить существующие пайплайны:
+
+- **Apache Comet** ([модуль 7](/course/07-comet/01-what-is-comet)) --- подключается к Spark как плагин, выполняет операции на DataFusion вместо JVM.
+- **Native Shuffle и Parquet Write** --- ключевые точки ускорения. Подробно в [уроке 7.4](/course/07-comet/04-native-shuffle).
+- **Распределённое выполнение** ([модуль 8](/course/08-distributed-execution/01-distributed-computing-basics)) --- понимание Ballista и DataFusion Ray помогает выбрать стратегию распределения.
+
+### Python: data science
+
+Если ваш основной инструмент --- Python и вы работаете с данными:
+
+- **DataFusion Python** ([модуль 4](/course/04-datafusion-python/01-installation-and-context)) --- полноценный query engine из `pip install datafusion`. Быстрее Pandas для аналитических запросов на Parquet-данных.
+- **UDF/UDAF** ([урок 4.4](/course/04-datafusion-python/04-udf-and-udaf)) --- расширение движка бизнес-логикой без выхода из Python.
+- **Capstone** (этот модуль) --- паттерн построения аналитической системы, который можно адаптировать к реальным задачам.
+
+## Ресурсы сообщества
+
+### Официальные
+
+- [datafusion.apache.org](https://datafusion.apache.org) --- документация, блог, руководства
+- [github.com/apache/datafusion](https://github.com/apache/datafusion) --- исходный код, issues, EPICs
+- [docs.rs/datafusion](https://docs.rs/datafusion/latest) --- Rust API reference
+- [pypi.org/project/datafusion](https://pypi.org/project/datafusion/) --- Python-пакет
+
+### Коммуникации
+
+- **GitHub Discussions** --- вопросы, RFC, обсуждение архитектуры
+- **Slack** --- Apache Arrow Slack, канал `#datafusion`
+- **Mailing list** --- dev@datafusion.apache.org для PMC-дискуссий
+
+### Обучение
+
+- [DataFusion User Guide](https://datafusion.apache.org/user-guide/) --- официальное руководство пользователя
+- [DataFusion Contributor Guide](https://datafusion.apache.org/contributor-guide/) --- для контрибьюторов
+- SIGMOD paper --- академическое описание архитектуры DataFusion
+
+## Карьерные перспективы
+
+DataFusion --- это знание, которое применимо в нескольких направлениях:
+
+**Инженерия данных** --- построение ETL-пайплайнов на DataFusion Python, миграция с Pandas/Spark для Parquet-аналитики.
+
+**Системное программирование** --- контрибьюция в DataFusion, построение кастомных аналитических движков на Rust. Компании, использующие DataFusion: InfluxData, Cube, Arroyo, OpenObserve и десятки других ([урок 9.2](/course/09-ecosystem/02-ecosystem-databases)).
+
+**Spark-экосистема** --- Comet как ускоритель Spark. Знание внутренностей DataFusion помогает диагностировать проблемы производительности и оптимизировать конфигурацию.
+
+**Стартапы** --- DataFusion как библиотека позволяет быстро построить query engine для специализированной ниши: time-series, observability, semantic layer, streaming. FDAP-стек ([урок 9.1](/course/09-ecosystem/01-fdap-stack)) --- архитектурный тезис для нового поколения аналитических систем.
+
+## Итоги курса
+
+За 11 модулей и 56 уроков вы изучили:
+
+- **Фундамент**: Apache Arrow, columnar формат, Parquet, Arrow IPC
+- **Движок**: архитектура DataFusion, SQL и DataFrame API, оптимизация запросов
+- **Python**: DataFusion Python, UDF/UDAF, интеграция с PyArrow/Pandas
+- **Расширяемость**: TableProvider, CatalogProvider, кастомные функции и правила
+- **Масштабирование**: Comet для Spark, Ballista, DataFusion Ray
+- **Экосистема**: FDAP-стек, 10+ проектов на DataFusion, сообщество
+- **Практика**: capstone-проект с Docker-лабораторией
+
+<Callout type="tip">
+DataFusion --- активно развивающийся проект. Версии выходят каждые 2--4 недели. Следите за блогом и GitHub Discussions, чтобы быть в курсе изменений.
+</Callout>
+
+DataFusion --- это не только query engine. Это экосистема, сообщество и архитектурный подход к построению аналитических систем. Знания, полученные в этом курсе, применимы к десяткам проектов, построенных на FDAP-стеке.
+
+Удачи в дальнейшем изучении.

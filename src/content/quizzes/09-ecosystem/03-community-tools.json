@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "09-ecosystem/03-community-tools",
+  "moduleId": "09-ecosystem",
+  "_meta": { "idPrefix": "df-m09-03" },
+  "questions": [
+    {
+      "id": "df-m09-03-q1",
+      "type": "multiple-choice",
+      "question": "datafusion-dft поддерживает три режима работы. Какой режим позволяет подключить BI-инструменты (DBeaver, Tableau, Superset) к DataFusion?",
+      "options": [
+        { "id": "a", "text": "Server — режим Flight SQL-сервера (dft serve --port 50051), к которому подключаются BI-инструменты через JDBC/ODBC" },
+        { "id": "b", "text": "CLI — командная строка, к которой BI-инструменты подключаются через pipe" },
+        { "id": "c", "text": "TUI — интерактивный терминал с веб-интерфейсом для BI" },
+        { "id": "d", "text": "datafusion-dft не поддерживает BI-инструменты — нужен отдельный сервер" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "datafusion-dft имеет три режима: CLI (скрипты, пайплайны, CI), TUI (интерактивный терминал для исследования данных), Server (Flight SQL на указанном порту). Server-режим (dft serve --port 50051) позволяет подключить BI-инструменты (DBeaver, Tableau, Superset) через JDBC-клиенты к DataFusion.",
+      "bloomLevel": "conceptual",
+      "studyHint": "dft: CLI (скрипты), TUI (ad-hoc), Server (Flight SQL → BI-инструменты). Три режима для разных задач."
+    },
+    {
+      "id": "df-m09-03-q2",
+      "type": "multiple-choice",
+      "question": "Чем dbt Fusion принципиально отличается от классического dbt в использовании DataFusion?",
+      "options": [
+        { "id": "a", "text": "Классический dbt компилирует Jinja → SQL и отправляет в СУБД. dbt Fusion — нативный Rust-движок, который использует DataFusion для статического анализа SQL, локального выполнения тестов без production-хранилища и оптимизации DAG зависимостей" },
+        { "id": "b", "text": "dbt Fusion — просто Python-обёртка над DataFusion, отличий от классического dbt нет" },
+        { "id": "c", "text": "dbt Fusion заменяет целевые СУБД (Snowflake, BigQuery) на DataFusion полностью" },
+        { "id": "d", "text": "dbt Fusion — open-source альтернатива классического dbt" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Классический dbt компилирует Jinja → SQL и отправляет в целевую СУБД. dbt Fusion — нативный Rust-движок с DataFusion для: (1) статического анализа SQL (обнаружение ошибок до отправки в СУБД), (2) локального выполнения тестов моделей без обращения к production, (3) оптимизации DAG выполнения. Компиляция моделей в 10-100x быстрее. dbt Fusion — коммерческий продукт dbt Labs.",
+      "bloomLevel": "analytical",
+      "studyHint": "dbt Classic: Jinja→SQL→СУБД. dbt Fusion: Rust + DataFusion → статический анализ + локальные тесты + DAG оптимизация. 10-100x быстрее компиляция."
+    },
+    {
+      "id": "df-m09-03-q3",
+      "type": "multiple-choice",
+      "question": "Для чего нужен Substrait в экосистеме DataFusion и какую проблему он решает?",
+      "options": [
+        { "id": "a", "text": "Substrait — стандарт сериализации query plans в Protobuf. Позволяет планировщику одной системы построить план, а executor другой системы — выполнить его. Без Substrait каждая пара систем изобретает свой формат обмена" },
+        { "id": "b", "text": "Substrait — формат хранения данных, альтернатива Parquet" },
+        { "id": "c", "text": "Substrait — сетевой протокол замена Arrow Flight" },
+        { "id": "d", "text": "Substrait — внутренний формат DataFusion для логических планов, недоступный внешним системам" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Substrait — стандарт сериализации query plans, не привязанный к конкретному движку. DataFusion поддерживает produce (DataFusion план → Substrait Protobuf) и consume (Substrait → DataFusion план). Практические сценарии: dbt Fusion строит план → Spark выполняет; аналитический инструмент → DataFusion или DuckDB выполняет; федеративная система передаёт фрагмент плана удалённому движку.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Substrait = стандартный Protobuf для query plans. Producer/consumer API. Решает проблему N×N форматов обмена между системами."
+    },
+    {
+      "id": "df-m09-03-q4",
+      "type": "multiple-choice",
+      "question": "В чём разница между Auron и Comet с точки зрения целевых платформ и зрелости?",
+      "options": [
+        { "id": "a", "text": "Comet: только Spark, версия 0.13.0, production-ориентирован, Apple — основной контрибьютор. Auron: Spark + Flink, ранняя стадия, open-source community. Auron расширяет идею Comet на Flink" },
+        { "id": "b", "text": "Auron — новая версия Comet, заменяющая его" },
+        { "id": "c", "text": "Comet работает только с Flink, Auron — только со Spark" },
+        { "id": "d", "text": "Различий нет — это один проект с двумя названиями" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Comet: целевая платформа Apache Spark, версия 0.13.0, production-ориентирован, Apple — основной контрибьютор (подробно разобран в модуле 7). Auron: ускоряет и Spark, и Flink через DataFusion, ранняя стадия разработки. Auron расширяет идею нативного ускорения на Flink — платформу, для которой ранее не было DataFusion-ускорителей.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Comet = Spark, production-ready (0.13.0), Apple. Auron = Spark+Flink, ранняя стадия. Для production Spark → Comet."
+    },
+    {
+      "id": "df-m09-03-q5",
+      "type": "multiple-choice",
+      "question": "Какие уникальные сценарии открывает WASM-компиляция DataFusion?",
+      "options": [
+        { "id": "a", "text": "SQL-аналитика в браузере (Parquet по HTTP без серверных затрат) и на Edge-функциях (Cloudflare Workers, Deno Deploy — минимальная latency). Дополнительно — кастомные UDF и TableProvider прямо в браузере благодаря расширяемости" },
+        { "id": "b", "text": "WASM-компиляция нужна только для уменьшения размера бинарника DataFusion" },
+        { "id": "c", "text": "WASM позволяет запускать DataFusion на мобильных устройствах (iOS, Android)" },
+        { "id": "d", "text": "WASM заменяет Arrow как in-memory формат данных" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "WASM-компиляция DataFusion открывает два сценария: (1) SQL-аналитика в браузере — Parquet-файлы по HTTP, нет серверных затрат; (2) Edge-функции (Cloudflare Workers, Deno Deploy) — SQL-обработка с минимальной latency. Уникальное преимущество перед DuckDB-WASM: кастомные UDF и TableProvider прямо в браузере благодаря расширяемости DataFusion. Направление в активной разработке (GSoC 2025).",
+      "bloomLevel": "applied",
+      "studyHint": "WASM DataFusion: браузер (Parquet по HTTP) + Edge (Workers, Deno). Уникальность: расширяемость (UDF/TableProvider в браузере). Пока в разработке."
+    }
+  ]
+}

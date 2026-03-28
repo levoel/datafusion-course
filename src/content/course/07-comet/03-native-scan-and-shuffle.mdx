@@ -1,0 +1,298 @@
+---
+title: "Нативный scan и columnar shuffle"
+description: "CometScanRule и три реализации scan (native_comet, native_datafusion, native_iceberg_compat), CometScanExec vs CometBatchScanExec, нативный columnar shuffle и spill-механизм"
+order: 3
+difficulty: "advanced"
+estimatedTime: 17
+topics: ["CometScanRule", "CometScanExec", "CometBatchScanExec", "native_comet", "native_datafusion", "native_iceberg_compat", "columnar shuffle", "spill"]
+---
+
+# Нативный scan и columnar shuffle
+
+Два компонента Comet обеспечивают максимальный прирост производительности: нативный scan (чтение Parquet без JVM overhead) и нативный columnar shuffle (перераспределение данных без row-конвертации). Разберём оба.
+
+## CometScanRule
+
+`CometScanRule` перехватывает Spark-операторы чтения данных и заменяет их на нативные реализации:
+
+```scala
+class CometScanRule extends Rule[SparkPlan] {
+  override def apply(plan: SparkPlan): SparkPlan = {
+    plan.transform {
+      // Spark v1 data source API
+      case scan: FileSourceScanExec
+          if scan.relation.fileFormat.isInstanceOf[ParquetFileFormat] =>
+        CometScanExec(scan)
+
+      // Spark v2 data source API (Iceberg, Delta, etc.)
+      case scan: BatchScanExec
+          if isParquetBatchScan(scan) =>
+        CometBatchScanExec(scan)
+    }
+  }
+}
+```
+
+<Callout type="note">
+CometScanRule работает только с Parquet. Для CSV, ORC и других форматов Comet использует стандартный Spark scan. Это не ограничение — Parquet покрывает подавляющее большинство аналитических хранилищ.
+</Callout>
+
+## Три реализации scan
+
+Comet предоставляет три backend-а для нативного чтения Parquet, переключаемых через конфигурацию `spark.comet.scan.impl`:
+
+<DiagramContainer title="Три пути нативного scan" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input">Parquet файл</FlowNode>
+    <Arrow direction="down" label="spark.comet.scan.impl" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="native_comet" className="border-emerald-500/30 text-xs">
+        <div className="font-semibold">Comet reader</div>
+        <div className="mt-1">Собственный Parquet-ридер</div>
+        <div>Максимальная совместимость со Spark</div>
+        <div className="mt-1 font-mono">По умолчанию</div>
+      </DataBox>
+      <DataBox label="native_datafusion" className="border-blue-500/30 text-xs">
+        <div className="font-semibold">DataFusion reader</div>
+        <div className="mt-1">Стандартный ParquetExec DataFusion</div>
+        <div>Лучше для сложных типов (Map, Array)</div>
+        <div className="mt-1 font-mono">Экспериментальный</div>
+      </DataBox>
+      <DataBox label="native_iceberg_compat" className="border-purple-500/30 text-xs">
+        <div className="font-semibold">iceberg-rust reader</div>
+        <div className="mt-1">Чтение через iceberg-rust</div>
+        <div>Нативная интеграция с Iceberg</div>
+        <div className="mt-1 font-mono">С версии 0.12.0</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowNode variant="output">Arrow RecordBatch</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+### native_comet (по умолчанию)
+
+Собственный Parquet-ридер Comet, оптимизированный для совместимости со Spark:
+
+- Поддерживает все Spark-специфичные правила чтения (decimal precision, timestamp rebase, int96 calendar)
+- Pushdown предикатов на уровень row group
+- Projection pushdown (чтение только запрошенных столбцов)
+- Конвертация напрямую в Arrow `RecordBatch` без промежуточных буферов
+
+```
+spark.comet.scan.impl=native_comet  # по умолчанию
+```
+
+### native_datafusion
+
+Использует стандартный `ParquetExec` из DataFusion:
+
+- Лучшая поддержка сложных типов: `Map`, `Array`, `Struct`
+- Асинхронное I/O через Tokio (pipeline с compute)
+- Не все Spark-специфичные quirks воспроизведены — используйте когда совместимость не критична
+
+```
+spark.comet.scan.impl=native_datafusion
+```
+
+### native_iceberg_compat
+
+Нативный Iceberg scan через библиотеку `iceberg-rust`:
+
+- Работает с Iceberg FileScan tasks напрямую, минуя Spark Iceberg connector
+- Нативное чтение Parquet-файлов, на которые ссылается Iceberg metadata
+- Доступно с Comet 0.12.0+
+- Требует сборки с feature flag: `mvn ... -Piceberg`
+
+```
+spark.comet.scan.impl=native_iceberg_compat
+```
+
+<Callout type="warning">
+`native_iceberg_compat` — экспериментальная функциональность. Не все Iceberg-операции поддержаны (например, time travel и complex partition transforms). Для production используйте стандартный Iceberg connector с `native_comet`.
+</Callout>
+
+## CometScanExec vs CometBatchScanExec
+
+Spark имеет два API для источников данных, и Comet поддерживает оба:
+
+| API | Spark-оператор | Comet-замена | Когда используется |
+|---|---|---|---|
+| DataSource V1 | `FileSourceScanExec` | `CometScanExec` | Стандартный Parquet, CSV, ORC |
+| DataSource V2 | `BatchScanExec` | `CometBatchScanExec` | Iceberg, Delta Lake, кастомные source |
+
+### CometScanExec (V1)
+
+Оборачивает `FileSourceScanExec` — основной случай для чистого Parquet:
+
+```scala
+case class CometScanExec(
+    originalScan: FileSourceScanExec,
+    override val output: Seq[Attribute]
+) extends SparkPlan with CometPlan {
+
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    // 1. Получаем список Parquet-файлов от Spark
+    val files = originalScan.relation.location.listFiles(...)
+    // 2. Для каждого split — нативное чтение через JNI
+    files.map { file =>
+      Native.readParquet(file.getPath, schema, predicates)
+    }
+  }
+}
+```
+
+### CometBatchScanExec (V2)
+
+Оборачивает `BatchScanExec` — для Iceberg и других V2-источников:
+
+```scala
+case class CometBatchScanExec(
+    originalScan: BatchScanExec
+) extends SparkPlan with CometPlan {
+
+  override def doExecuteColumnar(): RDD[ColumnarBatch] = {
+    // V2 API: получаем InputPartitions от Scan
+    val partitions = originalScan.batch.planInputPartitions()
+    // Для Iceberg: partition содержит FileScanTask
+    // с метаданными о Parquet-файлах
+    partitions.map { partition =>
+      Native.readPartition(partition, schema)
+    }
+  }
+}
+```
+
+Выбор между V1 и V2 определяется конфигурацией источника данных, а не пользователем — Comet автоматически использует нужную обёртку.
+
+## Нативный Columnar Shuffle
+
+Стандартный Spark shuffle сериализует данные в row-based формат (`UnsafeRow`) для перераспределения. Comet заменяет это на columnar shuffle — данные остаются в Arrow-формате:
+
+<DiagramContainer title="Spark shuffle vs Comet columnar shuffle" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="Стандартный Spark shuffle" className="border-orange-500/30">
+      <FlowColumn className="gap-1 p-2">
+        <FlowNode variant="process">Arrow RecordBatch</FlowNode>
+        <Arrow direction="down" label="ColumnarToRow" />
+        <FlowNode variant="process">UnsafeRow (serialized)</FlowNode>
+        <Arrow direction="down" label="network / disk" />
+        <FlowNode variant="process">UnsafeRow (deserialized)</FlowNode>
+        <Arrow direction="down" label="RowToColumnar" />
+        <FlowNode variant="output">Arrow RecordBatch</FlowNode>
+      </FlowColumn>
+    </DataBox>
+    <DataBox label="Comet columnar shuffle" className="border-emerald-500/30">
+      <FlowColumn className="gap-1 p-2">
+        <FlowNode variant="process">Arrow RecordBatch</FlowNode>
+        <Arrow direction="down" label="partition by key" />
+        <FlowNode variant="process">Arrow IPC (columnar)</FlowNode>
+        <Arrow direction="down" label="network / disk" />
+        <FlowNode variant="output">Arrow RecordBatch</FlowNode>
+      </FlowColumn>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+### CometShuffleExchangeExec
+
+Замена стандартного `ShuffleExchangeExec`:
+
+```scala
+case class CometShuffleExchangeExec(
+    outputPartitioning: Partitioning,
+    child: SparkPlan
+) extends Exchange with CometPlan {
+  // Поддерживаемые типы партиционирования:
+  // - HashPartitioning (самый частый — GROUP BY, JOIN)
+  // - RangePartitioning (ORDER BY)
+  // - SinglePartition (финальная агрегация)
+  // - RoundRobinPartitioning
+}
+```
+
+Преимущества columnar shuffle:
+- **Нет ColumnarToRow/RowToColumnar** — данные не конвертируются
+- **Лучшая компрессия** — columnar формат сжимается эффективнее row-based
+- **Поддержка сложных типов** — Array, Struct, Map передаются нативно через Arrow IPC
+
+### Поддержка типов в shuffle
+
+Columnar shuffle поддерживает все Arrow-типы, включая вложенные:
+
+```
+Поддерживаемые типы:
+  Примитивные: Boolean, Int8..Int64, Float32, Float64, Decimal128, Utf8, Binary
+  Temporal:    Date32, Timestamp (микро/нано, с/без timezone)
+  Complex:     Struct, List, Map, LargeUtf8, LargeBinary
+  Special:     Null, Dictionary-encoded
+```
+
+## Spill-механизм
+
+При превышении лимита off-heap памяти Comet сбрасывает промежуточные данные на диск:
+
+```
+spark.comet.memory.overhead.factor=0.2  # 20% от executor memory
+spark.comet.exec.shuffle.spill.dir=/tmp/comet-spill
+```
+
+### Как работает spill
+
+1. `DiskManager` отслеживает потребление off-heap памяти
+2. При достижении порога — данные агрегации или shuffle сбрасываются в temp-файлы в формате Arrow IPC
+3. При чтении — merge из in-memory и on-disk буферов
+4. Temp-файлы удаляются по завершении query stage
+
+```rust
+// DiskManager (упрощённо)
+pub struct DiskManager {
+    spill_dir: PathBuf,
+    memory_used: AtomicUsize,
+    memory_limit: usize,
+}
+
+impl DiskManager {
+    pub fn spill_if_needed(
+        &self,
+        batch: &RecordBatch,
+    ) -> Result<SpillAction> {
+        if self.memory_used.load(Ordering::Relaxed) > self.memory_limit {
+            let path = self.spill_dir.join(format!("spill_{}.arrow", uuid()));
+            write_ipc(&path, batch)?;
+            Ok(SpillAction::Spilled(path))
+        } else {
+            Ok(SpillAction::InMemory)
+        }
+    }
+}
+```
+
+<Callout type="tip">
+Рекомендуется использовать off-heap memory (`spark.memory.offHeap.enabled=true`) совместно с Comet. Это позволяет DataFusion работать с off-heap буферами напрямую, минуя JVM heap и избегая GC overhead.
+</Callout>
+
+## Метрики scan и shuffle
+
+Comet обновляет Spark-метрики через JNI каждые ~3 секунды:
+
+| Метрика | Описание |
+|---|---|
+| `numOutputRows` | Количество строк после фильтрации |
+| `numOutputBatches` | Количество Arrow RecordBatch |
+| `scanTime` | Время нативного чтения (мс) |
+| `shuffleWriteTime` | Время записи shuffle-данных |
+| `shuffleBytesWritten` | Объём shuffle-данных (bytes) |
+| `spillBytes` | Объём данных, сброшенных на диск |
+| `peakMemoryUsed` | Пиковое потребление off-heap памяти |
+
+Метрики доступны в Spark UI → SQL → Query Details → CometScanExec / CometShuffleExchangeExec.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `CometScanRule` заменяет Parquet scan на нативное чтение — три реализации на выбор
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `native_comet` — по умолчанию, максимальная Spark-совместимость; `native_datafusion` — для сложных типов; `native_iceberg_compat` — для нативного Iceberg (0.12.0+)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `CometScanExec` (V1 API) и `CometBatchScanExec` (V2 API) — автоматический выбор по типу источника
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Columnar shuffle: данные остаются в Arrow IPC, нет ColumnarToRow / RowToColumnar конвертации
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Spill через `DiskManager` в формате Arrow IPC при превышении off-heap лимита
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Метрики обновляются каждые 3 секунды через JNI — видны в Spark UI

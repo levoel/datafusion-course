@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "08-distributed-execution/04-datafusion-ray",
+  "moduleId": "08-distributed-execution",
+  "_meta": { "idPrefix": "df-m08-04" },
+  "questions": [
+    {
+      "id": "df-m08-04-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion Ray использует ShuffleWriterExec и ShuffleReaderExec для shuffle. Чем их механизм отличается от Ballista?",
+      "options": [
+        { "id": "a", "text": "Shuffle-данные записываются на общую файловую систему (NFS, HDFS, S3-FUSE), доступную всем worker-ам — в Ballista shuffle-файлы хранятся на локальных дисках executor-ов и передаются между ними по сети" },
+        { "id": "b", "text": "DataFusion Ray использует JSON вместо Arrow IPC для shuffle" },
+        { "id": "c", "text": "DataFusion Ray не использует shuffle — данные передаются через Ray object store" },
+        { "id": "d", "text": "Механизм идентичен — различий нет" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Ключевое отличие: DataFusion Ray записывает Arrow IPC файлы на shared filesystem (NFS, HDFS, S3-FUSE), все worker-ы читают оттуда. Ballista хранит shuffle-файлы на локальных дисках executor-ов — нужен протокол для передачи между executor-ами. Shared filesystem упрощает архитектуру, но добавляет зависимость от общего хранилища.",
+      "bloomLevel": "applied",
+      "studyHint": "DataFusion Ray: shared filesystem (NFS/HDFS). Ballista: локальные диски executor-ов + сетевой протокол."
+    },
+    {
+      "id": "df-m08-04-q2",
+      "type": "multiple-choice",
+      "question": "DataFusion Ray поддерживает два режима выполнения. Какой из них реализован и является текущим рабочим режимом?",
+      "options": [
+        { "id": "a", "text": "Streaming (default) — потоковое выполнение, каждый stage обрабатывает данные без полной материализации в памяти. Batch-режим запланирован, но не реализован" },
+        { "id": "b", "text": "Batch (default) — каждый stage полностью завершается перед запуском следующего" },
+        { "id": "c", "text": "Оба реализованы — пользователь выбирает" },
+        { "id": "d", "text": "Ни один — DataFusion Ray выполняет план целиком без разбиения на stage" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Streaming-режим (default) реализован и работает: каждый query stage обрабатывает данные потоково как RecordBatch, без полной материализации промежуточных результатов. Batch-режим (аналог Spark: stage полностью завершается → запуск следующего) запланирован, но не реализован. Batch проще для отказоустойчивости, но хуже по latency и памяти.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Streaming = реализован, default. Batch = не реализован. Streaming эффективнее по памяти, batch проще для retry."
+    },
+    {
+      "id": "df-m08-04-q3",
+      "type": "multiple-choice",
+      "question": "execute_query_stage — Ray remote-функция в DataFusion Ray. Что она принимает на вход и возвращает?",
+      "options": [
+        { "id": "a", "text": "Принимает stage_id, сериализованный ExecutionPlan (bytes), partition_id и shuffle_dir. Десериализует план, выполняет его через DataFusion runtime и записывает Arrow IPC файл, возвращая путь к результату" },
+        { "id": "b", "text": "Принимает SQL-текст запроса и возвращает DataFrame" },
+        { "id": "c", "text": "Принимает Arrow RecordBatch и возвращает отфильтрованный RecordBatch" },
+        { "id": "d", "text": "Принимает логический план и возвращает оптимизированный физический план" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "execute_query_stage принимает: stage_id, plan (bytes — сериализованный ExecutionPlan), partition_id, shuffle_dir. Внутри: десериализация плана через PyO3 Rust-биндинги → выполнение DataFusion ExecutionPlan → запись Arrow IPC файла на shuffle_dir. Возвращает путь к результату. Driver запускает execute_query_stage.remote() для каждой (stage, partition) пары.",
+      "bloomLevel": "applied",
+      "studyHint": "execute_query_stage: bytes план → десериализация → DataFusion execution → Arrow IPC файл. Ray управляет scheduling и retry."
+    },
+    {
+      "id": "df-m08-04-q4",
+      "type": "multiple-choice",
+      "question": "DataFusion Ray — проект на ранней стадии (~1700 LOC). Какое ограничение связано с механизмом shuffle?",
+      "options": [
+        { "id": "a", "text": "Требуется общая файловая система (NFS, HDFS, S3-FUSE) для shuffle — все worker-ы должны иметь доступ к одному пути. Интеграция с Ray object store запланирована, но не реализована" },
+        { "id": "b", "text": "Shuffle не поддерживается — все данные обрабатываются на одном worker-е" },
+        { "id": "c", "text": "Shuffle работает только с CSV-файлами" },
+        { "id": "d", "text": "Ограничений нет — shuffle полностью production-ready" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Текущее ограничение: shuffle требует shared filesystem (NFS, HDFS, S3-FUSE). Все worker-ы читают и пишут Arrow IPC файлы на общий путь. Интеграция с Ray object store (in-memory передача между worker-ами без файловой системы) запланирована, но не реализована. Это добавляет инфраструктурную зависимость.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Shuffle = shared filesystem (NFS/HDFS/S3-FUSE). Планируется: Ray object store (in-memory). Пока не реализовано."
+    },
+    {
+      "id": "df-m08-04-q5",
+      "type": "multiple-choice",
+      "question": "В организации уже развёрнут Ray-кластер для ML-пайплайнов. Команда работает в Python. Нужна SQL-аналитика рядом с ML-нагрузками. Какое решение оптимально?",
+      "options": [
+        { "id": "a", "text": "DataFusion Ray — использует существующий Ray-кластер, не требует отдельной инфраструктуры, Python-first API, SQL-аналитика рядом с ML на тех же ресурсах" },
+        { "id": "b", "text": "Ballista — более зрелый проект, всегда предпочтительнее" },
+        { "id": "c", "text": "Comet — ускоряет SQL-запросы в любом окружении" },
+        { "id": "d", "text": "Однопроцессный DataFusion — распределение не нужно для ML-пайплайнов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion Ray имеет смысл когда: (1) Ray-кластер уже развёрнут, (2) команда в Python-экосистеме, (3) нужна SQL-аналитика рядом с ML. Не нужно развёртывать отдельную инфраструктуру (как Ballista). Comet требует Spark. Но DataFusion Ray — ранняя стадия, нужно принять ограничения.",
+      "bloomLevel": "analytical",
+      "studyHint": "DataFusion Ray = Ray-кластер есть + Python стек + SQL рядом с ML. Ballista = Rust стек + новый кластер. Comet = Spark есть."
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "01-arrow-foundation/05-arrow-ecosystem",
+  "moduleId": "01-arrow-foundation",
+  "_meta": {
+    "idPrefix": "df-m01-05"
+  },
+  "questions": [
+    {
+      "id": "df-m01-05-q1",
+      "type": "multiple-choice",
+      "question": "Какая реализация Arrow является основной зависимостью DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Arrow C++ (apache/arrow) — наиболее полная реализация"
+        },
+        {
+          "id": "b",
+          "text": "PyArrow — Python-обёртка с самой большой пользовательской базой"
+        },
+        {
+          "id": "c",
+          "text": "arrow-rs — чистая Rust-реализация без FFI-вызовов в C++, с отдельной нумерацией версий и релизами каждые 2 недели"
+        },
+        {
+          "id": "d",
+          "text": "Arrow Java — для совместимости со Spark-экосистемой"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "DataFusion зависит от arrow-rs — чистой Rust-реализации Arrow. Это не обёртка над C++, а независимая реализация с собственной нумерацией версий (55.x) и двухнедельным циклом релизов. Memory safety гарантирована Rust borrow checker, async I/O нативный через tokio.",
+      "bloomLevel": "conceptual",
+      "studyHint": "arrow-rs = Rust-native. PyArrow = Python wrapper над C++. Разные репозитории, разные версии."
+    },
+    {
+      "id": "df-m01-05-q2",
+      "type": "multiple-choice",
+      "question": "Что такое ADBC (Arrow Database Connectivity) и какую проблему он решает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Новый формат файлов для хранения Arrow-данных на диске"
+        },
+        {
+          "id": "b",
+          "text": "Стандарт интерфейса к базам данных, возвращающий результаты как Arrow RecordBatch напрямую, без промежуточной конвертации JDBC ResultSet/ODBC буферов"
+        },
+        {
+          "id": "c",
+          "text": "Протокол репликации данных между Arrow-системами"
+        },
+        {
+          "id": "d",
+          "text": "Инструмент для миграции данных из SQL в NoSQL"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "ADBC — новый стандарт доступа к базам данных, спроектированный вокруг Arrow. Результаты запросов возвращаются как Arrow RecordBatch, без промежуточной конвертации через row-oriented JDBC/ODBC интерфейсы. Драйверы доступны для PostgreSQL, SQLite, Flight SQL и DuckDB.",
+      "bloomLevel": "conceptual",
+      "studyHint": "ADBC = Arrow-native замена JDBC/ODBC. Flight SQL как transport layer."
+    },
+    {
+      "id": "df-m01-05-q3",
+      "type": "multiple-choice",
+      "question": "Модульная структура arrow-rs разделена на отдельные crates. Какие crates DataFusion использует напрямую?",
+      "options": [
+        {
+          "id": "a",
+          "text": "arrow-csv, arrow-json, arrow-flight — для чтения и передачи данных"
+        },
+        {
+          "id": "b",
+          "text": "arrow-array, arrow-schema, arrow-select, arrow-compute, parquet — ядро обработки и Parquet I/O"
+        },
+        {
+          "id": "c",
+          "text": "Только umbrella crate arrow — все sub-crates подключаются автоматически"
+        },
+        {
+          "id": "d",
+          "text": "Только arrow-buffer — DataFusion реализует остальное самостоятельно"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion использует arrow-array (Array types, RecordBatch), arrow-schema (Schema, Field, DataType), arrow-select (filter, take, concat), arrow-compute (compute kernels) и parquet (Parquet reader/writer). Модульная структура позволяет зависеть только от нужных crates без лишних зависимостей.",
+      "bloomLevel": "applied",
+      "studyHint": "Запомните 5 ключевых crates: array, schema, select, compute, parquet."
+    },
+    {
+      "id": "df-m01-05-q4",
+      "type": "multiple-choice",
+      "question": "Как PyArrow интегрируется с DataFusion Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion Python конвертирует данные из PyArrow в собственный внутренний формат"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion Python принимает PyArrow таблицы на вход и возвращает PyArrow на выход — переход между DataFusion и Pandas/Polars через PyArrow как промежуточный формат"
+        },
+        {
+          "id": "c",
+          "text": "PyArrow и DataFusion Python несовместимы, нужен отдельный адаптер"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion Python использует Arrow C++ напрямую, минуя PyArrow"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion Python (pip package datafusion) принимает PyArrow таблицы на вход и возвращает PyArrow на выход. Это одна строка кода для перехода между DataFusion и Pandas/Polars через PyArrow как промежуточный формат. Внутри DataFusion работает с arrow-rs, а PyArrow — это мост в Python-экосистему.",
+      "bloomLevel": "applied",
+      "studyHint": "Цепочка: Pandas ↔ PyArrow ↔ DataFusion Python. PyArrow — универсальный мост."
+    },
+    {
+      "id": "df-m01-05-q5",
+      "type": "multiple-choice",
+      "question": "Что такое nanoarrow и когда он используется?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Минимальная C-библиотека (~100 KB) для чтения/записи Arrow-данных, предназначенная для встраиваемых систем и FFI-биндингов, где полный Arrow C++ слишком тяжёл"
+        },
+        {
+          "id": "b",
+          "text": "Упрощённая версия Arrow для работы с маленькими датасетами (< 1 GB)"
+        },
+        {
+          "id": "c",
+          "text": "Формат сжатия Arrow-буферов для передачи по сети"
+        },
+        {
+          "id": "d",
+          "text": "Arrow-реализация для мобильных устройств (iOS, Android)"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "nanoarrow — облегчённая C-библиотека без зависимостей (~100 KB кода), реализующая Arrow C Data Interface и C Stream Interface. Используется как FFI-мост: Python-расширение на C может получить Arrow-данные через C Data Interface, обработать через nanoarrow и вернуть результат без копирования.",
+      "bloomLevel": "conceptual",
+      "studyHint": "nanoarrow = минимальный FFI-мост. Когда полный Arrow C++ (с CMake, Boost, gRPC) — overkill."
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+---
+title: "Дорожная карта курса"
+description: "Обзор всех 11 модулей курса, пути обучения и рекомендации по прохождению"
+order: 3
+difficulty: "beginner"
+estimatedTime: 8
+---
+
+# Дорожная карта курса
+
+Курс состоит из **11 модулей** — от введения до capstone-проекта. Модули выстроены последовательно: каждый опирается на знания из предыдущих.
+
+## Обзор модулей
+
+### Фундамент (M00-M02)
+
+| Модуль | Название | Что вы изучите |
+|--------|----------|----------------|
+| M00 | Введение в курс | Обзор, предварительные требования, структура |
+| M01 | Apache Arrow Foundation | Колоночный формат, zero-copy, Buffer/Array/RecordBatch, Arrow Flight |
+| M02 | Архитектура DataFusion | Pipeline обработки запросов, SessionContext, каталоги, точки расширения |
+
+<Callout type="tip">
+**M01 (Arrow) — фундамент для всего курса.** DataFusion построен поверх Arrow, и понимание колоночного формата критично для остальных модулей. Не пропускайте его, даже если вы знакомы с Arrow на поверхностном уровне.
+</Callout>
+
+### Интерфейсы и Python (M03-M04)
+
+| Модуль | Название | Что вы изучите |
+|--------|----------|----------------|
+| M03 | SQL и DataFrame API | SQL-диалект DataFusion, DataFrame-операции, UDF, оконные функции |
+| M04 | DataFusion Python | Python-биндинги, SessionContext в Python, интеграция с pandas и PyArrow |
+
+### Продвинутые темы (M05-M06)
+
+| Модуль | Название | Что вы изучите |
+|--------|----------|----------------|
+| M05 | Расширяемость и кастомизация | Собственные TableProvider, UDF/UDAF, правила оптимизации, ExecutionPlan |
+| M06 | Оптимизация запросов | Логический и физический оптимизатор, pushdown, pruning, статистики |
+
+### Экосистема (M07-M09)
+
+| Модуль | Название | Что вы изучите |
+|--------|----------|----------------|
+| M07 | Apache Comet | Ускорение Spark через DataFusion, архитектура Native → JVM bridge |
+| M08 | Распределённое выполнение | Ballista: scheduler/executor, партиционирование, shuffle, deployment |
+| M09 | Экосистема DataFusion | InfluxDB, Dask SQL, custom analytics engines, тренды |
+
+### Практика (M10)
+
+| Модуль | Название | Что вы изучите |
+|--------|----------|----------------|
+| M10 | Capstone Project | Проектирование кастомного аналитического движка на базе DataFusion |
+
+## Пути обучения
+
+Модули расположены последовательно, но в зависимости от ваших целей можно расставить приоритеты:
+
+### <Icon name="target" className="text-yellow-400" size="1.2em" /> Data Engineer / Аналитик
+
+**Фокус:** использование DataFusion как инструмента
+
+Приоритетные модули: M00 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M01 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M02 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M03 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M04 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M06
+
+### <Icon name="cube" className="text-purple-400" size="1.2em" /> Systems Engineer / Rust Developer
+
+**Фокус:** расширение и встраивание DataFusion
+
+Приоритетные модули: M00 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M01 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M02 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M05 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M06 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M10
+
+### <Icon name="book" className="text-blue-400" size="1.2em" /> Platform Architect
+
+**Фокус:** DataFusion в контексте data-платформы
+
+Приоритетные модули: M00 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M02 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M06 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M07 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M08 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M09
+
+## Зависимости между модулями
+
+Обязательные зависимости:
+
+- **M01** (Arrow Foundation) — требуется для всех последующих модулей
+- **M02** (Архитектура) — требуется для M03, M05, M06
+- **M03** (SQL/DataFrame API) — требуется для M04
+- **M05** (Расширяемость) — требуется для M10 (Capstone)
+
+Модули M07 (Comet), M08 (Ballista), M09 (Экосистема) можно изучать в любом порядке после M02.
+
+## Готовы начать?
+
+Переходите к [M01: Apache Arrow Foundation](/datafusion-course/01-arrow-foundation/) — фундаменту, на котором построен DataFusion.

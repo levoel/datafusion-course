@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "02-architecture/05-session-context",
+  "moduleId": "02-architecture",
+  "_meta": {
+    "idPrefix": "df-m02-05"
+  },
+  "questions": [
+    {
+      "id": "df-m02-05-q1",
+      "type": "multiple-choice",
+      "question": "SessionContext в DataFusion объединяет три компонента. Какие?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SessionConfig (настройки), SessionState (каталог, UDF, оптимизатор, планировщик), RuntimeEnv (пул памяти, disk manager, object store)"
+        },
+        {
+          "id": "b",
+          "text": "Parser, Optimizer, Executor"
+        },
+        {
+          "id": "c",
+          "text": "LogicalPlan, PhysicalPlan, RecordBatch"
+        },
+        {
+          "id": "d",
+          "text": "Connection, Statement, ResultSet"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SessionContext = SessionConfig (batch_size, target_partitions, правила оптимизатора) + SessionState (каталог таблиц, реестр UDF/UDAF, оптимизатор, планировщик) + RuntimeEnv (пул памяти, disk manager для spill, object store registry для S3/GCS).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Config = поведение, State = состояние, RuntimeEnv = ресурсы."
+    },
+    {
+      "id": "df-m02-05-q2",
+      "type": "multiple-choice",
+      "question": "FairSpillPool ограничивает память DataFusion до заданного лимита. Что происходит при превышении?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Процесс завершается с OOM"
+        },
+        {
+          "id": "b",
+          "text": "Операторы (HashJoin, Sort, Aggregate) сбрасывают промежуточные данные на диск (spill-to-disk) и продолжают работу"
+        },
+        {
+          "id": "c",
+          "text": "Запрос автоматически отменяется с ошибкой"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion уменьшает batch_size для экономии памяти"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "FairSpillPool распределяет лимит памяти между операторами. При превышении оператор сбрасывает промежуточные данные во временные файлы через DiskManager (spill-to-disk) и продолжает обработку. Это критично для production: без spill большой GROUP BY или ORDER BY может исчерпать всю память.",
+      "bloomLevel": "applied",
+      "studyHint": "Три варианта MemoryPool: UnboundedMemoryPool (без лимита), FairSpillPool (spill), GreedyMemoryPool (ошибка)."
+    },
+    {
+      "id": "df-m02-05-q3",
+      "type": "multiple-choice",
+      "question": "Две SessionContext-сессии (analytics и ETL) создаются с разными SessionConfig, но общим RuntimeEnv. Какой ресурс они разделяют?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Каталог таблиц — обе сессии видят одни и те же таблицы"
+        },
+        {
+          "id": "b",
+          "text": "Пул памяти (MemoryPool) — суммарное потребление памяти обеих сессий контролируется одним лимитом"
+        },
+        {
+          "id": "c",
+          "text": "Результаты запросов — вторая сессия получает кешированные результаты первой"
+        },
+        {
+          "id": "d",
+          "text": "UDF-функции — регистрация в одной сессии доступна в другой"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Общий RuntimeEnv означает общий MemoryPool, DiskManager и ObjectStoreRegistry. Два SessionContext с разными target_partitions и batch_size, но одним пулом памяти — суммарное потребление контролируется одним лимитом. Каталоги и UDF принадлежат SessionState, который у каждой сессии свой.",
+      "bloomLevel": "analytical",
+      "studyHint": "RuntimeEnv = ресурсы (память, диск, S3). SessionState = состояние (каталог, UDF). Ресурсы разделяются, состояние — нет."
+    },
+    {
+      "id": "df-m02-05-q4",
+      "type": "multiple-choice",
+      "question": "Параметры SessionConfig можно менять через SQL: SET datafusion.execution.batch_size = 4096. Для чего это полезно?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Позволяет менять настройки внутри SQL-скрипта без перекомпиляции программы"
+        },
+        {
+          "id": "b",
+          "text": "Это единственный способ изменить batch_size"
+        },
+        {
+          "id": "c",
+          "text": "SET влияет на все сессии в процессе"
+        },
+        {
+          "id": "d",
+          "text": "SET сохраняет настройки между перезапусками"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SQL SET позволяет менять SessionConfig без перекомпиляции: администратор может настроить batch_size, target_partitions или отключить правило оптимизатора внутри SQL-скрипта. Изменения применяются к текущей сессии и не затрагивают другие сессии или перезапуски.",
+      "bloomLevel": "conceptual",
+      "studyHint": "SET — runtime конфигурация в рамках одной сессии. Не персистируется."
+    },
+    {
+      "id": "df-m02-05-q5",
+      "type": "multiple-choice",
+      "question": "TaskContext — облегчённый контекст, передаваемый в ExecutionPlan::execute(). Почему используется TaskContext, а не полный SessionContext?",
+      "options": [
+        {
+          "id": "a",
+          "text": "TaskContext содержит только конфигурацию, функции и runtime — без каталога и планировщика. Это позволяет запускать ExecutionPlan в изолированных контекстах, например в разных потоках с разными UDF"
+        },
+        {
+          "id": "b",
+          "text": "TaskContext быстрее, потому что занимает меньше байт в памяти"
+        },
+        {
+          "id": "c",
+          "text": "SessionContext нельзя передавать между потоками (не Send)"
+        },
+        {
+          "id": "d",
+          "text": "TaskContext — устаревший API, сохранённый для совместимости"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "TaskContext — минимальный набор для выполнения: SessionConfig, реестр функций (scalar, aggregate, window) и RuntimeEnv. Каталог и планировщик не нужны на этапе выполнения — план уже построен. Это позволяет запускать один ExecutionPlan в разных контекстах с разными наборами UDF.",
+      "bloomLevel": "applied",
+      "studyHint": "На этапе выполнения план уже построен — нужны только конфигурация, функции и ресурсы."
+    }
+  ]
+}

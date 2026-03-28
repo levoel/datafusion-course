@@ -1,0 +1,238 @@
+---
+title: "Система типов Arrow: от Int32 до вложенных структур"
+description: "Примитивные и вложенные типы Arrow, Schema/Field/DataType, extension types и связь с DataFusion"
+order: 3
+difficulty: "intermediate"
+estimatedTime: 14
+topics: ["Arrow Type System", "DataType", "Schema", "Field", "Nested Types", "Extension Types"]
+---
+
+# Система типов Arrow: от Int32 до вложенных структур
+
+## Зачем типовая система в in-memory формате
+
+Arrow определяет не только byte layout, но и полную систему типов. Каждый массив имеет конкретный `DataType`, определяющий, как интерпретировать байты в буферах. Без типовой информации буфер `[1C 00 00 00]` -- это просто 4 байта. С типом `Int32` это число 28, с `Float32` -- совсем другое значение.
+
+Типовая система Arrow покрывает три уровня:
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Примитивные типы** — числа, строки, бинарные данные, boolean, temporal
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Вложенные типы** — List, Struct, Map, Union
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> **Extension types** — пользовательские типы поверх базовых
+
+## Примитивные типы
+
+### Числовые
+
+| Тип | Размер | Диапазон | Когда использовать |
+|-----|--------|----------|-------------------|
+| `Int8` / `Int16` / `Int32` / `Int64` | 1 / 2 / 4 / 8 байт | знаковые целые | ID, количества, коды |
+| `UInt8` / `UInt16` / `UInt32` / `UInt64` | 1 / 2 / 4 / 8 байт | беззнаковые | индексы, размеры |
+| `Float16` / `Float32` / `Float64` | 2 / 4 / 8 байт | IEEE 754 | измерения, координаты |
+| `Decimal128(precision, scale)` | 16 байт | точная арифметика | деньги, финансы |
+| `Decimal256(precision, scale)` | 32 байт | сверхточная арифметика | научные вычисления |
+
+<Callout type="note">
+DataFusion по умолчанию использует `Int64` для целых литералов и `Float64` для дробных. `Decimal128` применяется автоматически при работе с SQL `DECIMAL` типами.
+</Callout>
+
+### Строковые и бинарные
+
+| Тип | Offsets | Max размер | Описание |
+|-----|---------|------------|----------|
+| `Utf8` | `int32` | ~2 GB суммарно | UTF-8 строки (основной) |
+| `LargeUtf8` | `int64` | ~2^63 байт | Для огромных текстовых колонок |
+| `Binary` | `int32` | ~2 GB | Произвольные байты |
+| `LargeBinary` | `int64` | ~2^63 байт | Большие бинарные данные |
+| `FixedSizeBinary(N)` | нет | N байт на значение | UUID, хеши, IP-адреса |
+
+### Temporal типы
+
+Arrow поддерживает точные temporal типы с явным указанием единиц:
+
+| Тип | Единицы | Пример |
+|-----|---------|--------|
+| `Date32` | дни с epoch | Дата без времени |
+| `Date64` | миллисекунды с epoch | Дата без времени (ms precision) |
+| `Time32(unit)` | секунды / миллисекунды | Время дня |
+| `Time64(unit)` | микросекунды / наносекунды | Время дня (высокая точность) |
+| `Timestamp(unit, tz)` | с/мс/мкс/нс + timezone | Полная метка времени |
+| `Duration(unit)` | с/мс/мкс/нс | Интервал (разность timestamp) |
+| `Interval` | year-month / day-time / month-day-nano | Календарный интервал |
+
+```rust
+use arrow::datatypes::{DataType, TimeUnit};
+
+// Timestamp с наносекундной точностью и UTC timezone
+let ts_type = DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into()));
+
+// Duration в миллисекундах
+let dur_type = DataType::Duration(TimeUnit::Millisecond);
+```
+
+## Вложенные типы
+
+Arrow поддерживает вложенные структуры, что критично для работы с JSON, Parquet nested columns и полуструктурированными данными.
+
+### List
+
+Массив списков. Каждый элемент -- список значений одного типа.
+
+```rust
+// List<Int32>: [[1, 2], [3], NULL, [4, 5, 6]]
+// Внутренне: offset buffer + child Int32 array
+```
+
+<DiagramContainer title="List<Int32>: [[1, 2], [3], NULL, [4, 5, 6]]" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <DataBox label="Validity Bitmap" className="border-yellow-500/30 w-64 mx-auto">
+      <div className="text-xs font-mono text-center">[1, 1, 0, 1]</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Offset Buffer (5 x int32)" className="border-purple-500/30 w-64 mx-auto">
+      <div className="text-xs font-mono text-center">[0, 2, 3, 3, 6]</div>
+    </DataBox>
+    <Arrow direction="down" />
+    <DataBox label="Child Array (Int32, 6 значений)" className="border-blue-500/30 w-64 mx-auto">
+      <div className="text-xs font-mono text-center">[1, 2, 3, 4, 5, 6]</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+Offset `[0, 2]` означает, что первый список содержит элементы child array с индекса 0 до 2 (не включая). Offset `[3, 3]` для NULL-элемента -- пустой диапазон.
+
+### Struct
+
+Именованная группа полей. Аналог строки в SQL или объекта в JSON.
+
+```rust
+// Struct { name: Utf8, age: Int32 }
+// Два child array одинаковой длины + один validity bitmap для всей структуры
+DataType::Struct(vec![
+    Field::new("name", DataType::Utf8, false),
+    Field::new("age", DataType::Int32, true),
+].into())
+```
+
+Struct в Arrow -- это **не** вложенный RecordBatch. Каждое поле хранится как отдельный child array. Struct-уровневый validity bitmap определяет, является ли вся структура NULL (отдельно от nullable полей внутри).
+
+### Map
+
+Ассоциативный массив (key-value). Внутренне Map -- это `List<Struct<key, value>>` с гарантией уникальности ключей.
+
+```rust
+// Map<Utf8, Int32>: {"a": 1, "b": 2}
+DataType::Map(
+    Arc::new(Field::new("entries", DataType::Struct(vec![
+        Field::new("key", DataType::Utf8, false),
+        Field::new("value", DataType::Int32, true),
+    ].into()), false)),
+    false, // keys_sorted
+)
+```
+
+### Union
+
+Тип-сумма: каждый элемент может быть одним из нескольких типов. Два варианта:
+
+- **Sparse Union**: все child arrays одинаковой длины, type_id указывает активный child
+- **Dense Union**: child arrays разной длины + offset buffer для маппинга
+
+Union редко используется в DataFusion напрямую, но встречается при чтении Arrow IPC из внешних источников.
+
+## Schema, Field, DataType
+
+**Schema** -- упорядоченный набор полей (`Field`) с необязательными метаданными:
+
+<DiagramContainer title="Иерархия: Schema → Field → DataType" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <DataBox label="Schema" className="border-slate-400/30 w-72 mx-auto">
+      <div className="text-xs space-y-1">
+        <div>metadata: HashMap&lt;String, String&gt;</div>
+        <div>fields: Vec&lt;Field&gt;</div>
+      </div>
+    </DataBox>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label='Field "id"' className="border-emerald-500/30 w-48">
+        <div className="text-xs space-y-1">
+          <div>DataType: Int64</div>
+          <div>nullable: false</div>
+        </div>
+      </DataBox>
+      <DataBox label='Field "name"' className="border-blue-500/30 w-48">
+        <div className="text-xs space-y-1">
+          <div>DataType: Utf8</div>
+          <div>nullable: true</div>
+        </div>
+      </DataBox>
+      <DataBox label='Field "tags"' className="border-purple-500/30 w-48">
+        <div className="text-xs space-y-1">
+          <div>DataType: List&lt;Utf8&gt;</div>
+          <div>nullable: true</div>
+        </div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+```rust
+use arrow::datatypes::{Schema, Field, DataType};
+
+let schema = Schema::new(vec![
+    Field::new("id", DataType::Int64, false),
+    Field::new("name", DataType::Utf8, true),
+    Field::new("tags", DataType::List(
+        Arc::new(Field::new("item", DataType::Utf8, true))
+    ), true),
+]);
+
+// Metadata (произвольные key-value пары)
+let schema = schema.with_metadata(HashMap::from([
+    ("source".to_string(), "kafka".to_string()),
+]));
+```
+
+В DataFusion `SchemaRef` (`Arc<Schema>`) передаётся между операторами. Каждый оператор знает схему входных и выходных данных до начала выполнения -- это позволяет ловить ошибки типов на этапе планирования, а не во время исполнения.
+
+## Extension Types
+
+Extension types позволяют добавлять семантику поверх базовых типов без изменения byte layout:
+
+```rust
+// UUID хранится как FixedSizeBinary(16), но с пометкой "arrow.uuid"
+// JSON хранится как Utf8, но с пометкой "arrow.json"
+// GeoPoint хранится как Struct{lat: Float64, lon: Float64}
+```
+
+Extension type определяется через metadata поля:
+- `ARROW:extension:name` -- идентификатор типа (например, `arrow.uuid`)
+- `ARROW:extension:metadata` -- дополнительные параметры
+
+Это позволяет сохранять совместимость: система, не знающая о расширении, видит базовый тип и работает корректно. Система, понимающая расширение, интерпретирует данные точнее.
+
+## Сравнение с SQL типами
+
+| SQL тип | Arrow DataType | Примечание |
+|---------|---------------|------------|
+| `INTEGER` | `Int32` | 4 байта |
+| `BIGINT` | `Int64` | 8 байт |
+| `REAL` | `Float32` | IEEE 754 |
+| `DOUBLE` | `Float64` | IEEE 754 |
+| `VARCHAR` | `Utf8` | Variable-length UTF-8 |
+| `BOOLEAN` | `Boolean` | 1 бит на значение |
+| `DATE` | `Date32` | Дни с epoch |
+| `TIMESTAMP` | `Timestamp(ns, tz)` | Наносекунды + timezone |
+| `DECIMAL(p,s)` | `Decimal128(p,s)` | 16 байт fixed-point |
+| `ARRAY` | `List<T>` | Вложенный тип |
+| `ROW` / `STRUCT` | `Struct` | Именованные поля |
+
+DataFusion использует эту таблицу при парсинге SQL: `CREATE TABLE t (id INT, name VARCHAR)` создаёт схему с `Int32` и `Utf8`.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Arrow определяет полную типовую систему: примитивные, вложенные, extension типы
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Примитивные: числа (Int8-Int64, Float16-Float64, Decimal), строки (Utf8), temporal, boolean
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Вложенные: List (массивы), Struct (записи), Map (словари), Union (суммы)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Schema + Field + DataType -- иерархия описания данных
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Extension types добавляют семантику без изменения layout
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion маппит SQL типы на Arrow DataType при парсинге запросов

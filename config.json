@@ -1,0 +1,24 @@
+{
+  "id": "datafusion-course",
+  "title": "Apache DataFusion",
+  "description": "Extensible query engine на базе Apache Arrow: архитектура, SQL и DataFrame API, оптимизация запросов, расширения на Rust и Python",
+  "author": "Lev Neganov",
+  "difficulty": "advanced",
+  "language": "ru",
+  "version": "1.0.0",
+  "modules": [
+    { "id": "00-course-intro", "title": "Введение в курс" },
+    { "id": "01-arrow-foundation", "title": "Apache Arrow Foundation" },
+    { "id": "02-architecture", "title": "Архитектура DataFusion" },
+    { "id": "03-sql-dataframe-api", "title": "SQL и DataFrame API" },
+    { "id": "04-datafusion-python", "title": "DataFusion Python" },
+    { "id": "05-extensibility", "title": "Расширяемость и кастомизация" },
+    { "id": "06-query-optimization", "title": "Оптимизация запросов" },
+    { "id": "07-comet", "title": "Apache Comet" },
+    { "id": "08-distributed-execution", "title": "Распределённое выполнение" },
+    { "id": "09-ecosystem", "title": "Экосистема DataFusion" },
+    { "id": "10-capstone", "title": "Capstone Project" }
+  ],
+  "tags": ["datafusion", "apache-arrow", "query-engine", "rust", "analytics"],
+  "estimatedHours": 40
+}

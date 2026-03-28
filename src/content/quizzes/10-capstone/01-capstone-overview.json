@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "10-capstone/01-capstone-overview",
+  "moduleId": "10-capstone",
+  "_meta": { "idPrefix": "df-m10-01" },
+  "questions": [
+    {
+      "id": "df-m10-01-q1",
+      "type": "multiple-choice",
+      "question": "Архитектура мини аналитического движка состоит из четырёх слоёв: DataLoader, UDF Registry, Query Layer и Report Generator. Какой слой отвечает за то, что SQL и DataFrame API генерируют одинаковый план выполнения?",
+      "options": [
+        { "id": "a", "text": "Query Layer — DataFusion транслирует оба интерфейса (SQL и DataFrame API) в единый LogicalPlan, который проходит через общий оптимизатор и executor" },
+        { "id": "b", "text": "DataLoader — он определяет формат данных, который диктует выбор плана" },
+        { "id": "c", "text": "UDF Registry — пользовательские функции унифицируют API" },
+        { "id": "d", "text": "Report Generator — он приводит результаты к единому формату" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Query Layer объединяет SQL и DataFrame API: оба транслируются в один LogicalPlan. Это фундаментальное свойство DataFusion (модуль 2): SQL-парсер строит LogicalPlan, DataFrame API строит тот же LogicalPlan через builder-паттерн. Далее общий оптимизатор (модуль 6) и executor обрабатывают план одинаково.",
+      "bloomLevel": "analytical",
+      "studyHint": "SQL и DataFrame → один LogicalPlan → общий оптимизатор → общий executor. Это Query Layer в capstone-архитектуре."
+    },
+    {
+      "id": "df-m10-01-q2",
+      "type": "multiple-choice",
+      "question": "Capstone-проект использует DataFusion Python вместо Rust API. Почему производительность Python-версии сопоставима с нативным DataFusion?",
+      "options": [
+        { "id": "a", "text": "Python API через PyO3 вызывает тот же Rust-код — Python управляет SessionContext, но парсинг SQL, оптимизация и выполнение происходят в нативном Rust-движке, а данные хранятся в Arrow RecordBatch без копирования" },
+        { "id": "b", "text": "DataFusion Python использует JIT-компиляцию для ускорения Python-кода" },
+        { "id": "c", "text": "Python быстрее Rust для аналитических задач благодаря NumPy" },
+        { "id": "d", "text": "Производительность не сопоставима — Python-версия в 10 раз медленнее" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion Python — тонкая обёртка через PyO3 (модуль 4). Python управляет высокоуровневыми операциями (создание контекста, регистрация данных, вызов запросов), но весь тяжёлый lifting (парсинг, оптимизация, vectorized-выполнение) выполняется в Rust. Данные передаются через Arrow — без сериализации/десериализации между Python и Rust.",
+      "bloomLevel": "conceptual",
+      "studyHint": "PyO3: Python → Rust без копирования данных (Arrow zero-copy). Python = тонкий интерфейс, Rust = выполнение."
+    },
+    {
+      "id": "df-m10-01-q3",
+      "type": "multiple-choice",
+      "question": "Слой DataLoader в capstone регистрирует Parquet-файлы как таблицы через register_parquet. Какой компонент DataFusion стоит за этой операцией?",
+      "options": [
+        { "id": "a", "text": "CatalogProvider и TableProvider — register_parquet создаёт TableProvider для Parquet-файла и регистрирует его в каталоге SessionContext, после чего таблица доступна по имени в SQL-запросах" },
+        { "id": "b", "text": "PhysicalPlanner — он определяет формат файла при первом запросе" },
+        { "id": "c", "text": "OptimizerRule — правило оптимизации выбирает формат данных" },
+        { "id": "d", "text": "Arrow IPC — файл преобразуется в Arrow IPC-формат при регистрации" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "register_parquet создаёт ParquetTableProvider (реализация trait TableProvider из модуля 5) и регистрирует его в CatalogProvider. При SQL-запросе DataFusion находит таблицу по имени в каталоге, получает TableProvider и использует его для чтения данных. В production-системах CatalogProvider может обращаться к Hive Metastore или Iceberg.",
+      "bloomLevel": "conceptual",
+      "studyHint": "register_parquet → ParquetTableProvider → CatalogProvider. Каталог = реестр таблиц, TableProvider = как читать данные."
+    },
+    {
+      "id": "df-m10-01-q4",
+      "type": "multiple-choice",
+      "question": "Функциональное требование FR-3 предусматривает UDAF для средневзвешенного значения. Какие четыре метода Accumulator необходимо реализовать и почему merge() критичен для корректности?",
+      "options": [
+        { "id": "a", "text": "state(), update(), merge(), evaluate(). merge() критичен, потому что DataFusion может выполнять агрегацию параллельно по партициям — partial aggregate на каждой партиции через update(), затем merge() объединяет промежуточные состояния из разных партиций в финальный результат" },
+        { "id": "b", "text": "init(), accumulate(), combine(), finalize(). combine() нужен только для GPU-ускорения" },
+        { "id": "c", "text": "state(), update(), merge(), evaluate(). merge() используется только для обработки NULL-значений" },
+        { "id": "d", "text": "create(), update(), merge(), result(). merge() нужен только для distributed-выполнения через Ballista" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Четыре метода Accumulator (модуль 4): state() возвращает промежуточное состояние как скаляры, update() обрабатывает новые данные, merge() объединяет состояния из разных партиций, evaluate() вычисляет финал. merge() критичен даже для single-node: DataFusion параллелит агрегацию по партициям (Partial → Final), merge() обеспечивает корректное слияние промежуточных результатов.",
+      "bloomLevel": "analytical",
+      "studyHint": "Accumulator: state/update/merge/evaluate. Partial Aggregate по партициям → merge → Final Aggregate. merge() нужен всегда, не только для distributed."
+    },
+    {
+      "id": "df-m10-01-q5",
+      "type": "multiple-choice",
+      "question": "Report Generator в capstone-архитектуре сохраняет результаты в Parquet. В production-системе этот слой отправлял бы данные в объектное хранилище или Flight-сервис. Какое преимущество Parquet перед CSV для аналитических отчётов?",
+      "options": [
+        { "id": "a", "text": "Columnar-формат с компрессией: Parquet хранит данные поколоночно (читаются только нужные столбцы), применяет кодирование (dictionary, RLE, delta) и компрессию (Snappy, Zstd), сохраняет типы данных и статистику (min/max) в footer для predicate pushdown" },
+        { "id": "b", "text": "Parquet проще читать человеку — формат текстовый" },
+        { "id": "c", "text": "Parquet поддерживает стриминговую запись, CSV — нет" },
+        { "id": "d", "text": "Единственное преимущество — меньший размер файла за счёт бинарного формата" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Parquet (модуль 1): columnar-формат позволяет читать только нужные столбцы (projection pushdown), кодирование (dictionary, RLE, delta) и компрессия (Snappy, Zstd) уменьшают размер в 5-10 раз по сравнению с CSV, типы данных сохраняются без потерь (CSV всё строки), min/max статистика в footer позволяет пропускать row groups (predicate pushdown).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Parquet: columnar (projection pushdown) + кодирование/компрессия (5-10x) + типы без потерь + min/max (predicate pushdown). CSV: row-based, без типов, без статистики."
+    }
+  ]
+}

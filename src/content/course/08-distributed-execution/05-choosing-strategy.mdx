@@ -1,0 +1,258 @@
+---
+title: "Выбор стратегии распределения"
+description: "Сравнение Ballista, DataFusion Ray и Comet, DataFusion как библиотека для кастомного распределения, реальные проекты (Spice AI, InfluxDB IOx, GreptimeDB), дерево решений"
+order: 5
+difficulty: "advanced"
+estimatedTime: 14
+topics: ["Ballista", "DataFusion Ray", "Comet", "distributed strategy", "Spice AI", "InfluxDB IOx", "GreptimeDB", "decision matrix"]
+---
+
+# Выбор стратегии распределения
+
+Мы разобрали три подхода к распределению DataFusion: Ballista (уроки 2–3), DataFusion Ray (урок 4) и Comet ([модуль 7](/course/07-comet/01-comet-overview)). Каждый решает свою задачу. В этом уроке — матрица сравнения, дерево решений и реальные примеры кастомного распределения поверх DataFusion как библиотеки.
+
+## Три подхода: обзор
+
+<DiagramContainer title="Три подхода к распределённому DataFusion" className="my-6">
+  <Grid columns={3} className="gap-3 text-sm">
+    <DataBox label="Ballista" className="border-emerald-500/30">
+      <div className="text-xs"><b>Подход:</b> Rust-нативная распределённая система</div>
+      <div className="text-xs mt-1"><b>Модель:</b> Scheduler + Executors</div>
+      <div className="text-xs mt-1"><b>Shuffle:</b> Arrow IPC, диски executor-ов</div>
+      <div className="text-xs mt-1"><b>Зрелость:</b> Production-ориентирован</div>
+      <div className="text-xs mt-1"><b>Версия:</b> 43.0.0 (февраль 2025)</div>
+    </DataBox>
+    <DataBox label="DataFusion Ray" className="border-blue-500/30">
+      <div className="text-xs"><b>Подход:</b> Python + Ray кластер</div>
+      <div className="text-xs mt-1"><b>Модель:</b> Ray remote functions</div>
+      <div className="text-xs mt-1"><b>Shuffle:</b> Arrow IPC, shared filesystem</div>
+      <div className="text-xs mt-1"><b>Зрелость:</b> Ранняя стадия</div>
+      <div className="text-xs mt-1"><b>Версия:</b> ~1700 LOC, Apache donation</div>
+    </DataBox>
+    <DataBox label="Comet" className="border-amber-500/30">
+      <div className="text-xs"><b>Подход:</b> Ускорение существующего Spark</div>
+      <div className="text-xs mt-1"><b>Модель:</b> Spark plugin (нативное ядро)</div>
+      <div className="text-xs mt-1"><b>Shuffle:</b> Native columnar (внутри Spark)</div>
+      <div className="text-xs mt-1"><b>Зрелость:</b> Production (0.13.0)</div>
+      <div className="text-xs mt-1"><b>Версия:</b> 0.13.0 (2026)</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+Ключевое различие: Ballista и DataFusion Ray — самостоятельные распределённые системы, выполняющие DataFusion-запросы. Comet — ускоритель внутри Spark, а не замена его распределённой модели.
+
+## Матрица сравнения
+
+<DiagramContainer title="Матрица сравнения" className="my-6">
+  <Grid columns={1} className="text-sm">
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-white/10">
+            <th className="text-left p-2">Критерий</th>
+            <th className="text-left p-2">Ballista</th>
+            <th className="text-left p-2">DataFusion Ray</th>
+            <th className="text-left p-2">Comet</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">Язык</td>
+            <td className="p-2">Rust</td>
+            <td className="p-2">Python + Rust</td>
+            <td className="p-2">Scala/Java + Rust</td>
+          </tr>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">Требует</td>
+            <td className="p-2">Собственный кластер</td>
+            <td className="p-2">Ray-кластер</td>
+            <td className="p-2">Spark-кластер</td>
+          </tr>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">API</td>
+            <td className="p-2">DataFusion SQL/DataFrame</td>
+            <td className="p-2">DataFusion Python SQL</td>
+            <td className="p-2">Spark SQL/DataFrame</td>
+          </tr>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">Расширяемость</td>
+            <td className="p-2">TableProvider, UDF, ExtensionPlanner</td>
+            <td className="p-2">Через DataFusion Python API</td>
+            <td className="p-2">Ограничена Spark plugin API</td>
+          </tr>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">Отказоустойчивость</td>
+            <td className="p-2">Task retry через scheduler</td>
+            <td className="p-2">Ray retry (ограничен)</td>
+            <td className="p-2">Spark retry (зрелый)</td>
+          </tr>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">Производительность</td>
+            <td className="p-2">2.9x vs Spark (TPC-H)</td>
+            <td className="p-2">Не бенчмаркировано</td>
+            <td className="p-2">2.2x vs Spark (TPC-H)</td>
+          </tr>
+          <tr className="border-b border-white/5">
+            <td className="p-2 font-medium">Сценарий</td>
+            <td className="p-2">Новая аналитическая система</td>
+            <td className="p-2">SQL в ML-пайплайне</td>
+            <td className="p-2">Ускорение Spark без миграции</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </Grid>
+</DiagramContainer>
+
+## Дерево решений
+
+<DiagramContainer title="Выбор стратегии распределения" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <FlowNode className="bg-blue-950/60 p-2 mx-auto">Нужно ли распределённое выполнение?</FlowNode>
+    <FlowRow className="gap-6 justify-center">
+      <FlowColumn className="gap-2 items-center">
+        <FlowNode className="bg-gray-800/60 text-xs p-1">Нет: данные &lt; RAM одного узла</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode className="bg-emerald-900/60 text-xs p-2 border border-emerald-400/30">DataFusion (однопроцессный)<br/>target_partitions = N ядер</FlowNode>
+      </FlowColumn>
+      <FlowColumn className="gap-2 items-center">
+        <FlowNode className="bg-gray-800/60 text-xs p-1">Да: объём / время / архитектура</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode className="bg-blue-950/60 text-xs p-2">Есть ли Spark-кластер?</FlowNode>
+        <FlowRow className="gap-4 justify-center">
+          <FlowColumn className="gap-2 items-center">
+            <FlowNode className="bg-gray-800/60 text-xs p-1">Да</FlowNode>
+            <Arrow direction="down" />
+            <FlowNode className="bg-amber-900/60 text-xs p-2 border border-amber-400/30">Comet<br/>Zero-change ускорение Spark</FlowNode>
+          </FlowColumn>
+          <FlowColumn className="gap-2 items-center">
+            <FlowNode className="bg-gray-800/60 text-xs p-1">Нет Spark</FlowNode>
+            <Arrow direction="down" />
+            <FlowNode className="bg-blue-950/60 text-xs p-2">Стек?</FlowNode>
+            <FlowRow className="gap-3 justify-center">
+              <FlowColumn className="gap-2 items-center">
+                <FlowNode className="bg-gray-800/60 text-xs p-1">Rust</FlowNode>
+                <Arrow direction="down" />
+                <FlowNode className="bg-emerald-900/60 text-xs p-2 border border-emerald-400/30">Ballista<br/>или кастомное решение</FlowNode>
+              </FlowColumn>
+              <FlowColumn className="gap-2 items-center">
+                <FlowNode className="bg-gray-800/60 text-xs p-1">Python + Ray</FlowNode>
+                <Arrow direction="down" />
+                <FlowNode className="bg-blue-900/60 text-xs p-2 border border-blue-400/30">DataFusion Ray<br/>(ранняя стадия)</FlowNode>
+              </FlowColumn>
+            </FlowRow>
+          </FlowColumn>
+        </FlowRow>
+      </FlowColumn>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Выбирайте Comet, если:
+
+- У вас уже есть Spark-кластер с рабочими пайплайнами
+- Нужно ускорение без переписывания приложений
+- Нагрузки — аналитические запросы по Parquet/Iceberg
+- Не готовы мигрировать на новую платформу
+
+### Выбирайте Ballista, если:
+
+- Строите новую аналитическую систему с нуля
+- Команда работает в Rust-экосистеме
+- Нужен полный контроль над расширениями (TableProvider, UDF, OptimizerRule)
+- Требуется Flight SQL/JDBC доступ для BI-инструментов
+
+### Выбирайте DataFusion Ray, если:
+
+- В организации уже есть Ray-кластер
+- Команда работает в Python-экосистеме
+- SQL-аналитика — часть ML-пайплайна
+- Готовы принять ограничения ранней стадии проекта
+
+## Четвёртый путь: DataFusion как библиотека
+
+Ballista, DataFusion Ray и Comet — готовые решения. Но DataFusion изначально проектировался как библиотека для встраивания. Многие production-системы строят собственное распределение, используя DataFusion как query engine внутри каждого узла.
+
+### Spice AI
+
+Spice AI — федеративный аналитический движок. DataFusion обрабатывает запросы на каждом узле, а Spice AI координирует маршрутизацию и pushdown к удалённым источникам (PostgreSQL, MySQL, DuckDB, S3, Databricks). Подробнее — в [уроке по паттернам расширяемости](/course/05-extensibility/06-extensibility-patterns).
+
+Ключевая точка расширения: кастомные `TableProvider` для каждого источника + `OptimizerRule` для federation-aware планирования.
+
+### InfluxDB IOx
+
+InfluxDB IOx (основа InfluxDB 3.0) использует DataFusion как query engine, но хранит данные в собственном columnar формате, распределённом по шардам. Каждый узел выполняет DataFusion-запрос над своим фрагментом данных, а координатор собирает результаты.
+
+Ключевая точка расширения: кастомный `TableProvider` для доступа к внутреннему хранилищу + кастомные `PhysicalOptimizerRule` для time-series оптимизаций (деталь — дедупликация через `DeduplicateExec`).
+
+### GreptimeDB
+
+GreptimeDB — мультимодальная time-series СУБД, объединяющая метрики, логи и события. Как и InfluxDB IOx, использует DataFusion для SQL, но распределяет выполнение по собственной архитектуре.
+
+Ключевая точка расширения: `ExtensionPlanner` для планирования распределённого выполнения — тот же механизм, который используется для кастомных `ExecutionPlan`.
+
+### Общий паттерн
+
+Все три системы следуют одной модели:
+
+<DiagramContainer title="DataFusion как библиотека: паттерн распределения" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <FlowNode className="bg-blue-950/60 p-2 mx-auto">Координатор (маршрутизация, сбор результатов)</FlowNode>
+    <Arrow direction="down" label="Фрагмент плана" />
+    <FlowRow className="gap-3 justify-center">
+      <DataBox label="Узел 1" className="border-emerald-500/30">
+        <FlowColumn className="gap-1 p-2">
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">DataFusion SessionContext</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">Кастомный TableProvider</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">Локальные данные (шард)</FlowNode>
+        </FlowColumn>
+      </DataBox>
+      <DataBox label="Узел 2" className="border-emerald-500/30">
+        <FlowColumn className="gap-1 p-2">
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">DataFusion SessionContext</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">Кастомный TableProvider</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">Локальные данные (шард)</FlowNode>
+        </FlowColumn>
+      </DataBox>
+      <DataBox label="Узел N" className="border-emerald-500/30">
+        <FlowColumn className="gap-1 p-2">
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">DataFusion SessionContext</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">Кастомный TableProvider</FlowNode>
+          <FlowNode className="bg-emerald-950/60 text-xs p-1">Локальные данные (шард)</FlowNode>
+        </FlowColumn>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" label="RecordBatch (Arrow)" />
+    <FlowNode className="bg-blue-950/60 p-2 mx-auto">Координатор → Результат клиенту</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+Этот подход требует больше работы (свой coordinator, свой протокол shuffle), но даёт полный контроль над семантикой распределения. DataFusion предоставляет query planning, оптимизацию и выполнение на каждом узле — распределение и координация остаются за вами.
+
+### Выбирайте кастомное решение, если:
+
+- Данные уже шардированы по вашей логике
+- Требуется специфическая семантика (time-series дедупликация, federation pushdown)
+- Нужна интеграция с собственным хранилищем и протоколами
+- Готовы инвестировать в инфраструктурную разработку
+
+## Что объединяет все подходы
+
+Независимо от стратегии распределения — Ballista, DataFusion Ray, Comet или кастомное решение — все они строятся на одних и тех же примитивах DataFusion:
+
+1. **ExecutionPlan** — единица выполнения. Каждый stage — это DataFusion ExecutionPlan
+2. **Partitioning** — партиционная модель определяет степень параллелизма и точки shuffle
+3. **EnforceDistribution/EnforceSorting** — физические правила ([М06 урок 5](/course/06-query-optimization/05-analyzer-and-physical-rules)) вставляют RepartitionExec, который становится границей stage
+4. **Arrow** — columnar формат для данных в памяти и на диске (Arrow IPC для shuffle)
+5. **SessionContext** — единый API для планирования и выполнения
+
+DataFusion не предписывает, как распределять выполнение. Он предоставляет примитивы, из которых можно построить любую распределённую архитектуру — от простого scatter-gather до полноценного DAG scheduler.
+
+## Ключевые выводы
+
+- Ballista — Rust-нативная система со scheduler/executor, production-ориентирована, 2.9x vs Spark, собственный кластер
+- DataFusion Ray — Python-first, ранняя стадия, имеет смысл при наличии Ray-кластера
+- Comet — ускоритель существующего Spark, не самостоятельная распределённая система
+- Кастомные решения (InfluxDB IOx, GreptimeDB, Spice AI) — DataFusion как библиотека внутри каждого узла
+- Все подходы строятся на одних примитивах: ExecutionPlan, партиционирование, Arrow, SessionContext
+- Выбор зависит от: существующей инфраструктуры (Spark / Ray / свой стек), языка (Rust / Python / JVM), уровня контроля и зрелости проекта

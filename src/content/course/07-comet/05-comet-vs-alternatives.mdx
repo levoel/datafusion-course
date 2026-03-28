@@ -1,0 +1,201 @@
+---
+title: "Comet vs альтернативы"
+description: "Сравнение Comet с Gluten/Velox и Databricks Photon, критерии выбора, вклад в проект, будущие направления развития"
+order: 5
+difficulty: "advanced"
+estimatedTime: 14
+topics: ["Gluten", "Velox", "Photon", "comparison", "contributing", "future directions"]
+---
+
+# Comet vs альтернативы
+
+Comet — не единственный проект, ускоряющий Spark через нативное исполнение. Gluten (на базе Meta Velox) и Databricks Photon решают ту же задачу, но с другой архитектурой. Разберём различия, критерии выбора и будущие направления.
+
+## Ландшафт Spark-ускорителей
+
+Три проекта заменяют JVM execution engine Spark на нативный код:
+
+<DiagramContainer title="Сравнение Spark-ускорителей" className="my-6">
+  <Grid columns={3} className="gap-3 text-sm">
+    <DataBox label="Apache Comet" className="border-emerald-500/30">
+      <div className="text-xs"><b>Engine:</b> Apache DataFusion</div>
+      <div className="text-xs mt-1"><b>Язык:</b> Rust</div>
+      <div className="text-xs mt-1"><b>Лицензия:</b> Apache 2.0</div>
+      <div className="text-xs mt-1"><b>Подход:</b> SparkPlugin API</div>
+      <div className="text-xs mt-1"><b>Сериализация:</b> Protobuf + JNI</div>
+      <div className="text-xs mt-1"><b>Формат:</b> Arrow columnar</div>
+    </DataBox>
+    <DataBox label="Gluten + Velox" className="border-blue-500/30">
+      <div className="text-xs"><b>Engine:</b> Meta Velox</div>
+      <div className="text-xs mt-1"><b>Язык:</b> C++</div>
+      <div className="text-xs mt-1"><b>Лицензия:</b> Apache 2.0</div>
+      <div className="text-xs mt-1"><b>Подход:</b> Columnar Rule injection</div>
+      <div className="text-xs mt-1"><b>Сериализация:</b> Substrait</div>
+      <div className="text-xs mt-1"><b>Формат:</b> Velox vectors</div>
+    </DataBox>
+    <DataBox label="Databricks Photon" className="border-purple-500/30">
+      <div className="text-xs"><b>Engine:</b> Проприетарный</div>
+      <div className="text-xs mt-1"><b>Язык:</b> C++</div>
+      <div className="text-xs mt-1"><b>Лицензия:</b> Проприетарная</div>
+      <div className="text-xs mt-1"><b>Подход:</b> Встроен в Databricks Runtime</div>
+      <div className="text-xs mt-1"><b>Сериализация:</b> Внутренний формат</div>
+      <div className="text-xs mt-1"><b>Формат:</b> Проприетарный columnar</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+## Gluten + Velox
+
+[Gluten](https://github.com/apache/incubator-gluten) (Apache Incubator) — фреймворк для подключения нативных execution engine к Spark. По умолчанию использует [Velox](https://github.com/facebookincubator/velox) — С++ vectorized engine от Meta.
+
+### Архитектурные отличия от Comet
+
+| Аспект | Comet | Gluten + Velox |
+|---|---|---|
+| **Формат плана** | Protobuf (собственный `expr.proto`) | Substrait (стандарт) |
+| **JVM-Native мост** | JNI напрямую | JNI через Gluten shim layer |
+| **Fallback** | All-or-nothing per stage | Потенциально per-operator (через Gluten) |
+| **Формат данных** | Arrow RecordBatch | Velox RowVector (не Arrow) |
+| **Shuffle** | Arrow IPC columnar | Velox serialization |
+| **Memory management** | DataFusion MemoryPool + DiskManager | Velox MemoryManager + spill |
+
+### Substrait vs Protobuf
+
+Gluten использует [Substrait](https://substrait.io/) — межпроектный стандарт для описания вычислительных планов. Comet использует собственный protobuf-формат (`expr.proto`):
+
+- **Substrait** — стандартизован, теоретически позволяет подключать разные backend-ы (Velox, DuckDB, DataFusion). На практике Gluten тесно связан с Velox
+- **Comet Protobuf** — специализирован под DataFusion, меньше abstraction overhead, но не переносим на другие engine
+
+### Производительность
+
+Прямые бенчмарки между Comet и Gluten зависят от запроса:
+- **Scan/Filter/Project**: сопоставимы — оба используют нативное чтение Parquet и векторизированную фильтрацию
+- **Complex aggregation/join**: Velox имеет более зрелую adaptive execution; Comet использует стандартные DataFusion join-алгоритмы
+- **Shuffle**: Comet columnar shuffle (Arrow IPC) vs Velox serialization — зависит от payload
+
+<Callout type="note">
+Comet опубликовал сравнительный guide с Gluten/Velox начиная с версии 0.10.0. Основной аргумент: Comet проще в деплое (единый JAR, нет C++ зависимостей) и теснее интегрирован с Apache DataFusion экосистемой.
+</Callout>
+
+## Databricks Photon
+
+Photon — проприетарный нативный execution engine, встроенный в Databricks Runtime:
+
+- **Не доступен вне Databricks** — нельзя использовать с open-source Spark
+- **Глубокая интеграция** — Photon знает о Delta Lake internals, Databricks caching, adaptive query execution
+- **Automatic fallback** — бесшовный fallback на JVM для неподдерживаемых операций
+- **Production-ready** — используется в Databricks с 2021 года
+
+### Когда выбрать Photon
+
+Если ваша инфраструктура уже на Databricks — Photon включается одним параметром (`spark.databricks.photon.enabled=true`). Нет причин использовать Comet или Gluten в Databricks-окружении.
+
+## Критерии выбора
+
+| Критерий | Comet | Gluten + Velox | Photon |
+|---|---|---|---|
+| **Open source** | Apache 2.0 | Apache 2.0 | Нет |
+| **Деплой** | Единый JAR | C++ зависимости, сложнее собрать | Встроен в Databricks |
+| **DataFusion экосистема** | Нативная интеграция | Нет связи | Нет связи |
+| **Зрелость** | Растущая (0.13.0, 8 релизов/год) | Более зрелая (Meta production) | Production с 2021 |
+| **Spark совместимость** | 97% тестов | ~95% тестов | ~99% (с Delta) |
+| **Iceberg** | Нативный scan (0.12.0+) | Через Substrait | Через Unity Catalog |
+| **Community** | Apache DataFusion community | Apache Incubator + Meta | Databricks |
+
+### Когда выбрать Comet
+
+- Вы используете open-source Spark (не Databricks)
+- Вы уже инвестировали в DataFusion экосистему
+- Вам нужен простой деплой без C++ зависимостей
+- Parquet — основной формат хранения
+- Вы хотите контролировать execution engine и контрибьютить upstream
+
+### Когда выбрать Gluten + Velox
+
+- Вам нужна максимальная поддержка сложных выражений (Velox покрывает больше SQL)
+- Вы работаете с нестандартными форматами (ORC через Velox)
+- Команда готова к более сложной сборке и деплою
+
+### Когда выбрать Photon
+
+- Инфраструктура на Databricks
+- Нужна максимальная совместимость и стабильность
+- Budget позволяет проприетарное решение
+
+## Вклад в Comet
+
+Comet — активно развивающийся проект Apache с хорошими точками входа для контрибьюторов:
+
+### Области для вклада
+
+1. **Добавление поддержки выражений** — самый частый тип контрибьюции:
+   - Реализовать `CometExpressionSerde` для неподдерживаемого Spark-выражения
+   - Добавить protobuf-сообщение в `expr.proto`
+   - Написать Rust-маппинг в `PhysicalPlanner`
+
+2. **Расширение покрытия типов данных** — добавить поддержку `CalendarIntervalType`, `YearMonthIntervalType`
+
+3. **Улучшение Iceberg-интеграции** — расширение `native_iceberg_compat` (time travel, partition transforms)
+
+4. **Бенчмарки и документация** — запуск TPC-DS, сравнительные отчёты
+
+### Архитектура для контрибьюции
+
+```
+apache/datafusion-comet/
+├── common/           # Общие утилиты
+├── spark/            # Scala-код: CometPlugin, CometExecRule, CometScanRule
+├── native/           # Rust-код: PhysicalPlanner, serde, execution
+│   └── core/
+│       ├── src/
+│       │   ├── execution/    # Нативные execution nodes
+│       │   ├── parquet/      # Parquet reader
+│       │   └── planner.rs    # PhysicalPlanner
+│       └── Cargo.toml
+└── proto/            # Protobuf definitions (expr.proto)
+```
+
+<Callout type="tip">
+Для первого PR рекомендуется взять issue с меткой «good first issue» — обычно это добавление поддержки одного Spark-выражения. Процесс: добавить protobuf-сообщение → реализовать Scala-сериализацию → реализовать Rust-десериализацию и маппинг → написать тест.
+</Callout>
+
+## Пример: принятие решения
+
+Допустим, ваша компания использует open-source Spark 3.5 на EMR / Dataproc / on-premise. Аналитические запросы по TPC-H-подобным нагрузкам занимают 40% бюджета вычислений. Варианты:
+
+| Действие | Усилие | Ожидаемый результат |
+|---|---|---|
+| Добавить Comet JAR + 3 параметра | Минимальное (1 час) | 2x ускорение → ~20% экономия compute |
+| Собрать и задеплоить Gluten+Velox | Среднее (1-2 дня, C++ зависимости) | 2-2.5x ускорение, больше покрытие SQL |
+| Мигрировать на Databricks + Photon | Высокое (недели, vendor lock-in) | 2-3x ускорение + экосистема Databricks |
+
+Comet даёт лучшее соотношение «усилие → результат» для начала. Если покрытие выражений недостаточно — можно контрибьютить или перейти на Gluten.
+
+## Будущие направления
+
+### Comet roadmap
+
+- **Spark 4.0 полная поддержка** — адаптация к ANSI mode по умолчанию, новые типы данных
+- **Расширение покрытия выражений** — каждый релиз добавляет 10-20 выражений
+- **Нативный Iceberg scan** — расширение `native_iceberg_compat` до production-ready
+- **Улучшение shuffle** — адаптивное переключение между columnar и row-based shuffle в зависимости от payload
+- **Partial replacement** — экспериментальная работа над per-operator fallback вместо all-or-nothing (пока не реализовано)
+
+### Comet в контексте DataFusion
+
+Comet демонстрирует паттерн использования DataFusion как embedded library (разобранный в [модуле 05 — Паттерны расширяемости](/courses/datafusion-course/05-extensibility/06-extensibility-patterns)):
+
+- DataFusion предоставляет execution primitives (`FilterExec`, `ProjectionExec`, `HashJoinExec`)
+- Comet транслирует внешние планы (Spark) в эти примитивы
+- Аналогичный паттерн используют InfluxDB IOx (InfluxQL → DataFusion) и GreptimeDB (PromQL → DataFusion)
+
+В следующем модуле мы рассмотрим альтернативный подход — распределённое исполнение через Ballista и DataFusion Ray, где DataFusion работает не как embedded engine, а как ядро распределённой системы.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Три Spark-ускорителя: Comet (DataFusion, Rust), Gluten+Velox (C++), Photon (проприетарный, Databricks)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Comet vs Gluten: Protobuf vs Substrait, Arrow vs Velox vectors, один JAR vs C++ зависимости
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Photon — только в Databricks, максимальная совместимость и стабильность
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Comet выбирают для: open-source Spark + DataFusion экосистема + простой деплой
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Контрибьюция: добавление выражений (CometExpressionSerde + protobuf + PhysicalPlanner)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Roadmap: расширение покрытия выражений, Spark 4.0, нативный Iceberg, улучшение shuffle

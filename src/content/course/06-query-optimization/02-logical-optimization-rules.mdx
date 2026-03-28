@@ -1,0 +1,284 @@
+---
+title: "Логические правила оптимизации"
+description: "Встроенные OptimizerRules DataFusion: PushDownFilter, OptimizeProjections, SimplifyExpressions, CommonSubexprEliminate, EliminateLimit и их эффект на план"
+order: 2
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["PushDownFilter", "OptimizeProjections", "SimplifyExpressions", "CommonSubexprEliminate", "EliminateLimit", "ConstantFolding", "LogicalPlan"]
+---
+
+# Логические правила оптимизации
+
+Logical Optimizer в DataFusion содержит десятки встроенных правил, каждое из которых выполняет одну конкретную трансформацию плана. В этом уроке разберём ключевые правила, их эффект на логический план и как они работают вместе в multi-pass конвейере.
+
+## PushDownFilter: спуск предикатов
+
+Самое важное правило оптимизации в любом query engine. `PushDownFilter` перемещает фильтры (`WHERE`, `HAVING`, join predicates) как можно ближе к источнику данных — в идеале до `TableScan`.
+
+### До оптимизации
+
+```sql
+SELECT o.id, c.name
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+WHERE c.region = 'EU' AND o.amount > 100;
+```
+
+```
+Filter: c.region = 'EU' AND o.amount > 100
+  Join: o.customer_id = c.id
+    TableScan: orders (все колонки)
+    TableScan: customers (все колонки)
+```
+
+### После PushDownFilter
+
+```
+Join: o.customer_id = c.id
+  Filter: o.amount > 100
+    TableScan: orders
+  Filter: c.region = 'EU'
+    TableScan: customers
+```
+
+Фильтр `c.region = 'EU'` спущен к таблице `customers`, `o.amount > 100` — к `orders`. Каждый источник теперь читает меньше данных, а соединение работает с уменьшенным объёмом.
+
+### Предикаты в scan
+
+Для форматов с поддержкой predicate pushdown (Parquet, CSV с индексом) фильтры переносятся прямо в `TableScan`:
+
+```
+Join: o.customer_id = c.id
+  TableScan: orders, filter=[amount > 100]
+  TableScan: customers, filter=[region = 'EU']
+```
+
+<Callout type="note">
+PushDownFilter умеет разделять конъюнктивные предикаты (`AND`). Выражение `a > 5 AND b < 10` разбивается на два независимых фильтра, каждый из которых спускается к своему источнику. Дизъюнкции (`OR`) спустить сложнее — `a > 5 OR b < 10` остаётся на месте, если `a` и `b` из разных таблиц.
+</Callout>
+
+## OptimizeProjections: устранение лишних колонок
+
+`OptimizeProjections` анализирует, какие колонки реально используются на каждом уровне плана, и убирает чтение ненужных.
+
+### До оптимизации
+
+```sql
+SELECT name FROM users WHERE age > 25;
+```
+
+```
+Projection: users.name
+  Filter: users.age > 25
+    TableScan: users projection=[id, name, age, email, created_at]
+```
+
+### После OptimizeProjections
+
+```
+Projection: users.name
+  Filter: users.age > 25
+    TableScan: users projection=[name, age]
+```
+
+Из пяти колонок осталось две: `name` (результат) и `age` (нужна фильтру). Для Parquet это означает, что три column chunk физически не читаются с диска.
+
+### Каскадный эффект
+
+В сложных запросах с подзапросами и соединениями эффект проекции накапливается:
+
+```sql
+SELECT o.id
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+WHERE c.region = 'EU';
+```
+
+Без оптимизации обе таблицы читаются полностью. После `OptimizeProjections`:
+- `orders` — только `id`, `customer_id` (для join)
+- `customers` — только `id` (для join), `region` (для фильтра)
+
+## SimplifyExpressions: упрощение выражений
+
+Алгебраические и логические упрощения выражений на этапе планирования:
+
+| Исходное выражение | Упрощение | Правило |
+|---|---|---|
+| `x AND true` | `x` | Нейтральный элемент AND |
+| `x OR false` | `x` | Нейтральный элемент OR |
+| `x AND false` | `false` | Аннигиляция AND |
+| `NOT NOT x` | `x` | Двойное отрицание |
+| `CAST(5 AS Int64) + 3` | `8` | Constant folding |
+| `x = x` | `true` (если NOT NULL) | Рефлексивность |
+| `x != x` | `false` (если NOT NULL) | Антирефлексивность |
+| `CASE WHEN true THEN a ELSE b END` | `a` | Тривиальный CASE |
+
+### Constant folding
+
+Константные выражения вычисляются на этапе планирования:
+
+```sql
+-- До
+SELECT * FROM t WHERE created_at > '2024-01-01'::timestamp + INTERVAL '30 days';
+
+-- После SimplifyExpressions
+SELECT * FROM t WHERE created_at > '2024-01-31T00:00:00';
+```
+
+Runtime не тратит время на сложение даты с интервалом для каждой строки.
+
+<Callout type="tip">
+`SimplifyExpressions` особенно полезно в сочетании с параметризованными запросами. Когда параметры подставлены, выражения вроде `WHERE status IN ('active')` упрощаются до `WHERE status = 'active'`, что может включить более эффективные стратегии фильтрации.
+</Callout>
+
+## CommonSubexprEliminate: устранение повторных вычислений
+
+`CommonSubexprEliminate` (CSE) находит одинаковые подвыражения и вычисляет их один раз:
+
+```sql
+-- Одно выражение используется дважды
+SELECT
+    revenue - cost AS profit,
+    (revenue - cost) / revenue AS margin
+FROM sales;
+```
+
+### До CSE
+
+```
+Projection:
+  revenue - cost AS profit
+  (revenue - cost) / revenue AS margin
+    TableScan: sales
+```
+
+Выражение `revenue - cost` вычисляется дважды.
+
+### После CSE
+
+```
+Projection:
+  __common_expr_1 AS profit
+  __common_expr_1 / revenue AS margin
+  Projection:
+    revenue - cost AS __common_expr_1
+    revenue
+      TableScan: sales
+```
+
+Промежуточная проекция вычисляет `revenue - cost` один раз, результат переиспользуется.
+
+<Callout type="note">
+CSE работает только с детерминированными выражениями (`Volatility::Immutable`). Вызовы `random()` или `now()` не устраняются, потому что каждый вызов может вернуть разный результат.
+</Callout>
+
+## EliminateLimit и EliminateFilter
+
+### EliminateLimit
+
+Удаляет бессмысленные `LIMIT`:
+
+```sql
+-- LIMIT 0 → EmptyRelation (результат пуст)
+SELECT * FROM t LIMIT 0;
+
+-- LIMIT без OFFSET, где дочерний узел уже ограничен
+-- Два последовательных LIMIT — оставляем меньший
+SELECT * FROM (SELECT * FROM t LIMIT 10) sub LIMIT 100;
+-- → SELECT * FROM t LIMIT 10
+```
+
+### EliminateFilter
+
+Удаляет фильтры, которые всегда истинны или всегда ложны:
+
+```sql
+-- WHERE true → убрать Filter
+SELECT * FROM t WHERE 1 = 1;
+-- → TableScan: t
+
+-- WHERE false → EmptyRelation
+SELECT * FROM t WHERE 1 = 0;
+-- → EmptyRelation: rows=0
+```
+
+## PropagateEmptyRelation
+
+Если оператор получает пустой вход, весь поддеревья можно заменить на `EmptyRelation`:
+
+```sql
+SELECT * FROM t1
+JOIN (SELECT * FROM t2 WHERE false) sub ON t1.id = sub.id;
+```
+
+После EliminateFilter внутренний запрос становится `EmptyRelation`. `PropagateEmptyRelation` распознаёт, что INNER JOIN с пустой стороной всегда пуст, и заменяет весь JOIN на `EmptyRelation`.
+
+## Совместная работа правил
+
+Правила спроектированы для работы в цепочке. Каждое правило создаёт возможности для следующих:
+
+<DiagramContainer title="Каскад оптимизаций" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input">WHERE a > 5 AND true AND b = b</FlowNode>
+    <Arrow direction="down" label="SimplifyExpressions" />
+    <FlowNode variant="process">WHERE a > 5 AND true → WHERE a > 5</FlowNode>
+    <Arrow direction="down" label="PushDownFilter" />
+    <FlowNode variant="process">TableScan: t, filter=[a > 5]</FlowNode>
+    <Arrow direction="down" label="OptimizeProjections" />
+    <FlowNode variant="output">TableScan: t, projection=[a, b], filter=[a > 5]</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+Если запустить `PushDownFilter` до `SimplifyExpressions`, тривиальный предикат `true` будет мешать спуску. Multi-pass решает большинство таких зависимостей, но правильный порядок правил уменьшает количество необходимых проходов.
+
+## Наблюдение за правилами
+
+Для отладки используйте observer callback:
+
+```rust
+use datafusion::optimizer::Optimizer;
+
+fn trace_rules(plan: &LogicalPlan, rule: &dyn OptimizerRule) {
+    println!("=== {} ===", rule.name());
+    println!("{}", plan.display_indent());
+    println!();
+}
+
+let optimized = optimizer.optimize(plan, &config, trace_rules)?;
+```
+
+Или через SQL:
+
+```sql
+-- Показать план до и после оптимизации
+EXPLAIN VERBOSE SELECT * FROM t WHERE a > 5 AND true;
+```
+
+`EXPLAIN VERBOSE` выводит как исходный, так и оптимизированный логический планы, позволяя сравнить эффект всех правил.
+
+## Полный список встроенных правил
+
+DataFusion 52.x содержит более 30 логических правил. Ключевые категории:
+
+| Категория | Правила | Эффект |
+|---|---|---|
+| Predicate | `PushDownFilter`, `EliminateFilter` | Минимизация читаемых данных |
+| Projection | `OptimizeProjections` | Минимизация читаемых колонок |
+| Expression | `SimplifyExpressions`, `UnwrapCastInComparison` | Упрощение вычислений |
+| Subquery | `DecorrelatePredicateSubquery`, `ScalarSubqueryToJoin` | Замена подзапросов на JOIN |
+| Join | `ExtractEquijoinPredicate`, `EliminateCrossJoin` | Оптимизация соединений |
+| Redundancy | `EliminateLimit`, `PropagateEmptyRelation`, `CommonSubexprEliminate` | Удаление избыточных операций |
+| Rewrite | `ReplaceDistinctWithAggregate`, `SingleDistinctToGroupBy` | Переписывание в эффективную форму |
+
+<Callout type="warning">
+Не все правила одинаково полезны для каждого запроса. Некоторые правила (например, `DecorrelatePredicateSubquery`) активируются редко — только когда в плане есть соответствующий паттерн. Если правило не находит свой паттерн, оно возвращает `Transformed::no` и не влияет на время оптимизации.
+</Callout>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `PushDownFilter` — перемещает фильтры к источнику, минимизируя объём данных на каждом этапе
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `OptimizeProjections` — убирает чтение ненужных колонок, критично для columnar-форматов
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `SimplifyExpressions` — constant folding и алгебраические упрощения на этапе планирования
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `CommonSubexprEliminate` — вычисляет повторяющиеся подвыражения один раз
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `EliminateLimit` / `EliminateFilter` / `PropagateEmptyRelation` — удаляют бессмысленные операции
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Правила работают в цепочке: каждое создаёт возможности для следующих через multi-pass

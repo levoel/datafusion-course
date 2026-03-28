@@ -1,0 +1,247 @@
+---
+title: "Crate-архитектура DataFusion: модульная структура"
+description: "Граф зависимостей crate-ов DataFusion, что предоставляет каждый crate и как зависеть на конкретные компоненты при встраивании"
+order: 6
+difficulty: "intermediate"
+estimatedTime: 13
+topics: ["Crate Architecture", "datafusion-common", "datafusion-expr", "datafusion-sql", "datafusion-optimizer", "datafusion-physical-plan", "Extensibility"]
+---
+
+# Crate-архитектура DataFusion: модульная структура
+
+DataFusion — не монолит. Ядро разбито на отдельные Rust crate, каждый из которых решает одну задачу. Это позволяет зависеть только на нужные компоненты: если вам нужен только оптимизатор или только SQL-парсер — не тяните за собой весь execution engine.
+
+## Граф зависимостей
+
+<DiagramContainer title="DataFusion Crate Dependency Graph" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="output">datafusion (meta-crate)</FlowNode>
+    <Arrow direction="down" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="process">datafusion-sql</FlowNode>
+      <FlowNode variant="process">datafusion-optimizer</FlowNode>
+      <FlowNode variant="process">datafusion-physical-plan</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="process">datafusion-expr</FlowNode>
+      <FlowNode variant="process">datafusion-physical-expr</FlowNode>
+      <FlowNode variant="process">datafusion-execution</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="process">datafusion-functions</FlowNode>
+      <FlowNode variant="process">datafusion-catalog</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowNode variant="input">datafusion-common (+ arrow-rs)</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+Зависимости направлены **вниз**: `datafusion-sql` зависит от `datafusion-expr`, но не от `datafusion-physical-plan`. Это позволяет использовать логический уровень без физического.
+
+## Что предоставляет каждый crate
+
+### datafusion-common
+
+Фундаментальные типы, разделяемые всеми остальными crate:
+
+```rust
+// Ключевые типы из datafusion-common
+pub struct DFSchema { ... }          // Схема с qualifier (table.column)
+pub enum ScalarValue { ... }         // Скалярные значения (Int64, Utf8, Boolean, ...)
+pub enum DataFusionError { ... }     // Единый тип ошибок
+pub struct Statistics { ... }        // Статистика (кардинальность, min/max)
+pub type Result<T> = std::result::Result<T, DataFusionError>;
+```
+
+`DFSchema` расширяет Arrow `Schema` именами таблиц (qualifiers): `users.id` вместо просто `id`. Это необходимо для разрешения неоднозначных ссылок в JOIN.
+
+### datafusion-expr
+
+Логические выражения и планы:
+
+```rust
+// Типы из datafusion-expr
+pub enum LogicalPlan { ... }         // Дерево логических операций
+pub enum Expr { ... }               // Дерево выражений
+pub trait TableProvider { ... }      // Trait источника данных
+pub trait ScalarUDF { ... }          // User-defined scalar function
+pub trait AggregateUDF { ... }       // User-defined aggregate function
+pub trait WindowUDF { ... }          // User-defined window function
+pub struct LogicalPlanBuilder { ... } // Builder для LogicalPlan
+```
+
+Это чисто **декларативный** уровень: `LogicalPlan` описывает, что вычислить, но не содержит кода выполнения. Если вы строите свой оптимизатор или транслятор планов — зависьте на `datafusion-expr`, не на весь `datafusion`.
+
+### datafusion-sql
+
+SQL → LogicalPlan трансляция:
+
+```rust
+// SqlToRel: парсит AST (от sqlparser-rs) в LogicalPlan
+pub struct SqlToRel<'a, S: ContextProvider> { ... }
+
+pub trait ContextProvider {
+    fn get_table_source(&self, name: TableReference) -> Result<Arc<dyn TableProvider>>;
+    fn get_function_meta(&self, name: &str) -> Option<Arc<ScalarUDF>>;
+    fn get_aggregate_meta(&self, name: &str) -> Option<Arc<AggregateUDF>>;
+    // ...
+}
+```
+
+`ContextProvider` — интерфейс для резолюции имён. `SqlToRel` использует его для разрешения таблиц и функций при построении `LogicalPlan` из AST.
+
+### datafusion-optimizer
+
+Цепочка правил оптимизации:
+
+```rust
+pub struct Optimizer {
+    rules: Vec<Arc<dyn OptimizerRule>>,
+}
+
+pub trait OptimizerRule: Send + Sync {
+    fn name(&self) -> &str;
+
+    fn try_optimize(
+        &self,
+        plan: &LogicalPlan,
+        config: &dyn OptimizerConfig,
+    ) -> Result<Option<LogicalPlan>>;
+}
+```
+
+Встроенные правила: `FilterPushdown`, `ProjectionPushdown`, `ConstantFolding`, `CommonSubexprEliminate`, `EliminateLimit`, `SimplifyExpressions` и десятки других. Вы можете добавлять свои правила или отключать встроенные.
+
+### datafusion-physical-plan
+
+Физические операторы:
+
+```rust
+pub trait ExecutionPlan: Send + Sync { ... }  // Trait физического оператора
+pub struct FilterExec { ... }
+pub struct ProjectionExec { ... }
+pub struct HashJoinExec { ... }
+pub struct SortMergeJoinExec { ... }
+pub struct AggregateExec { ... }
+pub struct SortExec { ... }
+pub struct CoalescePartitionsExec { ... }
+pub struct RepartitionExec { ... }
+// ...
+```
+
+### datafusion-physical-expr
+
+Физические выражения — вычисления на Arrow данных:
+
+```rust
+pub trait PhysicalExpr: Send + Sync { ... }
+pub trait AggregateExpr: Send + Sync { ... }  // Аккумулятор агрегации
+pub enum ColumnarValue { Array(ArrayRef), Scalar(ScalarValue) }
+```
+
+Отделён от `datafusion-physical-plan` чтобы физические выражения можно было использовать вне контекста полного плана (например, для вычисления одного выражения над RecordBatch).
+
+### datafusion-execution
+
+Runtime-компоненты:
+
+```rust
+pub struct SessionConfig { ... }     // Конфигурация сессии
+pub struct TaskContext { ... }       // Контекст выполнения партиции
+pub struct RuntimeEnv { ... }        // Ресурсы выполнения
+pub trait MemoryPool: Send + Sync { ... }  // Управление памятью
+pub struct DiskManager { ... }       // Spill-to-disk
+```
+
+### datafusion-functions
+
+Встроенные скалярные функции:
+
+```rust
+// Математические: abs, ceil, floor, round, power, sqrt, ...
+// Строковые: upper, lower, trim, substring, concat, regexp_match, ...
+// Дата/время: now, date_trunc, date_part, to_timestamp, ...
+// Условные: coalesce, nullif, case, ...
+// Крипто: md5, sha224, sha256, sha384, sha512
+```
+
+Отделены в свой crate, чтобы не включать все ~200 функций в минимальную сборку.
+
+### datafusion-catalog
+
+Реализация системы каталогов:
+
+```rust
+pub trait CatalogProvider: Send + Sync { ... }
+pub trait SchemaProvider: Send + Sync { ... }
+pub struct MemoryCatalogProvider { ... }     // In-memory каталог
+pub struct MemorySchemaProvider { ... }      // In-memory схема
+```
+
+## Зависимость на конкретные crate
+
+### Полный DataFusion
+
+```toml
+[dependencies]
+datafusion = "52.3"  # Meta-crate: включает всё
+```
+
+### Только логический уровень
+
+```toml
+[dependencies]
+datafusion-common = "52.3"
+datafusion-expr = "52.3"
+datafusion-sql = "52.3"
+datafusion-optimizer = "52.3"
+# Нет datafusion-physical-plan — своя реализация выполнения
+```
+
+Этот паттерн используют системы, которые берут SQL-парсинг и оптимизацию от DataFusion, но выполняют план собственным движком (например, на GPU или в распределённом кластере).
+
+### Только выполнение
+
+```toml
+[dependencies]
+datafusion-common = "52.3"
+datafusion-physical-plan = "52.3"
+datafusion-execution = "52.3"
+# Нет datafusion-sql — план строится программно
+```
+
+Полезно, если вы получаете план от внешнего планировщика (Substrait, собственный DSL) и хотите только выполнить его.
+
+## Точки расширения по crate
+
+| Crate | Точка расширения | Пример |
+|-------|-----------------|--------|
+| `datafusion-expr` | `TableProvider` | Кастомный источник данных |
+| `datafusion-expr` | `ScalarUDF`, `AggregateUDF` | Пользовательские функции |
+| `datafusion-optimizer` | `OptimizerRule` | Кастомное правило оптимизации |
+| `datafusion-physical-plan` | `ExecutionPlan` | Кастомный физический оператор |
+| `datafusion-catalog` | `CatalogProvider`, `SchemaProvider` | Внешний каталог |
+| `datafusion-execution` | `MemoryPool` | Кастомное управление памятью |
+
+Каждая точка расширения — trait, который вы реализуете. DataFusion не требует fork: расширения подключаются через регистрацию в `SessionContext`.
+
+<Callout type="tip">
+Модуль 05 (Расширяемость) подробно разбирает каждую точку расширения с рабочими примерами. Здесь мы смотрим на архитектурный уровень — какой crate за что отвечает.
+</Callout>
+
+## Версионирование
+
+Все crate DataFusion выпускаются синхронно с одним номером версии. `datafusion = "52.3"` означает, что `datafusion-common`, `datafusion-expr` и все остальные — тоже 52.3.x. Это упрощает управление зависимостями: не нужно подбирать совместимые версии.
+
+Релизы выходят ежемесячно. Breaking changes возможны между minor-версиями (DataFusion пока не обещает semver-совместимость на уровне API).
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion разбит на 10+ crate с направленными зависимостями
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `datafusion-common` — фундаментальные типы (DFSchema, ScalarValue, Error)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `datafusion-expr` — логический уровень (LogicalPlan, Expr, TableProvider)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `datafusion-physical-plan` — физические операторы (HashJoin, Sort, Aggregate)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Можно зависеть на подмножество: только SQL-парсинг, только оптимизацию, только выполнение
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Каждый crate предоставляет trait-ы для расширения — fork не нужен

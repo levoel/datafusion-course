@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "05-extensibility/05-advanced-extensions",
+  "moduleId": "05-extensibility",
+  "_meta": { "idPrefix": "df-m05-05" },
+  "questions": [
+    {
+      "id": "df-m05-05-q1",
+      "type": "multiple-choice",
+      "question": "Какой trait рекомендуется для создания собственного логического оператора вместо UserDefinedLogicalNode?",
+      "options": [
+        { "id": "a", "text": "UserDefinedLogicalNodeCore — требует Clone + PartialEq + Eq + Hash, что позволяет оптимизатору сравнивать и кэшировать узлы" },
+        { "id": "b", "text": "LogicalPlanNode — базовый trait для всех узлов плана" },
+        { "id": "c", "text": "ExtensionNode — упрощённый trait без требования Hash" },
+        { "id": "d", "text": "CustomOperator — trait для пользовательских операторов без интеграции с оптимизатором" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "UserDefinedLogicalNodeCore — рекомендуемый trait. Он автоматически реализует UserDefinedLogicalNode и требует Clone + PartialEq + Eq + Hash, что позволяет оптимизатору сравнивать узлы, кэшировать и применять правила трансформации к кастомным операторам.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Core-версия trait лучше: Clone + Eq + Hash = оптимизатор может работать с вашим узлом как со встроенным."
+    },
+    {
+      "id": "df-m05-05-q2",
+      "type": "multiple-choice",
+      "question": "ExtensionPlanner получает кастомный UserDefinedLogicalNode. Что он должен вернуть, если узел не является его типом?",
+      "options": [
+        { "id": "a", "text": "Ok(None) — пропустить узел, другой планировщик может его обработать" },
+        { "id": "b", "text": "Err(...) — ошибка, узел не распознан" },
+        { "id": "c", "text": "Ok(Some(input)) — вернуть входной план без изменений" },
+        { "id": "d", "text": "panic!() — неизвестный узел указывает на ошибку конфигурации" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ExtensionPlanner возвращает Option<Arc<dyn ExecutionPlan>>. Если узел не его типа (downcast_ref возвращает None), планировщик должен вернуть Ok(None), позволяя цепочке планировщиков попробовать следующий. Ошибка или panic неуместны — узел может быть от другого расширения.",
+      "bloomLevel": "applied",
+      "studyHint": "Паттерн chain-of-responsibility: Ok(None) = 'не мой узел, пропускаю'. Каждый ExtensionPlanner обрабатывает только свои типы узлов."
+    },
+    {
+      "id": "df-m05-05-q3",
+      "type": "multiple-choice",
+      "question": "ExprPlanner перехватывает оператор -> и преобразует data -> 'key' в вызов json_get(data, 'key'). На каком этапе pipeline это происходит?",
+      "options": [
+        { "id": "a", "text": "На этапе планирования — ExprPlanner трансформирует SQL AST-выражения в логические Expr до оптимизации" },
+        { "id": "b", "text": "На этапе парсинга — ExprPlanner расширяет грамматику sqlparser-rs" },
+        { "id": "c", "text": "На этапе выполнения — ExprPlanner подменяет операторы в RecordBatch" },
+        { "id": "d", "text": "На этапе физического планирования — ExprPlanner создаёт ExecutionPlan для оператора" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ExprPlanner работает на этапе логического планирования. SQL-парсер уже распознал оператор -> как бинарный токен. ExprPlanner перехватывает его и трансформирует в вызов ScalarFunction (json_get). Это происходит до оптимизации, поэтому оптимизатор видит обычный вызов UDF.",
+      "bloomLevel": "analytical",
+      "studyHint": "ExprPlanner = синтаксический сахар на этапе планирования. Парсер знает токен, ExprPlanner определяет семантику."
+    },
+    {
+      "id": "df-m05-05-q4",
+      "type": "multiple-choice",
+      "question": "TableFunctionImpl возвращает Arc<dyn TableProvider> при вызове. Чем UDTF отличается от обычного ScalarUDF?",
+      "options": [
+        { "id": "a", "text": "UDTF возвращает набор строк (таблицу), а ScalarUDF — одно значение на строку" },
+        { "id": "b", "text": "UDTF работает только в WHERE clause, ScalarUDF — в SELECT" },
+        { "id": "c", "text": "UDTF принимает таблицу на вход, ScalarUDF — скалярные значения" },
+        { "id": "d", "text": "UDTF может создавать побочные эффекты, ScalarUDF — чистые функции" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "TableFunctionImpl (UDTF) возвращает TableProvider — набор строк, используемый в FROM clause (SELECT * FROM generate_series(1, 100)). ScalarUDF возвращает одно значение для каждой входной строки. Это аналог generate_series() или UNNEST() в PostgreSQL.",
+      "bloomLevel": "conceptual",
+      "studyHint": "UDTF = табличная функция, в FROM clause, возвращает набор строк. UDF = скалярная функция, в SELECT/WHERE, возвращает одно значение на строку."
+    },
+    {
+      "id": "df-m05-05-q5",
+      "type": "multiple-choice",
+      "question": "FunctionFactory позволяет обрабатывать SQL CREATE FUNCTION. В каком сценарии это полезнее, чем прямая регистрация UDF через ctx.register_udf()?",
+      "options": [
+        { "id": "a", "text": "Когда UDF должны создаваться динамически из SQL — например, компиляция WASM-модуля или Python-функции, указанной в AS clause" },
+        { "id": "b", "text": "Когда нужно зарегистрировать более 10 функций одновременно" },
+        { "id": "c", "text": "Когда функция должна работать в нескольких SessionContext" },
+        { "id": "d", "text": "Когда нужна поддержка перегрузки функций с одинаковым именем" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "FunctionFactory нужна для динамического создания UDF из SQL. Пользователь пишет CREATE FUNCTION ... LANGUAGE WASM AS 'module.wasm:entry', фабрика компилирует WASM и создаёт UDF. Без фабрики UDF можно создавать только программно (register_udf). Фабрика добавляет SQL-путь для конечных пользователей.",
+      "bloomLevel": "analytical",
+      "studyHint": "register_udf() = программный путь (Rust-код). FunctionFactory + CREATE FUNCTION = SQL-путь для конечных пользователей."
+    }
+  ]
+}

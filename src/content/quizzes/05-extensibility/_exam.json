@@ -1,0 +1,189 @@
+{
+  "lessonSlug": "05-extensibility/_exam",
+  "moduleId": "05-extensibility",
+  "examTitle": "Экзамен: Расширяемость и кастомизация",
+  "passThreshold": 70,
+  "_meta": { "idPrefix": "df-m05-exam" },
+  "questions": [
+    {
+      "id": "df-m05-exam-q1",
+      "type": "multiple-choice",
+      "question": "Скалярный UDF square(x) помечен как Volatile вместо Immutable. Какие последствия для оптимизатора?",
+      "options": [
+        { "id": "a", "text": "Оптимизатор не сможет вычислить WHERE square(3) > 5 на этапе планирования и не сможет кэшировать результаты — каждый вызов будет выполняться заново" },
+        { "id": "b", "text": "Запрос не скомпилируется — Volatile запрещает использование в WHERE" },
+        { "id": "c", "text": "Никаких последствий — Volatility влияет только на документацию функции" },
+        { "id": "d", "text": "Оптимизатор автоматически повысит до Immutable, обнаружив детерминированность" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Volatile запрещает оптимизатору constant folding и кэширование. WHERE square(3) > 5 будет вычисляться при выполнении, а не при планировании. Для детерминированной square(x) это пессимизация — Immutable дал бы оптимизатору свободу вычислить 9 > 5 = true и исключить фильтр.",
+      "bloomLevel": "analytical",
+      "studyHint": "Неправильный Volatility = упущенные оптимизации. Immutable позволяет constant folding и кэширование. Volatile запрещает всё."
+    },
+    {
+      "id": "df-m05-exam-q2",
+      "type": "multiple-choice",
+      "question": "UDAF weighted_avg хранит два Float64 в state(). При GROUP BY с 50 миллионами уникальных ключей, сколько памяти потребуют аккумуляторы?",
+      "options": [
+        { "id": "a", "text": "~800 МБ — 50M × (2 × 8 байт + overhead struct) ≈ 50M × ~16-24 байт" },
+        { "id": "b", "text": "~16 байт — state хранится один раз, не на группу" },
+        { "id": "c", "text": "~4 ГБ — каждый аккумулятор хранит копию всего датасета" },
+        { "id": "d", "text": "Невозможно оценить без знания объёма входных данных" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Каждая группа GROUP BY получает свой Accumulator. Состояние weighted_avg: 2 × Float64 = 16 байт + overhead Rust struct (~8-16 байт alignment). При 50M групп: 50 000 000 × ~16-24 байт ≈ 800 МБ — 1.2 ГБ. Это посильно для сервера, но size() должен точно отражать потребление.",
+      "bloomLevel": "analytical",
+      "studyHint": "Память UDAF = количество групп × размер state на группу. Для оценки: умножьте size() на ожидаемое число групп."
+    },
+    {
+      "id": "df-m05-exam-q3",
+      "type": "multiple-choice",
+      "question": "TableProvider для REST API возвращает Inexact для filter pushdown. Что делает DataFusion после получения данных?",
+      "options": [
+        { "id": "a", "text": "Добавляет Filter-оператор поверх scan для перепроверки условия — гарантирует корректность даже если источник отфильтровал неточно" },
+        { "id": "b", "text": "Доверяет источнику и не проверяет результат фильтрации" },
+        { "id": "c", "text": "Выбрасывает ошибку, требуя Exact или Unsupported" },
+        { "id": "d", "text": "Повторно запрашивает данные без фильтра для проверки" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Inexact означает: источник отфильтрует часть строк (сокращая объём данных), но DataFusion добавит Filter-оператор для перепроверки. Это безопасный выбор: если API вернёт лишние строки — Filter их отсеет. Exact отключил бы перепроверку.",
+      "bloomLevel": "applied",
+      "studyHint": "Inexact = best-effort pushdown + safety net. Источник сокращает трафик, DataFusion гарантирует корректность."
+    },
+    {
+      "id": "df-m05-exam-q4",
+      "type": "multiple-choice",
+      "question": "Вы реализуете ExecutionPlan для HTTP-источника с одной партицией. Какой Partitioning указать в PlanProperties?",
+      "options": [
+        { "id": "a", "text": "UnknownPartitioning(1) — одна партиция, схема распределения неизвестна" },
+        { "id": "b", "text": "RoundRobinBatch(1) — round-robin с одной партицией" },
+        { "id": "c", "text": "Hash(vec![], 1) — hash-распределение по пустому списку колонок" },
+        { "id": "d", "text": "Partitioning указывать не нужно — DataFusion определит автоматически" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "UnknownPartitioning(1) — правильный выбор для leaf-операторов, читающих из внешнего источника: 1 партиция (один HTTP-запрос), схема распределения не определена. Оптимизатор добавит Repartition выше, если нужен параллелизм для последующих операторов.",
+      "bloomLevel": "applied",
+      "studyHint": "Для leaf nodes (источники данных): UnknownPartitioning(N) где N = число параллельных потоков чтения."
+    },
+    {
+      "id": "df-m05-exam-q5",
+      "type": "multiple-choice",
+      "question": "SchemaProvider::table() является async. Какой architectural trade-off это создаёт для каталогов с высокой частотой запросов?",
+      "options": [
+        { "id": "a", "text": "Каждый запрос выполняет await на table(), создавая latency. Кэширование метаданных в памяти решает проблему, но создаёт вопрос инвалидации кэша" },
+        { "id": "b", "text": "Async блокирует весь event loop — нужно использовать spawn_blocking" },
+        { "id": "c", "text": "Async не создаёт trade-off — Rust async имеет нулевой overhead" },
+        { "id": "d", "text": "Каждый вызов table() создаёт новое TCP-соединение к каталогу" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Async table() позволяет lazy-загрузку из удалённого каталога, но добавляет latency на каждый запрос. Trade-off: кэшировать метаданные (быстро, но может устареть) или загружать свежие (медленно, но актуально). Решение — TTL-кэш с периодической инвалидацией.",
+      "bloomLevel": "analytical",
+      "studyHint": "Async в table() — это flexibility (lazy load) vs latency (сетевой вызов). Кэш решает latency, но создаёт проблему consistency."
+    },
+    {
+      "id": "df-m05-exam-q6",
+      "type": "multiple-choice",
+      "question": "UserDefinedLogicalNodeCore требует Hash + PartialEq + Eq. Зачем оптимизатору эти traits для кастомного оператора?",
+      "options": [
+        { "id": "a", "text": "Оптимизатор сравнивает подпланы для обнаружения дублирующихся вычислений (CSE — common subexpression elimination) и кэширует результаты трансформаций" },
+        { "id": "b", "text": "Для сериализации плана в JSON при передаче между узлами кластера" },
+        { "id": "c", "text": "Для сортировки операторов в детерминированном порядке при EXPLAIN" },
+        { "id": "d", "text": "Rust требует эти traits для помещения в Arc — без них код не скомпилируется" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Hash + Eq позволяют оптимизатору помещать узлы в HashMap/HashSet для обнаружения дублирующихся подпланов (CSE) и кэширования результатов правил трансформации. Без этих traits оптимизатор не может сравнить два кастомных узла — каждое применение правила будет как 'в первый раз'.",
+      "bloomLevel": "analytical",
+      "studyHint": "Hash + Eq = оптимизатор может сравнивать и кэшировать узлы. Без них — каждый проход оптимизатора теряет информацию о дубликатах."
+    },
+    {
+      "id": "df-m05-exam-q7",
+      "type": "multiple-choice",
+      "question": "ExprPlanner и FunctionFactory оба расширяют SQL. Когда нужен ExprPlanner, а когда FunctionFactory?",
+      "options": [
+        { "id": "a", "text": "ExprPlanner — для новых операторов в выражениях (data -> 'key'). FunctionFactory — для CREATE FUNCTION из SQL для динамического создания UDF" },
+        { "id": "b", "text": "ExprPlanner — для скалярных функций. FunctionFactory — для агрегатных" },
+        { "id": "c", "text": "ExprPlanner работает на этапе выполнения, FunctionFactory — на этапе парсинга" },
+        { "id": "d", "text": "Они взаимозаменяемы — любая задача решается обоими способами" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ExprPlanner перехватывает бинарные/унарные операторы в SQL (синтаксический сахар для существующих UDF). FunctionFactory обрабатывает SQL CREATE FUNCTION, динамически создавая UDF (из WASM, Python, etc.). Разный уровень: ExprPlanner = трансформация AST, FunctionFactory = DDL-команда.",
+      "bloomLevel": "analytical",
+      "studyHint": "ExprPlanner: data -> 'key' → json_get(data, 'key') — синтаксический сахар. FunctionFactory: CREATE FUNCTION → новый UDF в runtime."
+    },
+    {
+      "id": "df-m05-exam-q8",
+      "type": "multiple-choice",
+      "question": "InfluxDB IOx использует DataFusion как библиотеку, заменяя storage layer на собственный ChunkStore. Какие точки расширения это требует?",
+      "options": [
+        { "id": "a", "text": "TableProvider (собственный scan из ChunkStore), кастомный ExecutionPlan (InfluxScanExec), PhysicalOptimizerRule (DeduplicateExec)" },
+        { "id": "b", "text": "Только ScalarUDF для time-series функций" },
+        { "id": "c", "text": "Только CatalogProvider для организации баз данных" },
+        { "id": "d", "text": "FunctionFactory и ExprPlanner для InfluxQL-синтаксиса" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "InfluxDB заменяет storage: TableProvider оборачивает ChunkStore, кастомный ExecutionPlan (InfluxScanExec) читает из чанков с time range pruning, PhysicalOptimizerRule вставляет DeduplicateExec для merge из нескольких уровней compaction. DataFusion остаётся SQL-планировщиком и оптимизатором.",
+      "bloomLevel": "analytical",
+      "studyHint": "Библиотечный паттерн: замена storage = TableProvider + кастомный ExecutionPlan + домен-специфичные оптимизации."
+    },
+    {
+      "id": "df-m05-exam-q9",
+      "type": "multiple-choice",
+      "question": "Вы создаёте PartitionEvaluator для cumulative_sum() — кумулятивная сумма в окне. Должен ли uses_window_frame() возвращать true?",
+      "options": [
+        { "id": "a", "text": "Нет — cumulative_sum обрабатывает всю партицию (evaluate_all), не зависит от ROWS BETWEEN" },
+        { "id": "b", "text": "Да — cumulative_sum зависит от оконного фрейма (ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)" },
+        { "id": "c", "text": "Зависит от наличия ORDER BY в OVER clause" },
+        { "id": "d", "text": "uses_window_frame() влияет только на EXPLAIN, не на выполнение" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Cumulative sum вычисляется по всей партиции с накоплением — не зависит от явного ROWS BETWEEN. Реализуется через evaluate_all: итерация по строкам с аккумуляцией. uses_window_frame() = false. Если бы функция зависела от фрейма (moving average с фиксированным окном), тогда true + evaluate.",
+      "bloomLevel": "analytical",
+      "studyHint": "evaluate_all = функция сама определяет логику накопления. evaluate = DataFusion передаёт нужный фрейм строк."
+    },
+    {
+      "id": "df-m05-exam-q10",
+      "type": "multiple-choice",
+      "question": "GlareDB реализует auto-discovery таблиц в RemoteCatalog. Какой метод SchemaProvider обеспечивает lazy-загрузку метаданных?",
+      "options": [
+        { "id": "a", "text": "table(name) — async метод, загружающий метаданные при первом обращении и кэширующий результат" },
+        { "id": "b", "text": "table_names() — возвращает список всех таблиц, инициализируя подключения" },
+        { "id": "c", "text": "register_table() — вызывается при каждом SQL-запросе для регистрации" },
+        { "id": "d", "text": "table_exist() — проверяет и загружает таблицу при отсутствии" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "table(name) — async метод, вызываемый при разрешении имени таблицы в запросе. GlareDB реализует lazy loading: при первом обращении — запрос к удалённому каталогу + кэширование. table_names() возвращает кэшированный список для INFORMATION_SCHEMA, не загружая метаданные.",
+      "bloomLevel": "applied",
+      "studyHint": "Lazy loading: table() загружает при первом доступе. table_names() = кэшированный список имён (без полных метаданных)."
+    },
+    {
+      "id": "df-m05-exam-q11",
+      "type": "multiple-choice",
+      "question": "Проект использует DataFusion 51.x и обновляется на 52.x. Метод invoke() в ScalarUDFImpl удалён, сигнатура scan() в TableProvider изменилась. Какой паттерн минимизирует объём изменений?",
+      "options": [
+        { "id": "a", "text": "Anti-corruption layer: собственный trait (MyQueryEngine), адаптер к DataFusion. Обновление затрагивает только адаптер, а не бизнес-логику" },
+        { "id": "b", "text": "Feature flags: условная компиляция для обеих версий через #[cfg]" },
+        { "id": "c", "text": "Monkey patching: подмена методов в runtime через unsafe" },
+        { "id": "d", "text": "Зафиксировать версию навсегда — обновление DataFusion не нужно" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Абстракция через собственный trait изолирует бизнес-логику от деталей DataFusion API. При обновлении 51→52 меняется только адаптер (invoke→invoke_with_args, новые параметры scan). Остальной код не знает о DataFusion. Это рекомендованный паттерн из урока 06.",
+      "bloomLevel": "analytical",
+      "studyHint": "Anti-corruption layer = изоляция от breaking changes. Трейт = стабильный внутренний интерфейс, адаптер = единственная точка миграции."
+    },
+    {
+      "id": "df-m05-exam-q12",
+      "type": "multiple-choice",
+      "question": "Вам нужно добавить поддержку нового файлового формата MsgPack в DataFusion. Какую комбинацию точек расширения использовать?",
+      "options": [
+        { "id": "a", "text": "FileFormatFactory для формата + TableProviderFactory для CREATE EXTERNAL TABLE STORED AS MSGPACK + ListingTable для чтения файлов" },
+        { "id": "b", "text": "Только ScalarUDF с функцией read_msgpack() для парсинга" },
+        { "id": "c", "text": "Только TableProvider с жёстко заданным путём к файлам" },
+        { "id": "d", "text": "ExprPlanner для парсинга MsgPack-литералов в SQL" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "FileFormatFactory регистрирует формат (парсинг .msgpack файлов). После регистрации ListingTable автоматически поддерживает этот формат. TableProviderFactory добавляет SQL-путь: CREATE EXTERNAL TABLE ... STORED AS MSGPACK LOCATION 's3://...'`. Комбинация даёт полную интеграцию.",
+      "bloomLevel": "analytical",
+      "studyHint": "Новый формат файлов = FileFormatFactory (парсинг) + ListingTable (чтение директорий) + TableProviderFactory (SQL DDL)."
+    }
+  ]
+}

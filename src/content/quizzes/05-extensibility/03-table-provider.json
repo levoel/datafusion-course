@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "05-extensibility/03-table-provider",
+  "moduleId": "05-extensibility",
+  "_meta": { "idPrefix": "df-m05-03" },
+  "questions": [
+    {
+      "id": "df-m05-03-q1",
+      "type": "multiple-choice",
+      "question": "Какой метод TableProvider является ключевым для выполнения запросов и что он возвращает?",
+      "options": [
+        { "id": "a", "text": "scan() — возвращает Arc<dyn ExecutionPlan>, который при execute() порождает поток RecordBatch" },
+        { "id": "b", "text": "schema() — возвращает SchemaRef с описанием всех колонок и их типов" },
+        { "id": "c", "text": "get_data() — возвращает Vec<RecordBatch> с полным содержимым таблицы" },
+        { "id": "d", "text": "query() — принимает SQL-строку и возвращает DataFrame" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "scan() — ключевой метод TableProvider. Он принимает projection (нужные колонки), filters и limit, и возвращает ExecutionPlan. При вызове execute(partition) план порождает SendableRecordBatchStream — асинхронный поток RecordBatch.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Цепочка вызовов: SQL → Planner → scan(projection, filters, limit) → ExecutionPlan → execute(partition) → RecordBatchStream."
+    },
+    {
+      "id": "df-m05-03-q2",
+      "type": "multiple-choice",
+      "question": "Источник данных поддерживает фильтрацию по equality, но не поддерживает LIKE и регулярные выражения. Какой уровень supports_filters_pushdown вернуть для фильтра WHERE name LIKE '%test%'?",
+      "options": [
+        { "id": "a", "text": "TableProviderFilterPushDown::Exact — источник отфильтрует точно" },
+        { "id": "b", "text": "TableProviderFilterPushDown::Inexact — источник отфильтрует частично" },
+        { "id": "c", "text": "TableProviderFilterPushDown::Unsupported — источник не может обработать фильтр" },
+        { "id": "d", "text": "TableProviderFilterPushDown::Partial — источник обработает часть условия" }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Если источник не поддерживает LIKE, возвращаем Unsupported. DataFusion применит Filter-оператор после scan для проверки условия. Inexact означает, что источник отфильтрует часть строк, но DataFusion перепроверит. Exact — источник гарантирует корректную фильтрацию.",
+      "bloomLevel": "applied",
+      "studyHint": "Exact = источник фильтрует без ошибок, Inexact = частичная фильтрация + DataFusion перепроверит, Unsupported = DataFusion фильтрует сам."
+    },
+    {
+      "id": "df-m05-03-q3",
+      "type": "multiple-choice",
+      "question": "PlanProperties в ExecutionPlan содержит три характеристики. Какая из них НЕ входит?",
+      "options": [
+        { "id": "a", "text": "EquivalenceProperties — описание сортировки и эквивалентности колонок" },
+        { "id": "b", "text": "Partitioning — количество партиций и схема распределения" },
+        { "id": "c", "text": "ExecutionMode — bounded или unbounded поток данных" },
+        { "id": "d", "text": "MemoryLimit — максимальный объём памяти для оператора" }
+      ],
+      "correctAnswer": "d",
+      "explanation": "PlanProperties содержит три свойства: EquivalenceProperties (сортировка, equivalence classes), Partitioning (количество партиций и схема распределения), ExecutionMode (bounded/unbounded). MemoryLimit не является частью PlanProperties — управление памятью осуществляется через другие механизмы.",
+      "bloomLevel": "conceptual",
+      "studyHint": "PlanProperties = ordering + partitioning + execution mode. Эти три свойства оптимизатор использует для placement Sort и Repartition операторов."
+    },
+    {
+      "id": "df-m05-03-q4",
+      "type": "multiple-choice",
+      "question": "В scan() параметр projection: Option<&Vec<usize>> содержит [0, 2] для таблицы с колонками (id, name, score). Что должен сделать TableProvider?",
+      "options": [
+        { "id": "a", "text": "Вернуть данные только для колонок id (индекс 0) и score (индекс 2), пропустив name" },
+        { "id": "b", "text": "Отфильтровать строки, где id=0 или id=2" },
+        { "id": "c", "text": "Вернуть первые 2 колонки из таблицы" },
+        { "id": "d", "text": "Вернуть все колонки — projection только для информации оптимизатора" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "projection содержит индексы нужных колонок. [0, 2] означает: вернуть колонки с индексами 0 (id) и 2 (score). Это projection pushdown — источник должен читать только запрошенные колонки, что критично для удалённых источников и columnar-форматов.",
+      "bloomLevel": "applied",
+      "studyHint": "projection = индексы колонок, не фильтр строк. SELECT id, score → projection=[0, 2]. Источник экономит I/O, читая только нужные колонки."
+    },
+    {
+      "id": "df-m05-03-q5",
+      "type": "multiple-choice",
+      "question": "Для реализации INSERT INTO custom_table SELECT ... нужно реализовать insert_into() в TableProvider. Какой trait реализует логику записи данных?",
+      "options": [
+        { "id": "a", "text": "DataSink — trait с методом write_all(SendableRecordBatchStream), который потоково записывает RecordBatch" },
+        { "id": "b", "text": "TableWriter — trait с методом write(Vec<RecordBatch>)" },
+        { "id": "c", "text": "ExecutionPlan — используется тот же trait, что и для чтения" },
+        { "id": "d", "text": "Accumulator — агрегирует строки и записывает результат" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataSink — trait с методом write_all(), который принимает SendableRecordBatchStream и потоково записывает батчи в целевое хранилище. insert_into() создаёт DataSinkExec, оборачивающий DataSink в ExecutionPlan для интеграции в план запроса.",
+      "bloomLevel": "conceptual",
+      "studyHint": "insert_into() → DataSinkExec + DataSink. DataSink::write_all() получает поток батчей и записывает их. Возвращает количество записанных строк."
+    }
+  ]
+}

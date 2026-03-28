@@ -1,0 +1,225 @@
+---
+title: "Экосистема Arrow: реализации, ADBC и cross-language мир"
+description: "arrow-rs vs PyArrow vs Arrow Java, кросс-языковая совместимость, ADBC, nanoarrow и место DataFusion в экосистеме"
+order: 5
+difficulty: "intermediate"
+estimatedTime: 12
+topics: ["Arrow Ecosystem", "arrow-rs", "PyArrow", "ADBC", "nanoarrow", "Cross-Language"]
+---
+
+# Экосистема Arrow: реализации, ADBC и cross-language мир
+
+## Одна спецификация — множество реализаций
+
+Apache Arrow -- это **спецификация**, а не библиотека. Byte layout определён раз и навсегда; каждый язык реализует работу с этим layout самостоятельно. С 2024 года языковые реализации живут в отдельных репозиториях:
+
+| Реализация | Язык | Репозиторий | Версия (март 2026) |
+|-----------|------|-------------|-------------------|
+| **arrow-rs** | Rust | `apache/arrow-rs` | 55.x (отдельная нумерация) |
+| **PyArrow** | Python (C++ backend) | `apache/arrow` | 23.0.1 |
+| **Arrow C++** | C++ | `apache/arrow` | 23.0.1 |
+| **Arrow Java** | Java | `apache/arrow-java` | отдельная нумерация |
+| **Arrow Go** | Go | `apache/arrow-go` | отдельная нумерация |
+| **Arrow Julia** | Julia | `apache/arrow-julia` | отдельная нумерация |
+
+<Callout type="note">
+**Версия 23.0.1** -- это версия основного `apache/arrow` репозитория (C++, Python, R, C#, JavaScript). Rust-реализация `arrow-rs` имеет собственную нумерацию и выпускается каждые 2 недели. DataFusion зависит от `arrow-rs`, а не от основного Arrow.
+</Callout>
+
+## arrow-rs: Rust-реализация
+
+`arrow-rs` -- основная зависимость DataFusion. Это чистая Rust-реализация без FFI-вызовов в C++. Ключевые crates:
+
+<DiagramContainer title="Структура arrow-rs crates" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="arrow" className="border-blue-500/30 w-36">
+        <div className="text-xs">Umbrella crate (реэкспорт)</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="arrow-array" className="border-emerald-500/30 w-36">
+        <div className="text-xs">Array types, RecordBatch</div>
+      </DataBox>
+      <DataBox label="arrow-buffer" className="border-emerald-500/30 w-36">
+        <div className="text-xs">Buffer, MutableBuffer</div>
+      </DataBox>
+      <DataBox label="arrow-schema" className="border-emerald-500/30 w-36">
+        <div className="text-xs">Schema, Field, DataType</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="arrow-select" className="border-purple-500/30 w-36">
+        <div className="text-xs">filter, take, concat</div>
+      </DataBox>
+      <DataBox label="arrow-compute" className="border-purple-500/30 w-36">
+        <div className="text-xs">Kernels (cast, math, cmp)</div>
+      </DataBox>
+      <DataBox label="arrow-ipc" className="border-purple-500/30 w-36">
+        <div className="text-xs">IPC reader/writer</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <DataBox label="arrow-csv" className="border-slate-400/30 w-28">
+        <div className="text-xs">CSV I/O</div>
+      </DataBox>
+      <DataBox label="arrow-json" className="border-slate-400/30 w-28">
+        <div className="text-xs">JSON I/O</div>
+      </DataBox>
+      <DataBox label="arrow-flight" className="border-slate-400/30 w-28">
+        <div className="text-xs">Flight gRPC</div>
+      </DataBox>
+      <DataBox label="parquet" className="border-slate-400/30 w-28">
+        <div className="text-xs">Parquet R/W</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+Модульная структура позволяет зависеть только от нужных crates. DataFusion использует `arrow-array`, `arrow-schema`, `arrow-select`, `arrow-compute` и `parquet` -- но не `arrow-csv` или `arrow-json` напрямую.
+
+### Отличия arrow-rs от Arrow C++
+
+| Аспект | arrow-rs | Arrow C++ |
+|--------|----------|-----------|
+| Memory safety | Гарантирована Rust borrow checker | Ручное управление, ASAN в тестах |
+| Release cycle | Каждые 2 недели | Каждые 3 месяца (с C++/Python) |
+| Async I/O | Нативный (tokio) | callback-based |
+| SIMD | Авто-векторизация LLVM | Явные интринсики + авто |
+| Зависимости | Минимальные (чистый Rust) | Тяжёлые (CMake, Boost, gRPC, protobuf) |
+
+## PyArrow: Python-мост
+
+PyArrow -- Python-обёртка над Arrow C++ реализацией. Это основной способ работы с Arrow в Python:
+
+```python
+import pyarrow as pa
+
+# Создание таблицы
+table = pa.table({
+    "id": [1, 2, 3],
+    "name": ["Иван", "Мария", "Пётр"],
+    "salary": [80000, 95000, None],
+})
+
+# Конвертация в Pandas (zero-copy для числовых колонок)
+df = table.to_pandas()
+
+# Чтение Parquet (через Arrow C++ Parquet reader)
+table = pa.parquet.read_table("data.parquet")
+```
+
+PyArrow интегрируется с:
+- **Pandas** -- `to_pandas()` / `from_pandas()` (ArrowDtype в Pandas 2.0+)
+- **Polars** -- нативный Arrow backend, zero-copy обмен с PyArrow
+- **DuckDB** -- прямой обмен Arrow-буферами без копирования
+- **DataFusion Python** -- Python-биндинги DataFusion работают с PyArrow таблицами
+
+<Callout type="tip">
+DataFusion Python (`datafusion` pip package) принимает PyArrow таблицы на вход и возвращает PyArrow на выход. Переход между DataFusion и Pandas/Polars -- одна строка кода через PyArrow как промежуточный формат.
+</Callout>
+
+## Arrow Java: JVM-мир
+
+Arrow Java -- отдельный репозиторий (`apache/arrow-java`). Основные потребители:
+
+- **Apache Spark** -- использует Arrow для обмена данных с Python (PySpark `toPandas()`), Spark Connect
+- **Apache Flink** -- Arrow для Python UDF
+- **Dremio** -- Arrow-нативный query engine на JVM
+
+Arrow Java использует off-heap память (DirectByteBuffer), что позволяет избежать GC-пауз при обработке больших объёмов данных. Однако это требует явного управления lifecycle буферов (`allocator.close()`).
+
+## ADBC: Arrow Database Connectivity
+
+**ADBC** (Arrow Database Connectivity) -- новый стандарт интерфейса к базам данных, проектированный вокруг Arrow:
+
+<DiagramContainer title="ADBC vs JDBC/ODBC" className="my-6">
+  <FlowRow className="gap-6 justify-center flex-wrap">
+    <DataBox label="JDBC / ODBC" className="border-red-500/30 w-52">
+      <div className="text-xs space-y-1">
+        <div>Результат: row-oriented</div>
+        <div>Java objects / C structs</div>
+        <div>Клиент конвертирует в Arrow</div>
+        <div>Двойная сериализация</div>
+      </div>
+    </DataBox>
+    <DataBox label="ADBC" className="border-emerald-500/30 w-52">
+      <div className="text-xs space-y-1">
+        <div>Результат: Arrow RecordBatch</div>
+        <div>Нативный формат</div>
+        <div>Нет промежуточной конвертации</div>
+        <div>Flight SQL как transport</div>
+      </div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+ADBC определяет C API, который драйверы реализуют. Доступны драйверы для PostgreSQL, SQLite, Flight SQL и DuckDB. Python-пакет `adbc-driver-*` позволяет получать результаты запросов сразу как PyArrow таблицы.
+
+```python
+import adbc_driver_postgresql.dbapi
+
+# ADBC: результат — сразу Arrow, без промежуточного ResultSet
+with adbc_driver_postgresql.dbapi.connect("postgresql://...") as conn:
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM events")
+        table = cur.fetch_arrow_table()  # PyArrow Table напрямую
+```
+
+## nanoarrow: минимальная реализация
+
+**nanoarrow** -- облегчённая C-библиотека для чтения/записи Arrow-данных. Нет зависимостей, ~100 KB кода. Предназначена для встраиваемых систем и языковых биндингов, где полный Arrow C++ слишком тяжёл.
+
+nanoarrow реализует:
+- Arrow C Data Interface (обмен данными между языками через C ABI)
+- Arrow C Stream Interface (потоковый обмен)
+- Базовые операции создания и чтения массивов
+
+Используется как FFI-мост: Python-расширение на C может получить Arrow-данные из PyArrow через C Data Interface, обработать через nanoarrow и вернуть результат без копирования.
+
+## DataFusion в экосистеме Arrow
+
+DataFusion занимает уникальную позицию: это не просто потребитель Arrow, а **query engine, построенный на Arrow с первого дня**.
+
+<DiagramContainer title="DataFusion в Arrow экосистеме" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <Tooltip content="Python: DataFusion Python + PyArrow. SQL и DataFrame API.">
+        <FlowNode variant="input">Python (PyArrow)</FlowNode>
+      </Tooltip>
+      <Tooltip content="Rust: нативный API. SessionContext, DataFrame, LogicalPlan.">
+        <FlowNode variant="input">Rust (arrow-rs)</FlowNode>
+      </Tooltip>
+    </FlowRow>
+    <Arrow direction="down" />
+    <DataBox label="DataFusion Query Engine" className="border-blue-500/30 w-64 mx-auto">
+      <div className="text-xs space-y-1">
+        <div>SQL Parser + Planner</div>
+        <div>Logical / Physical Optimizer</div>
+        <div>Execution: RecordBatch streams</div>
+      </div>
+    </DataBox>
+    <Arrow direction="down" />
+    <FlowRow className="gap-3 justify-center flex-wrap">
+      <FlowNode variant="output">Parquet (arrow-rs)</FlowNode>
+      <FlowNode variant="output">CSV / JSON</FlowNode>
+      <FlowNode variant="output">Arrow IPC / Flight</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+Каждый оператор DataFusion принимает `RecordBatch` и возвращает `RecordBatch`. Нет промежуточных форматов, нет конвертации. Вычислительные ядра (`arrow-compute`) используются напрямую для filter, cast, math операций.
+
+Это даёт DataFusion преимущество перед движками, которые добавляли Arrow-поддержку позже (Spark, Presto): нет legacy-слоёв конвертации.
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Arrow -- спецификация; arrow-rs, PyArrow, Arrow Java -- реализации
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> arrow-rs -- чистая Rust-реализация, основная зависимость DataFusion
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> PyArrow -- мост между Arrow и Python-экосистемой (Pandas, Polars, DuckDB)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> ADBC -- новый стандарт доступа к БД с нативным Arrow, замена JDBC/ODBC
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> nanoarrow -- минимальная C-реализация для FFI и встраиваемых систем
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion -- Arrow-native query engine без legacy-слоёв конвертации

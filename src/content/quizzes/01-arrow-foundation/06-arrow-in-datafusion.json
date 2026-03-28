@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "01-arrow-foundation/06-arrow-in-datafusion",
+  "moduleId": "01-arrow-foundation",
+  "_meta": {
+    "idPrefix": "df-m01-06"
+  },
+  "questions": [
+    {
+      "id": "df-m01-06-q1",
+      "type": "multiple-choice",
+      "question": "Что возвращает метод execute() у ExecutionPlan в DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Vec<Row> — вектор строк"
+        },
+        {
+          "id": "b",
+          "text": "DataFrame — обёртка для дальнейших трансформаций"
+        },
+        {
+          "id": "c",
+          "text": "SendableRecordBatchStream — асинхронный поток RecordBatch с известной схемой"
+        },
+        {
+          "id": "d",
+          "text": "Iterator<RecordBatch> — синхронный итератор"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Каждый ExecutionPlan возвращает SendableRecordBatchStream (Stream<Item = Result<RecordBatch>> + SchemaRef). Это асинхронный поток, работающий по pull-модели: верхний оператор запрашивает следующий batch, запрос каскадом спускается до leaf-оператора (scan).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Pull-модель: верхний оператор «тянет» данные от нижнего через async stream."
+    },
+    {
+      "id": "df-m01-06-q2",
+      "type": "multiple-choice",
+      "question": "Что такое ColumnarValue в контексте вычисления выражений DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Формат хранения данных на диске"
+        },
+        {
+          "id": "b",
+          "text": "Либо Array(ArrayRef) — колонка значений, либо Scalar(ScalarValue) — одно значение, broadcast на все строки batch"
+        },
+        {
+          "id": "c",
+          "text": "Nullable-обёртка над примитивным значением"
+        },
+        {
+          "id": "d",
+          "text": "Указатель на offset buffer строковой колонки"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "ColumnarValue — результат вычисления PhysicalExpr. Может быть Array(ArrayRef) для колонки значений или Scalar(ScalarValue) для одного значения, broadcast на все строки batch. Скалярная оптимизация позволяет не создавать массив из одинаковых значений для выражений вроде x + 1.",
+      "bloomLevel": "applied",
+      "studyHint": "Scalar broadcast — оптимизация: выражение x + 1 не создаёт массив [1, 1, 1, ...], а хранит скаляр."
+    },
+    {
+      "id": "df-m01-06-q3",
+      "type": "multiple-choice",
+      "question": "Как arrow compute kernels обрабатывают NULL при операции SUM?",
+      "options": [
+        {
+          "id": "a",
+          "text": "NULL считается нулём — SUM([10, NULL, 30]) = 40"
+        },
+        {
+          "id": "b",
+          "text": "Если хотя бы одно значение NULL, результат SUM = NULL"
+        },
+        {
+          "id": "c",
+          "text": "NULL пропускается через побитовые операции на validity bitmap — SUM([10, NULL, 30]) = 40, NULL не влияет на результат"
+        },
+        {
+          "id": "d",
+          "text": "Compute kernel выбрасывает ошибку при наличии NULL"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Агрегации (SUM, AVG) пропускают NULL через побитовые операции на validity bitmap, не проверяя каждое значение. SUM([10, NULL, 30]) = 40 — NULL пропущен автоматически. Арифметика с NULL даёт NULL (10 + NULL = NULL), но агрегации пропускают NULL.",
+      "bloomLevel": "applied",
+      "studyHint": "Два правила: арифметика + NULL = NULL. Агрегация (SUM, AVG) пропускает NULL через bitmap."
+    },
+    {
+      "id": "df-m01-06-q4",
+      "type": "multiple-choice",
+      "question": "Почему каждый оператор DataFusion знает свою выходную схему (SchemaRef) до начала выполнения запроса?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Это требование спецификации SQL"
+        },
+        {
+          "id": "b",
+          "text": "Это позволяет ловить ошибки типов на этапе планирования, аллоцировать буферы заранее и выбирать оптимальный compute kernel по типу — до сканирования данных"
+        },
+        {
+          "id": "c",
+          "text": "Схема нужна только для отображения результатов пользователю"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion загружает все данные в память перед планированием"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "SchemaRef в каждом операторе позволяет: ловить ошибки типов на этапе планирования (до сканирования данных), аллоцировать буферы правильного размера заранее, выбирать оптимальный kernel по типу (Int32 vs Float64). Optimizer использует схему для projection pushdown — если верхний оператор запрашивает 2 из 10 колонок, scan не читает остальные 8.",
+      "bloomLevel": "analytical",
+      "studyHint": "Schema propagation → type safety + buffer preallocation + kernel selection + projection pushdown."
+    },
+    {
+      "id": "df-m01-06-q5",
+      "type": "multiple-choice",
+      "question": "При написании UDF для DataFusion, какие типы принимает и возвращает функция?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Вход: Vec<Row>, выход: Row"
+        },
+        {
+          "id": "b",
+          "text": "Вход: JSON строка, выход: JSON строка"
+        },
+        {
+          "id": "c",
+          "text": "Вход: &[ArrayRef] (Arrow-массивы), выход: ArrayRef — прямая работа с Arrow без промежуточных форматов"
+        },
+        {
+          "id": "d",
+          "text": "Вход: DataFrame, выход: DataFrame"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "UDF в DataFusion принимает &[ArrayRef] и возвращает ArrayRef. Нет DataFrame, нет Row, нет Object — только Arrow. Это означает, что UDF автоматически получает преимущества колоночной обработки: SIMD, cache locality, null propagation через validity bitmap.",
+      "bloomLevel": "applied",
+      "studyHint": "UDF = fn(&[ArrayRef]) → ArrayRef. Все преимущества Arrow (SIMD, zero-copy) доступны автоматически."
+    }
+  ]
+}

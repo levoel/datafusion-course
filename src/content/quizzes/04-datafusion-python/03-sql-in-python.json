@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "04-datafusion-python/03-sql-in-python",
+  "moduleId": "04-datafusion-python",
+  "_meta": {
+    "idPrefix": "df-m04-03"
+  },
+  "questions": [
+    {
+      "id": "df-m04-03-q1",
+      "type": "multiple-choice",
+      "question": "Что возвращает метод ctx.sql() при выполнении SQL-запроса?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Список строк результата в виде Python-словарей"
+        },
+        {
+          "id": "b",
+          "text": "DataFrame --- ленивый объект, запрос выполняется только при вызове terminal-операции (collect, show)"
+        },
+        {
+          "id": "c",
+          "text": "PyArrow Table с результатами запроса"
+        },
+        {
+          "id": "d",
+          "text": "Pandas DataFrame с данными"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "ctx.sql() возвращает DataFrame, а не результат. Запрос не выполняется до вызова terminal-операции (collect(), show(), to_pandas()). Это позволяет дополнительно обрабатывать результат через DataFrame API.",
+      "bloomLevel": "conceptual",
+      "studyHint": "ctx.sql() = план. collect()/show() = выполнение. DataFrame --- мост между SQL и DataFrame API."
+    },
+    {
+      "id": "df-m04-03-q2",
+      "type": "multiple-choice",
+      "question": "Как зарегистрировать существующий DataFrame как таблицу для SQL-запросов?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ctx.register_dataframe(\"name\", df) --- прямая регистрация DataFrame"
+        },
+        {
+          "id": "b",
+          "text": "ctx.register_record_batches(\"name\", [df.collect()]) --- регистрация через RecordBatch"
+        },
+        {
+          "id": "c",
+          "text": "ctx.add_table(\"name\", df) --- добавление таблицы в каталог"
+        },
+        {
+          "id": "d",
+          "text": "df.to_table(\"name\") --- метод DataFrame для самостоятельной регистрации"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для регистрации DataFrame как SQL-таблицы нужно материализовать данные: ctx.register_record_batches(\"name\", [df.collect()]). Метод принимает имя таблицы и список RecordBatch, полученных через collect().",
+      "bloomLevel": "applied",
+      "studyHint": "Путь: DataFrame → collect() → RecordBatch → register_record_batches() → SQL-таблица."
+    },
+    {
+      "id": "df-m04-03-q3",
+      "type": "multiple-choice",
+      "question": "Какую информацию можно получить через INFORMATION_SCHEMA в DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Список зарегистрированных таблиц, их колонки, типы данных --- инспекция каталога через SQL"
+        },
+        {
+          "id": "b",
+          "text": "Статистику выполнения запросов и метрики производительности"
+        },
+        {
+          "id": "c",
+          "text": "Информацию об установленных расширениях и плагинах"
+        },
+        {
+          "id": "d",
+          "text": "Историю выполненных SQL-запросов и их планы"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "INFORMATION_SCHEMA позволяет инспектировать каталог DataFusion через SQL: SELECT table_name FROM information_schema.tables показывает зарегистрированные таблицы, а information_schema.columns --- их колонки и типы.",
+      "bloomLevel": "conceptual",
+      "studyHint": "INFORMATION_SCHEMA --- стандартный SQL-механизм метаданных. Полезен для отладки: какие таблицы доступны?"
+    },
+    {
+      "id": "df-m04-03-q4",
+      "type": "multiple-choice",
+      "question": "Вы читаете CSV через read_csv(), фильтруете через DataFrame API, затем хотите выполнить сложную аналитику через SQL. Как правильно скомбинировать подходы?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Это невозможно --- нужно выбрать либо SQL, либо DataFrame API для всего pipeline"
+        },
+        {
+          "id": "b",
+          "text": "df.filter(...) → ctx.register_record_batches(\"filtered\", [df.collect()]) → ctx.sql(\"SELECT ... FROM filtered\")"
+        },
+        {
+          "id": "c",
+          "text": "df.filter(...).to_sql(\"SELECT ...\") --- прямой вызов SQL на DataFrame"
+        },
+        {
+          "id": "d",
+          "text": "Сохранить промежуточный результат в файл, затем зарегистрировать и выполнить SQL"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "SQL и DataFrame API свободно комбинируются. DataFrame из read_csv() или filter() можно материализовать через collect() и зарегистрировать как таблицу через register_record_batches(). После этого данные доступны для SQL-запросов.",
+      "bloomLevel": "analytical",
+      "studyHint": "Комбинирование SQL + DataFrame --- одна из сильнейших возможностей DataFusion Python."
+    },
+    {
+      "id": "df-m04-03-q5",
+      "type": "multiple-choice",
+      "question": "Какие методы регистрации таблиц из файлов поддерживает SessionContext для последующих SQL-запросов?",
+      "options": [
+        {
+          "id": "a",
+          "text": "register_csv(), register_parquet(), register_json() --- каждый для своего формата файлов"
+        },
+        {
+          "id": "b",
+          "text": "Только register_table() --- универсальный метод с указанием формата"
+        },
+        {
+          "id": "c",
+          "text": "Только register_csv() --- остальные форматы требуют предварительного чтения"
+        },
+        {
+          "id": "d",
+          "text": "register_file() с автоопределением формата по расширению"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SessionContext предоставляет отдельные методы регистрации для каждого формата: register_csv(), register_parquet(), register_json(). Каждый принимает имя таблицы и путь к файлу. После регистрации таблица доступна в SQL-запросах.",
+      "bloomLevel": "applied",
+      "studyHint": "register_csv/parquet/json + имя = таблица для SQL. Паттерн одинаков для всех форматов."
+    }
+  ]
+}

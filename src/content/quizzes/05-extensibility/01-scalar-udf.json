@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "05-extensibility/01-scalar-udf",
+  "moduleId": "05-extensibility",
+  "_meta": { "idPrefix": "df-m05-01" },
+  "questions": [
+    {
+      "id": "df-m05-01-q1",
+      "type": "multiple-choice",
+      "question": "Какой метод trait ScalarUDFImpl является актуальным для выполнения скалярного UDF в DataFusion 52.x?",
+      "options": [
+        { "id": "a", "text": "invoke_with_args(ScalarFunctionArgs) — принимает расширенный контекст с аргументами и метаданными" },
+        { "id": "b", "text": "invoke(&[ColumnarValue]) — принимает массив аргументов напрямую" },
+        { "id": "c", "text": "execute(RecordBatch) — получает весь RecordBatch для обработки" },
+        { "id": "d", "text": "call(Vec<Expr>) — получает AST-выражения для ленивого вычисления" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "В DataFusion 52.x метод invoke() устарел. Актуальный метод — invoke_with_args(ScalarFunctionArgs), который предоставляет расширенный контекст: аргументы, количество строк и информацию о типах возвращаемого значения.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Запомните: invoke — deprecated, invoke_with_args — текущий API. ScalarFunctionArgs даёт больше контекста, чем просто &[ColumnarValue]."
+    },
+    {
+      "id": "df-m05-01-q2",
+      "type": "multiple-choice",
+      "question": "Какой вариант Signature подойдёт для UDF, которая принимает произвольное количество аргументов типа Utf8?",
+      "options": [
+        { "id": "a", "text": "Signature::exact(vec![DataType::Utf8], Volatility::Immutable)" },
+        { "id": "b", "text": "Signature::variadic(vec![DataType::Utf8], Volatility::Immutable)" },
+        { "id": "c", "text": "Signature::uniform(1, vec![DataType::Utf8], Volatility::Immutable)" },
+        { "id": "d", "text": "Signature::one_of(vec![...], Volatility::Immutable)" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Signature::variadic указывает, что функция принимает произвольное количество аргументов одного допустимого типа. Exact задаёт фиксированный набор, Uniform — фиксированное количество аргументов одного типа, OneOf — несколько перегрузок.",
+      "bloomLevel": "applied",
+      "studyHint": "Variadic = переменное число аргументов, Exact = точное совпадение, Uniform = все аргументы одного типа с фиксированным количеством."
+    },
+    {
+      "id": "df-m05-01-q3",
+      "type": "multiple-choice",
+      "question": "Функция current_date() возвращает одно и то же значение в пределах одного запроса, но разные значения в разных запросах. Какой уровень Volatility следует указать?",
+      "options": [
+        { "id": "a", "text": "Immutable — оптимизатор может вычислить на этапе планирования" },
+        { "id": "b", "text": "Stable — постоянное значение в пределах одного запроса" },
+        { "id": "c", "text": "Volatile — значение может меняться между вызовами" },
+        { "id": "d", "text": "Pure — не вызывает побочных эффектов" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Stable означает, что результат постоянен в пределах одного запроса, но может меняться между запросами. Immutable подразумевает полную детерминированность (одинаковый вход → всегда одинаковый выход), что позволило бы оптимизатору вычислить результат заранее. Volatile — для функций, изменяющихся даже внутри запроса (random).",
+      "bloomLevel": "applied",
+      "studyHint": "Правило: Immutable ⊂ Stable ⊂ Volatile. Выбирайте наиболее строгий уровень, соответствующий семантике."
+    },
+    {
+      "id": "df-m05-01-q4",
+      "type": "multiple-choice",
+      "question": "Почему сигнатуру рекомендуют хранить в struct поле и возвращать по ссылке из метода signature(), а не создавать новый объект Signature на каждый вызов?",
+      "options": [
+        { "id": "a", "text": "Это избегает аллокации в hot path — signature() вызывается многократно во время планирования и выполнения" },
+        { "id": "b", "text": "Signature нельзя создать повторно после первого использования из-за ограничений borrow checker" },
+        { "id": "c", "text": "Это требование trait — метод signature() обязан возвращать &Signature" },
+        { "id": "d", "text": "Повторное создание Signature вызывает перекомпиляцию регулярных выражений внутри" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Метод signature() возвращает &Signature — ссылку. Хранение в поле struct позволяет вернуть ссылку без аллокации при каждом вызове. Поскольку signature() вызывается на этапе планирования (потенциально многократно), это важно для производительности.",
+      "bloomLevel": "analytical",
+      "studyHint": "Обратите внимание на возвращаемый тип &Signature — это ссылка. Struct-поле обеспечивает стабильный lifetime."
+    },
+    {
+      "id": "df-m05-01-q5",
+      "type": "multiple-choice",
+      "question": "Rust UDF получает ColumnarValue::Array. Что произойдёт, если забыть обработать ColumnarValue::Scalar ветку в invoke_with_args?",
+      "options": [
+        { "id": "a", "text": "Ничего — DataFusion всегда передаёт Array, Scalar никогда не встречается" },
+        { "id": "b", "text": "Функция паникует при оптимизации константных выражений, когда оптимизатор передаёт скалярное значение вместо массива" },
+        { "id": "c", "text": "Компилятор Rust не позволит скомпилировать код без обработки Scalar" },
+        { "id": "d", "text": "DataFusion автоматически конвертирует Scalar в Array перед вызовом, поэтому Scalar-ветка не нужна" }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Оптимизатор может вычислять константные выражения на этапе планирования (constant folding), передавая скалярные значения. Если Scalar-ветка не обработана (например, через unreachable! или panic), функция упадёт при оптимизации WHERE square(3) > 5. Компилятор не защитит — match может иметь wildcard.",
+      "bloomLevel": "analytical",
+      "studyHint": "Помните о constant folding: оптимизатор может передать Scalar для вычисления на этапе планирования. Всегда обрабатывайте обе ветки ColumnarValue."
+    }
+  ]
+}

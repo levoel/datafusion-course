@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "04-datafusion-python/04-udf-and-udaf",
+  "moduleId": "04-datafusion-python",
+  "_meta": {
+    "idPrefix": "df-m04-04"
+  },
+  "questions": [
+    {
+      "id": "df-m04-04-q1",
+      "type": "multiple-choice",
+      "question": "Какие четыре аргумента принимает функция udf() для создания скалярной UDF в DataFusion Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Python-функция, список входных Arrow-типов, выходной Arrow-тип, volatility (\"immutable\"/\"stable\"/\"volatile\")"
+        },
+        {
+          "id": "b",
+          "text": "Имя функции, SQL-выражение, тип возврата, описание"
+        },
+        {
+          "id": "c",
+          "text": "Python-функция, имя для SQL, количество аргументов, режим выполнения"
+        },
+        {
+          "id": "d",
+          "text": "Lambda-выражение, список колонок, выходной тип, кеширование"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "udf() принимает: 1) Python-функцию, 2) список входных Arrow-типов (например, [pa.float64()]), 3) выходной Arrow-тип (например, pa.float64()), 4) volatility --- строку \"immutable\", \"stable\" или \"volatile\". Четвёртый аргумент обязателен --- пропуск вызовет ошибку.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Запомните порядок: функция, входные типы, выходной тип, volatility. Все четыре обязательны."
+    },
+    {
+      "id": "df-m04-04-q2",
+      "type": "multiple-choice",
+      "question": "Что означает volatility \"immutable\" для UDF?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Функция всегда возвращает одинаковый результат для одинаковых аргументов --- оптимизатор может кешировать и выносить вычисления"
+        },
+        {
+          "id": "b",
+          "text": "Функция не может быть изменена после регистрации"
+        },
+        {
+          "id": "c",
+          "text": "Функция не изменяет входные данные (read-only)"
+        },
+        {
+          "id": "d",
+          "text": "Функция выполняется только один раз за весь запрос"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Volatility \"immutable\" означает детерминизм: одни и те же аргументы всегда дают одинаковый результат. Оптимизатор может кешировать результаты, выносить вычисления из циклов и применять constant folding. \"stable\" --- результат стабилен в рамках одного запроса. \"volatile\" --- результат может меняться при каждом вызове.",
+      "bloomLevel": "conceptual",
+      "studyHint": "immutable = кешируемая (f(x) = const). stable = стабильна в запросе. volatile = непредсказуема."
+    },
+    {
+      "id": "df-m04-04-q3",
+      "type": "multiple-choice",
+      "question": "Через какой класс реализуется агрегатная UDAF в DataFusion Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "AggregateFunction --- базовый класс с методами map() и reduce()"
+        },
+        {
+          "id": "b",
+          "text": "Accumulator --- класс с методами update(), merge() и evaluate() для инкрементальной агрегации"
+        },
+        {
+          "id": "c",
+          "text": "Reducer --- класс с методами accumulate() и finalize()"
+        },
+        {
+          "id": "d",
+          "text": "Обычная Python-функция с декоратором @aggregate"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "UDAF реализуется через наследование от класса Accumulator. Нужно определить методы: update() --- обработка новых данных, merge() --- объединение частичных состояний (для параллельного выполнения), evaluate() --- финальный результат.",
+      "bloomLevel": "applied",
+      "studyHint": "Accumulator = инкрементальная агрегация. update → merge → evaluate. Merge нужен для параллелизма."
+    },
+    {
+      "id": "df-m04-04-q4",
+      "type": "multiple-choice",
+      "question": "Как зарегистрировать UDF для использования в SQL-запросах (ctx.sql())?",
+      "options": [
+        {
+          "id": "a",
+          "text": "UDF автоматически доступна в SQL после создания через udf()"
+        },
+        {
+          "id": "b",
+          "text": "ctx.register_udf(udf_object) --- явная регистрация, имя берётся из Python-функции"
+        },
+        {
+          "id": "c",
+          "text": "ctx.sql(\"CREATE FUNCTION ...\") --- регистрация через SQL DDL"
+        },
+        {
+          "id": "d",
+          "text": "UDF нельзя использовать в SQL --- только через DataFrame API"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для использования UDF в SQL-запросах нужно вызвать ctx.register_udf(udf_object). Имя функции в SQL берётся из имени Python-функции. Для UDAF используется ctx.register_udaf(). Без регистрации UDF доступна только через DataFrame API.",
+      "bloomLevel": "applied",
+      "studyHint": "register_udf() = мост из DataFrame API в SQL. Без неё SQL не знает о вашей функции."
+    },
+    {
+      "id": "df-m04-04-q5",
+      "type": "multiple-choice",
+      "question": "Когда следует использовать UDWF вместо встроенных оконных функций (ROW_NUMBER, LAG, SUM OVER)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Всегда --- UDWF быстрее встроенных оконных функций"
+        },
+        {
+          "id": "b",
+          "text": "Когда нужна специфическая логика, не покрываемая стандартными оконными функциями --- для большинства задач достаточно встроенных"
+        },
+        {
+          "id": "c",
+          "text": "Когда нужно обработать более 1 миллиона строк"
+        },
+        {
+          "id": "d",
+          "text": "UDWF --- единственный способ использовать оконные функции в Python API"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "UDWF --- продвинутый механизм, реализуемый через WindowEvaluator. Для большинства оконных вычислений достаточно встроенных функций (ROW_NUMBER, LAG, LEAD, SUM OVER). UDWF нужен только для специфической логики, которую нельзя выразить стандартными средствами.",
+      "bloomLevel": "analytical",
+      "studyHint": "Правило: сначала попробуйте встроенные оконные функции. UDWF --- крайний случай."
+    }
+  ]
+}

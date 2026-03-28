@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "02-architecture/01-query-pipeline",
+  "moduleId": "02-architecture",
+  "_meta": {
+    "idPrefix": "df-m02-01"
+  },
+  "questions": [
+    {
+      "id": "df-m02-01-q1",
+      "type": "multiple-choice",
+      "question": "Какие шесть стадий проходит SQL-запрос в DataFusion от текста до результата?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Парсинг → AST → LogicalPlan → Оптимизация → PhysicalPlan → SendableRecordBatchStream"
+        },
+        {
+          "id": "b",
+          "text": "Лексинг → Компиляция → Линковка → Загрузка → Выполнение → Результат"
+        },
+        {
+          "id": "c",
+          "text": "Парсинг → Валидация → Кеширование → Индексация → Поиск → Вывод"
+        },
+        {
+          "id": "d",
+          "text": "SQL → JIT-компиляция → Machine Code → Выполнение → Сериализация → Ответ"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SQL-запрос проходит: 1) Парсинг (sqlparser-rs → AST), 2) SqlToRel (AST → LogicalPlan), 3) Оптимизация (правила: pushdown, folding), 4) PhysicalPlanner (LogicalPlan → ExecutionPlan), 5) execute() → SendableRecordBatchStream. Каждая стадия трансформирует представление запроса в более конкретное.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Перечитайте раздел «Шесть стадий pipeline» — запомните последовательность трансформаций."
+    },
+    {
+      "id": "df-m02-01-q2",
+      "type": "multiple-choice",
+      "question": "Что проверяет стадия SqlToRel, которая НЕ проверяется на стадии парсинга?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Корректность SQL-синтаксиса (скобки, ключевые слова)"
+        },
+        {
+          "id": "b",
+          "text": "Существование таблиц и колонок в каталоге, корректность типов, разрешимость функций"
+        },
+        {
+          "id": "c",
+          "text": "Наличие точки с запятой в конце запроса"
+        },
+        {
+          "id": "d",
+          "text": "Поддержку диалекта SQL (PostgreSQL, MySQL)"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Парсер (sqlparser-rs) работает только с синтаксисом — он не знает о таблицах и колонках. SqlToRel привязывает AST к реальным данным: проверяет существование таблицы в каталоге, наличие колонок в схеме, корректность типов (сравнение status с текстовым литералом) и разрешимость функций (SUM для числового типа).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Ключевое различие: парсер проверяет форму, SqlToRel проверяет семантику."
+    },
+    {
+      "id": "df-m02-01-q3",
+      "type": "multiple-choice",
+      "question": "Для запроса SELECT region, SUM(amount) FROM orders WHERE status = 'completed' GROUP BY region оптимизатор выполняет projection pushdown. Что при этом происходит?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Результаты кешируются для повторного использования"
+        },
+        {
+          "id": "b",
+          "text": "TableScan будет читать только колонки region, amount и status вместо всех колонок таблицы"
+        },
+        {
+          "id": "c",
+          "text": "Запрос перенаправляется на реплику базы данных"
+        },
+        {
+          "id": "d",
+          "text": "GROUP BY вычисляется до WHERE для ускорения фильтрации"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Projection pushdown анализирует, какие колонки реально нужны выше по дереву плана, и сообщает это в TableScan. Вместо чтения всех колонок таблицы orders, сканируются только region, amount и status — остальные колонки не загружаются из файла (Parquet) или памяти.",
+      "bloomLevel": "applied",
+      "studyHint": "Projection pushdown — одна из самых эффективных оптимизаций. Подумайте, как она взаимодействует с column pruning из Arrow."
+    },
+    {
+      "id": "df-m02-01-q4",
+      "type": "multiple-choice",
+      "question": "Почему DataFusion использует pull-модель (volcano model) выполнения вместо push-модели?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Pull-модель обеспечивает ленивость, ограничение памяти и back-pressure: данные обрабатываются по мере запроса, в памяти только текущие batch каждого оператора, медленный потребитель замедляет производителя"
+        },
+        {
+          "id": "b",
+          "text": "Pull-модель проще реализовать на Rust из-за borrow checker"
+        },
+        {
+          "id": "c",
+          "text": "Push-модель невозможна с Arrow RecordBatch"
+        },
+        {
+          "id": "d",
+          "text": "Pull-модель быстрее push-модели во всех случаях"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "В pull-модели верхний оператор вызывает execute() у дочернего, запрос каскадно спускается до leaf. Три ключевых преимущества: ленивость (данные не вычисляются заранее), ограничение памяти (в любой момент в памяти только текущие batch) и back-pressure (медленный потребитель автоматически замедляет весь pipeline).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Подумайте, что произойдёт с памятью, если производитель работает быстрее потребителя в push-модели."
+    },
+    {
+      "id": "df-m02-01-q5",
+      "type": "multiple-choice",
+      "question": "Вызов ctx.sql(\"SELECT ...\").await возвращает DataFrame, но запрос ещё не выполнен. Какие стадии pipeline уже пройдены, а какие нет?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Все 6 стадий пройдены, DataFrame содержит результаты"
+        },
+        {
+          "id": "b",
+          "text": "Пройдены стадии 1–4 (парсинг, логический план, оптимизация, физический план). Стадия 5 (выполнение) запускается при вызове collect() или show()"
+        },
+        {
+          "id": "c",
+          "text": "Выполнен только парсинг, остальное при collect()"
+        },
+        {
+          "id": "d",
+          "text": "Ни одна стадия не пройдена — всё откладывается до collect()"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "sql() выполняет парсинг → логический план → оптимизацию → физический план и возвращает ленивый DataFrame. Выполнение (стадия 5) запускается только при terminal-операции: collect(), show() или write_parquet(). Это разделение позволяет инспектировать план до выполнения через EXPLAIN.",
+      "bloomLevel": "applied",
+      "studyHint": "Запомните: sql() = планирование, collect() = выполнение. DataFrame — ленивая обёртка над планом."
+    }
+  ]
+}

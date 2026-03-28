@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "04-datafusion-python/01-installation-and-context",
+  "moduleId": "04-datafusion-python",
+  "_meta": {
+    "idPrefix": "df-m04-01"
+  },
+  "questions": [
+    {
+      "id": "df-m04-01-q1",
+      "type": "multiple-choice",
+      "question": "Какой объект является точкой входа в DataFusion Python API?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SessionContext --- Python-обёртка над Rust SessionContext, предоставляющая доступ к SQL, DataFrame API, чтению файлов и регистрации таблиц"
+        },
+        {
+          "id": "b",
+          "text": "DataFusionClient --- клиентский объект для подключения к серверу DataFusion"
+        },
+        {
+          "id": "c",
+          "text": "QueryEngine --- движок для выполнения SQL-запросов в Python"
+        },
+        {
+          "id": "d",
+          "text": "ArrowContext --- контекст для работы с Apache Arrow таблицами"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SessionContext --- центральный объект DataFusion Python. Через него выполняются SQL-запросы (ctx.sql()), читаются файлы (read_csv, read_parquet), создаются данные из Python-структур (from_pydict) и регистрируются таблицы.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Запомните: SessionContext = точка входа. Все операции начинаются с создания ctx = SessionContext()."
+    },
+    {
+      "id": "df-m04-01-q2",
+      "type": "multiple-choice",
+      "question": "Что ожидает метод ctx.read_json() в качестве формата входных данных?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Стандартный JSON-массив объектов: [{...}, {...}]"
+        },
+        {
+          "id": "b",
+          "text": "NDJSON (Newline Delimited JSON) --- по одному JSON-объекту на строку"
+        },
+        {
+          "id": "c",
+          "text": "JSON Schema с описанием типов колонок"
+        },
+        {
+          "id": "d",
+          "text": "Любой валидный JSON-документ, формат определяется автоматически"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "read_json() ожидает формат NDJSON (Newline Delimited JSON) --- по одному JSON-объекту на строку, а не массив JSON. Это потоковый формат, позволяющий читать файл построчно без загрузки всего документа в память.",
+      "bloomLevel": "conceptual",
+      "studyHint": "NDJSON --- стандарт для потоковой обработки JSON. Каждая строка файла --- отдельный JSON-объект."
+    },
+    {
+      "id": "df-m04-01-q3",
+      "type": "multiple-choice",
+      "question": "Чем отличается ctx.read_csv() от ctx.register_csv()?",
+      "options": [
+        {
+          "id": "a",
+          "text": "read_csv() возвращает DataFrame для немедленной работы; register_csv() регистрирует файл как именованную таблицу для SQL-запросов через ctx.sql()"
+        },
+        {
+          "id": "b",
+          "text": "read_csv() загружает данные в память; register_csv() создаёт ленивую ссылку"
+        },
+        {
+          "id": "c",
+          "text": "read_csv() работает только с локальными файлами; register_csv() поддерживает S3"
+        },
+        {
+          "id": "d",
+          "text": "Разницы нет --- оба метода делают одно и то же"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "read_csv() читает файл и возвращает DataFrame, с которым можно сразу работать через DataFrame API. register_csv() регистрирует файл как таблицу с именем, к которой можно обращаться в SQL-запросах: ctx.sql(\"SELECT * FROM orders\").",
+      "bloomLevel": "applied",
+      "studyHint": "read_csv = получить DataFrame. register_csv = сделать таблицу доступной для SQL."
+    },
+    {
+      "id": "df-m04-01-q4",
+      "type": "multiple-choice",
+      "question": "Какую роль играет параметр name в методах from_pydict() и from_pylist()?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Задаёт имя выходного файла при сохранении результата"
+        },
+        {
+          "id": "b",
+          "text": "Регистрирует созданный DataFrame как таблицу, доступную для SQL-запросов через ctx.sql()"
+        },
+        {
+          "id": "c",
+          "text": "Определяет имя схемы в Apache Arrow"
+        },
+        {
+          "id": "d",
+          "text": "Задаёт имя переменной для автоматического сохранения в контексте Python"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Параметр name в from_pydict()/from_pylist() регистрирует DataFrame как таблицу, доступную для SQL-запросов. Например, ctx.from_pydict(data, name=\"students\") позволяет выполнить ctx.sql(\"SELECT * FROM students\").",
+      "bloomLevel": "applied",
+      "studyHint": "name делает данные видимыми для SQL. Без name --- только DataFrame API."
+    },
+    {
+      "id": "df-m04-01-q5",
+      "type": "multiple-choice",
+      "question": "Начиная с какой версии DataFusion Python предоставляет глобальные функции для работы без явного создания SessionContext?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Версия 40.0 --- вместе с переходом на Arrow 2.0"
+        },
+        {
+          "id": "b",
+          "text": "Версия 46.0 --- глобальные функции для быстрого старта"
+        },
+        {
+          "id": "c",
+          "text": "Версия 52.0 --- текущая мажорная версия"
+        },
+        {
+          "id": "d",
+          "text": "Глобальные функции были доступны с самого первого релиза"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Начиная с версии 46.0, DataFusion Python предоставляет глобальные функции (col, lit, read_csv и др.) для быстрого старта без явного создания SessionContext. Это упрощает интерактивную работу в Jupyter.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Глобальные функции --- удобство для быстрого старта. Для production-кода рекомендуется явный SessionContext."
+    }
+  ]
+}

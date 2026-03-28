@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "07-comet/04-configuration-and-tuning",
+  "moduleId": "07-comet",
+  "_meta": { "idPrefix": "df-m07-04" },
+  "questions": [
+    {
+      "id": "df-m07-04-q1",
+      "type": "multiple-choice",
+      "question": "Параметр spark.comet.exec.enabled=true включает замену операторов. Что произойдёт, если включить только spark.comet.convert.parquet.enabled=true без exec.enabled?",
+      "options": [
+        { "id": "a", "text": "Comet будет читать данные нативно (CometScanExec), но обрабатывать их в JVM — ускорение только на этапе scan, без замены Filter/Project/Aggregate/Join" },
+        { "id": "b", "text": "Comet не активируется вообще — оба параметра обязательны" },
+        { "id": "c", "text": "Все операторы будут заменены, но scan останется стандартным" },
+        { "id": "d", "text": "Spark выдаст ошибку конфигурации" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "convert.parquet.enabled включает CometScanRule (нативный Parquet read), exec.enabled включает CometExecRule (замена операторов). Без exec.enabled данные читаются нативно (Arrow RecordBatch), но затем конвертируются RowToColumnar для JVM-обработки. Стратегия постепенного включения: сначала scan, затем exec, затем shuffle.",
+      "bloomLevel": "applied",
+      "studyHint": "convert.parquet.enabled → только scan. exec.enabled → операторы. Оба нужны для полного ускорения. Третий шаг — shuffle."
+    },
+    {
+      "id": "df-m07-04-q2",
+      "type": "multiple-choice",
+      "question": "Почему off-heap память (spark.memory.offHeap.enabled=true) критична для production-конфигурации Comet?",
+      "options": [
+        { "id": "a", "text": "Без off-heap Comet выделяет Arrow-буферы в JVM heap, что увеличивает GC pressure — именно от чего Comet призван избавить" },
+        { "id": "b", "text": "Comet не работает без off-heap — выдаёт ошибку при запуске" },
+        { "id": "c", "text": "Off-heap нужен только для shuffle, не для scan и exec" },
+        { "id": "d", "text": "Off-heap памяти требуется меньше, чем on-heap — экономия ресурсов" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "При spark.memory.offHeap.enabled=false Comet выделяет Arrow-буферы, агрегационные таблицы и sort-буферы в JVM heap. Это увеличивает GC pressure — аналитические запросы создают миллионы буферов. Off-heap позволяет DataFusion работать с памятью напрямую, минуя JVM heap и избегая GC overhead.",
+      "bloomLevel": "analytical",
+      "studyHint": "Без off-heap: Arrow буферы в JVM heap → GC pressure растёт. С off-heap: DataFusion работает напрямую, нет GC."
+    },
+    {
+      "id": "df-m07-04-q3",
+      "type": "multiple-choice",
+      "question": "Метрики Comet обновляются через JNI каждые 3 секунды. Какую проблему это создаёт для коротких запросов?",
+      "options": [
+        { "id": "a", "text": "Для запросов короче 3 секунд итоговые метрики (scanTime, executionTime, peakMemoryUsed) могут быть неточными — данные не успевают обновиться до завершения" },
+        { "id": "b", "text": "Короткие запросы не используют Comet вообще" },
+        { "id": "c", "text": "Метрики для коротких запросов всегда нулевые" },
+        { "id": "d", "text": "Проблем нет — метрики обновляются синхронно при завершении запроса" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Метрики обновляются периодически (каждые 3 секунды по умолчанию), а не синхронно при завершении. Для запросов < 3 секунд метрики могут не отразить реальные значения. Решение: уменьшить интервал через spark.comet.metrics.updateIntervalMs=500 для точного профилирования коротких запросов.",
+      "bloomLevel": "applied",
+      "studyHint": "Метрики: период 3 сек → короткие запросы неточны. Для профилирования: spark.comet.metrics.updateIntervalMs=500."
+    },
+    {
+      "id": "df-m07-04-q4",
+      "type": "multiple-choice",
+      "question": "Какие два режима интеграции Comet с Iceberg существуют, и какой рекомендуется для production?",
+      "options": [
+        { "id": "a", "text": "Режим 1: стандартный Iceberg connector + Comet scan (рекомендуется — полная совместимость). Режим 2: native_iceberg_compat через iceberg-rust (экспериментальный — не все операции поддержаны)" },
+        { "id": "b", "text": "Только native_iceberg_compat — стандартный Iceberg connector не совместим с Comet" },
+        { "id": "c", "text": "Оба режима production-ready, выбор зависит от предпочтений" },
+        { "id": "d", "text": "Iceberg не поддерживается Comet — необходим Delta Lake" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Режим 1: стандартный Iceberg connector создаёт BatchScanExec, Comet перехватывает его через CometBatchScanExec и читает Parquet нативно. Metadata обрабатывается Spark-коннектором. Режим 2: native_iceberg_compat (iceberg-rust) — полностью нативное чтение, но экспериментальный (не поддержаны time travel, complex partition transforms).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Production: стандартный Iceberg connector + Comet scan. Экспериментальный: native_iceberg_compat (ограничения)."
+    },
+    {
+      "id": "df-m07-04-q5",
+      "type": "multiple-choice",
+      "question": "Spark 4.0 включает ANSI mode по умолчанию. Как это влияет на поведение Comet?",
+      "options": [
+        { "id": "a", "text": "Comet 0.13.0 поддерживает ANSI mode — нативные операторы корректно выбрасывают исключения при overflow вместо silent wrap (Int32.MAX_VALUE + 1 → ArithmeticException)" },
+        { "id": "b", "text": "ANSI mode отключает Comet — нативные операторы не поддерживают ANSI-поведение" },
+        { "id": "c", "text": "ANSI mode не влияет на Comet — overflow обрабатывается одинаково" },
+        { "id": "d", "text": "Comet автоматически переключается в legacy mode при Spark 4.0" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ANSI mode в Spark 4.0 меняет поведение при overflow: вместо silent wrap (Int32.MAX_VALUE + 1 = -2147483648) выбрасывается ArithmeticException. Comet 0.13.0 поддерживает это — нативные операторы DataFusion корректно реализуют ANSI-семантику, обеспечивая совместимость при миграции на Spark 4.0.",
+      "bloomLevel": "conceptual",
+      "studyHint": "ANSI mode: overflow → exception (не silent wrap). Comet 0.13.0 поддерживает. Важно для миграции на Spark 4.0."
+    }
+  ]
+}

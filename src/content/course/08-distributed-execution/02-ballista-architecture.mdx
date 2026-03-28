@@ -1,0 +1,238 @@
+---
+title: "Архитектура Ballista"
+description: "Scheduler и executor модель Ballista, gRPC API, execution graph, query stages на границах партиций, Arrow IPC shuffle, Flight SQL и JDBC"
+order: 2
+difficulty: "advanced"
+estimatedTime: 16
+topics: ["Ballista", "scheduler", "executor", "query stages", "Arrow IPC", "Flight SQL", "gRPC", "execution graph"]
+---
+
+# Архитектура Ballista
+
+Ballista — распределённый query engine, построенный поверх DataFusion. Его архитектура следует модели scheduler/executor: централизованный планировщик разбивает запросы на задачи и распределяет их по пулу исполнителей. Версия 43.0.0 (февраль 2025) выровняла нумерацию с DataFusion, хотя между внутренними зависимостями сохраняется разрыв — Ballista 43.0.0 базируется на DataFusion ~43.x, а не на текущей ветке 52.x.
+
+## Обзор архитектуры
+
+Ballista состоит из трёх компонентов: клиенты, scheduler и executor-ы.
+
+<DiagramContainer title="Архитектура Ballista" className="my-6">
+  <FlowColumn className="gap-4 text-sm">
+    <FlowRow className="gap-3 justify-center">
+      <DataBox label="Rust SessionContext" className="border-blue-500/30">
+        <div className="text-xs font-mono">SessionContext::remote()</div>
+      </DataBox>
+      <DataBox label="PyBallista" className="border-blue-500/30">
+        <div className="text-xs font-mono">BallistaBuilder()</div>
+      </DataBox>
+      <DataBox label="Flight SQL / JDBC" className="border-blue-500/30">
+        <div className="text-xs">SQL-клиенты</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" label="gRPC / Flight SQL" />
+    <DataBox label="Scheduler" className="border-emerald-500/30 mx-auto">
+      <FlowRow className="gap-3 p-2">
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Job Manager</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Execution Graph</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Task Scheduler</FlowNode>
+      </FlowRow>
+    </DataBox>
+    <Arrow direction="down" label="gRPC: задачи (protobuf физ. планы)" />
+    <FlowRow className="gap-3 justify-center">
+      <DataBox label="Executor 1" className="border-amber-500/30">
+        <div className="text-xs">DataFusion runtime</div>
+        <div className="text-xs mt-1 font-mono">N потоков</div>
+      </DataBox>
+      <DataBox label="Executor 2" className="border-amber-500/30">
+        <div className="text-xs">DataFusion runtime</div>
+        <div className="text-xs mt-1 font-mono">N потоков</div>
+      </DataBox>
+      <DataBox label="Executor N" className="border-amber-500/30">
+        <div className="text-xs">DataFusion runtime</div>
+        <div className="text-xs mt-1 font-mono">N потоков</div>
+      </DataBox>
+    </FlowRow>
+    <Arrow direction="down" label="Arrow IPC" />
+    <FlowNode className="bg-gray-800/60 text-xs p-2 mx-auto">Shuffle-файлы (Arrow IPC на локальном диске executor-а)</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+## Scheduler
+
+Scheduler — единственная точка координации. Он принимает запросы, строит план выполнения, разбивает его на задачи и распределяет по executor-ам.
+
+### Job lifecycle
+
+1. **Приём запроса.** Клиент отправляет SQL или LogicalPlan через gRPC. Scheduler создаёт `Job` с уникальным `job_id`
+2. **Создание физического плана.** Scheduler использует DataFusion `SessionContext` для парсинга, оптимизации и создания физического плана — те же фазы, что и в однопроцессном DataFusion
+3. **Построение Execution Graph.** Физический план разбивается на query stages (подробнее ниже). Результат — DAG зависимостей между stages
+4. **Планирование задач.** Scheduler назначает задачи (partitions внутри stage) свободным executor-ам, учитывая locality и доступные ресурсы
+5. **Мониторинг.** Scheduler отслеживает статус каждой задачи. При сбое executor-а задачи перепланируются
+
+### Execution Graph
+
+Execution Graph — это DAG, в котором узлы — query stages, а рёбра — зависимости по данным (shuffle). Scheduler строит его из физического плана, разрезая по `RepartitionExec` (pipeline breakers).
+
+```
+-- Исходный запрос
+SELECT c.name, SUM(o.amount)
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+GROUP BY c.name
+
+-- Execution Graph (3 stage)
+Stage 1: ParquetExec(orders) → ShuffleWriterExec(Hash(customer_id))
+Stage 2: ParquetExec(customers) → ShuffleWriterExec(Hash(id))
+Stage 3: ShuffleReaderExec + ShuffleReaderExec
+         → HashJoinExec(customer_id = id)
+         → AggregateExec(GROUP BY name, SUM(amount))
+         → ShuffleWriterExec(результат)
+```
+
+Stage 1 и Stage 2 не зависят друг от друга — scheduler запускает их параллельно. Stage 3 ждёт завершения обоих.
+
+### Протокол планирования задач
+
+Каждый query stage содержит N задач (по числу партиций). Scheduler сериализует физический план stage в protobuf и отправляет executor-у:
+
+```
+-- Scheduler → Executor (gRPC)
+TaskDefinition {
+    task_id: 1,
+    job_id: "job-1234",
+    stage_id: 1,
+    partition_id: 0,
+    plan: <protobuf PhysicalPlanNode>,
+    session_config: <SessionConfig>,
+}
+```
+
+Executor десериализует protobuf в DataFusion `ExecutionPlan`, выполняет его и записывает результат как Arrow IPC файл.
+
+## Executor
+
+Executor — рабочий процесс, выполняющий задачи. Каждый executor — отдельный процесс с полноценным DataFusion runtime.
+
+### Цикл работы
+
+1. **Регистрация.** Executor подключается к scheduler и сообщает свои ресурсы (CPU, память)
+2. **Получение задач.** Executor запрашивает (pull) или получает (push) задачи от scheduler
+3. **Выполнение.** Задача — это DataFusion `ExecutionPlan` для одной партиции одного stage. Executor выполняет его параллельно для нескольких партиций
+4. **Запись shuffle.** Результат записывается как Arrow IPC файл на локальный диск
+5. **Отчёт.** Executor сообщает scheduler о завершении задачи и расположении shuffle-файлов
+
+### Arrow IPC shuffle
+
+Данные между stage передаются через Arrow IPC — бинарный формат Arrow, сохраняющий columnar layout без сериализации/десериализации:
+
+<DiagramContainer title="Arrow IPC shuffle между stage" className="my-6">
+  <FlowColumn className="gap-3 text-sm">
+    <FlowRow className="gap-3 justify-center">
+      <FlowNode className="bg-amber-950/60 text-xs p-2">Stage 1, partition 0<br/>→ Arrow IPC файл</FlowNode>
+      <FlowNode className="bg-amber-950/60 text-xs p-2">Stage 1, partition 1<br/>→ Arrow IPC файл</FlowNode>
+      <FlowNode className="bg-amber-950/60 text-xs p-2">Stage 1, partition 2<br/>→ Arrow IPC файл</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" label="сеть (executor → executor)" />
+    <FlowRow className="gap-3 justify-center">
+      <FlowNode className="bg-emerald-950/60 text-xs p-2">Stage 2, partition 0<br/>ShuffleReaderExec</FlowNode>
+      <FlowNode className="bg-emerald-950/60 text-xs p-2">Stage 2, partition 1<br/>ShuffleReaderExec</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+Каждый executor stage 1 записывает N Arrow IPC файлов (по одному на каждую целевую партицию). Executor stage 2 читает файлы со всех executor-ов stage 1, собирая данные для своей партиции. Поскольку Arrow IPC сохраняет columnar формат — десериализация сводится к маппингу буферов, без построчного декодирования.
+
+## Query stages подробно
+
+Разбивка на query stages — ключевое отличие распределённого от однопроцессного выполнения. В DataFusion `EnforceDistribution` вставляет `RepartitionExec` для co-location данных. Ballista заменяет каждый `RepartitionExec` парой `ShuffleWriterExec` / `ShuffleReaderExec`:
+
+```
+-- DataFusion (однопроцессный план)
+HashJoinExec
+├── RepartitionExec: Hash([customer_id], 16)
+│   └── ParquetExec: orders
+└── RepartitionExec: Hash([id], 16)
+    └── ParquetExec: customers
+
+-- Ballista (распределённый план)
+HashJoinExec
+├── ShuffleReaderExec: [stage 1, partitions 0..16]
+└── ShuffleReaderExec: [stage 2, partitions 0..16]
+
+Stage 1: ParquetExec(orders) → ShuffleWriterExec(Hash(customer_id), 16)
+Stage 2: ParquetExec(customers) → ShuffleWriterExec(Hash(id), 16)
+```
+
+Каждый `ShuffleWriterExec` вычисляет хеш-партицию для каждой строки и записывает Arrow IPC файл для каждой целевой партиции. `ShuffleReaderExec` собирает файлы от всех writer-ов для своей партиции.
+
+## Клиентские интерфейсы
+
+Ballista предоставляет несколько способов отправки запросов:
+
+### Rust SessionContext
+
+Основной интерфейс — стандартный DataFusion `SessionContext`. С Ballista 43.0.0 устаревший `BallistaContext` заменён на расширения `SessionContext`:
+
+```rust
+use datafusion::prelude::SessionContext;
+
+// Подключение к кластеру
+let ctx = SessionContext::remote("df://scheduler-host:50050").await?;
+
+// API идентичен однопроцессному DataFusion
+ctx.register_parquet("orders", "s3://bucket/orders/").await?;
+let df = ctx.sql("SELECT count(*) FROM orders").await?;
+df.show().await?;
+```
+
+### Flight SQL и JDBC
+
+Ballista scheduler реализует Flight SQL протокол. Любой Flight SQL-совместимый клиент (включая JDBC-драйвер Arrow Flight SQL) может подключиться:
+
+```sql
+-- JDBC connection string
+jdbc:arrow-flight-sql://scheduler-host:50050
+
+-- После подключения — стандартный SQL
+SELECT c.name, SUM(o.amount)
+FROM orders o
+JOIN customers c ON o.customer_id = c.id
+GROUP BY c.name;
+```
+
+Это позволяет подключить BI-инструменты (Tableau, Superset) к кластеру Ballista без специализированных драйверов.
+
+### PyBallista
+
+Python-клиент для Ballista:
+
+```python
+from pyballista import BallistaBuilder
+
+# Подключение к кластеру
+ctx = BallistaBuilder() \
+    .remote("df://scheduler-host:50050") \
+    .build()
+
+# DataFrame API
+df = ctx.sql("SELECT * FROM orders WHERE amount > 100")
+result = df.collect()
+```
+
+## Версионирование и совместимость
+
+Ballista 43.0.0 синхронизировала нумерацию версий с DataFusion. Однако это не означает полную совместимость:
+
+- Ballista 43.0.0 базируется на DataFusion ~43.x
+- Текущая DataFusion — версия 52.x
+- Сообщество работает над сокращением разрыва, но не все API DataFusion 52.x доступны в Ballista
+
+Для production-использования проверяйте совместимость конкретной версии Ballista с нужными вам возможностями DataFusion.
+
+## Ключевые выводы
+
+- Ballista следует архитектуре scheduler/executor: централизованный scheduler координирует распределённое выполнение, executor-ы выполняют задачи
+- Scheduler строит Execution Graph — DAG query stages, разрезая план по pipeline breakers (`RepartitionExec`)
+- Каждый query stage — независимая единица: executor получает сериализованный (protobuf) физический план и выполняет его как обычный DataFusion `ExecutionPlan`
+- Shuffle между stages использует Arrow IPC — zero-copy columnar формат, минимизирующий overhead сериализации
+- Клиенты: Rust `SessionContext`, PyBallista, Flight SQL/JDBC — единый API для подключения к кластеру
+- Ballista 43.0.0 выровняла нумерацию с DataFusion, но сохраняется разрыв совместимости (~43.x vs 52.x)

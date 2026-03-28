@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "06-query-optimization/02-logical-optimization-rules",
+  "moduleId": "06-query-optimization",
+  "_meta": { "idPrefix": "df-m06-02" },
+  "questions": [
+    {
+      "id": "df-m06-02-q1",
+      "type": "multiple-choice",
+      "question": "PushDownFilter разделяет конъюнктивный предикат WHERE c.region = 'EU' AND o.amount > 100 при JOIN. Что происходит с каждой частью?",
+      "options": [
+        { "id": "a", "text": "c.region = 'EU' спускается к scan таблицы customers, o.amount > 100 — к scan таблицы orders. Каждый источник читает меньше данных" },
+        { "id": "b", "text": "Оба предиката остаются над JOIN — PushDownFilter не работает с AND" },
+        { "id": "c", "text": "Весь предикат спускается к левой стороне JOIN" },
+        { "id": "d", "text": "Предикаты переносятся в ON-условие JOIN вместо WHERE" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "PushDownFilter умеет разделять конъюнкции (AND): каждый предикат привязывается к таблице по используемым колонкам. c.region = 'EU' использует только колонки customers — спускается туда. o.amount > 100 — только orders. Дизъюнкции (OR) с колонками из разных таблиц спустить нельзя.",
+      "bloomLevel": "applied",
+      "studyHint": "AND → разделяется по таблицам. OR с колонками разных таблиц → остаётся на месте."
+    },
+    {
+      "id": "df-m06-02-q2",
+      "type": "multiple-choice",
+      "question": "OptimizeProjections обнаружил, что запрос SELECT name FROM users WHERE age > 25 использует только 2 из 5 колонок. Какой эффект для Parquet-источника?",
+      "options": [
+        { "id": "a", "text": "Три column chunk физически не читаются с диска — Parquet поддерживает чтение отдельных колонок" },
+        { "id": "b", "text": "Все 5 колонок читаются, но 3 отбрасываются в памяти" },
+        { "id": "c", "text": "Parquet не поддерживает projection pushdown — всегда читаются все колонки" },
+        { "id": "d", "text": "Эффекта нет — OptimizeProjections работает только с CSV-источниками" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Parquet — columnar-формат, данные каждой колонки хранятся отдельно. Projection pushdown позволяет физически не читать column chunks для ненужных колонок (id, email, created_at). Это сокращает I/O и объём данных в памяти.",
+      "bloomLevel": "applied",
+      "studyHint": "Parquet + projection pushdown = физическое сокращение I/O. Columnar-формат позволяет читать только нужные колонки."
+    },
+    {
+      "id": "df-m06-02-q3",
+      "type": "multiple-choice",
+      "question": "CommonSubexprEliminate находит выражение revenue - cost, используемое дважды в SELECT. Почему CSE не устраняет повторный вызов random()?",
+      "options": [
+        { "id": "a", "text": "random() имеет Volatility::Volatile — каждый вызов может вернуть разный результат, устранение изменило бы семантику" },
+        { "id": "b", "text": "random() не является арифметическим выражением" },
+        { "id": "c", "text": "CSE работает только с подвыражениями типа Float64" },
+        { "id": "d", "text": "CSE всегда устраняет все повторы — random() не исключение" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "CSE работает только с детерминированными выражениями (Volatility::Immutable). revenue - cost с Immutable-колонками безопасно вычислить один раз. random() с Volatile должна возвращать новое значение при каждом вызове — устранение дубликата дало бы одинаковые значения вместо разных.",
+      "bloomLevel": "analytical",
+      "studyHint": "CSE + Volatile = нет устранения. Volatility защищает семантику: Immutable можно кэшировать, Volatile — никогда."
+    },
+    {
+      "id": "df-m06-02-q4",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT * FROM t WHERE 1 = 0 после прохода EliminateFilter и PropagateEmptyRelation. Что останется в плане?",
+      "options": [
+        { "id": "a", "text": "EmptyRelation: rows=0 — EliminateFilter заменяет WHERE false на EmptyRelation, таблица не читается вообще" },
+        { "id": "b", "text": "TableScan: t без фильтра — EliminateFilter удаляет бессмысленный фильтр" },
+        { "id": "c", "text": "Filter: false → TableScan: t — фильтр остаётся для корректности" },
+        { "id": "d", "text": "Оптимизатор вернёт ошибку — запрос с WHERE false считается некорректным" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SimplifyExpressions вычисляет 1 = 0 → false. EliminateFilter видит WHERE false и заменяет на EmptyRelation. PropagateEmptyRelation может далее свернуть родительские узлы. Итог: пустой результат без обращения к источнику данных.",
+      "bloomLevel": "applied",
+      "studyHint": "WHERE false → EmptyRelation. Каскад: SimplifyExpressions → EliminateFilter → PropagateEmptyRelation."
+    },
+    {
+      "id": "df-m06-02-q5",
+      "type": "multiple-choice",
+      "question": "INNER JOIN с EmptyRelation на одной стороне обрабатывается PropagateEmptyRelation. Почему для LEFT JOIN поведение другое?",
+      "options": [
+        { "id": "a", "text": "LEFT JOIN с пустой правой стороной всё равно возвращает все строки левой стороны с NULL-заполнением правых колонок — его нельзя заменить на EmptyRelation" },
+        { "id": "b", "text": "PropagateEmptyRelation не поддерживает LEFT JOIN — это ограничение реализации" },
+        { "id": "c", "text": "LEFT JOIN с пустой правой стороной тоже заменяется на EmptyRelation" },
+        { "id": "d", "text": "LEFT JOIN невозможен с EmptyRelation — оптимизатор вернёт ошибку" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "INNER JOIN с пустой стороной всегда пуст (нет совпадений). LEFT JOIN с пустой правой стороной возвращает все строки левой стороны, заполняя правые колонки NULL. PropagateEmptyRelation корректно различает типы JOIN: INNER → EmptyRelation, LEFT с пустой правой → оставить левую сторону.",
+      "bloomLevel": "analytical",
+      "studyHint": "INNER + Empty = Empty. LEFT + Empty right = все строки левой с NULL. Тип JOIN определяет поведение PropagateEmptyRelation."
+    }
+  ]
+}

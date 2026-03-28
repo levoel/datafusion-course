@@ -1,0 +1,249 @@
+---
+title: "Архитектура оптимизатора"
+description: "Трёхфазный конвейер оптимизации DataFusion: AnalyzerRules, OptimizerRules, PhysicalOptimizerRules, multi-pass выполнение и observer callback"
+order: 1
+difficulty: "advanced"
+estimatedTime: 18
+topics: ["Optimizer", "AnalyzerRule", "OptimizerRule", "PhysicalOptimizerRule", "Transformed", "OptimizerConfig", "Observer"]
+---
+
+# Архитектура оптимизатора
+
+В модуле 03 мы научились читать планы через `EXPLAIN` — видеть, какие операторы DataFusion выбрал и в каком порядке. Теперь разберём, как оптимизатор строит эти планы: из чего состоит конвейер оптимизации, как правила применяются к логическому и физическому планам, и как наблюдать за каждым шагом трансформации.
+
+## Три фазы оптимизации
+
+Путь запроса от SQL-текста до физического плана проходит три фазы оптимизации. Каждая фаза — цепочка правил, применяемых к определённому представлению плана.
+
+<DiagramContainer title="Трёхфазный конвейер оптимизации" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input">SQL / DataFrame API</FlowNode>
+    <Arrow direction="down" label="Парсинг → Unresolved LogicalPlan" />
+    <FlowNode variant="process">Фаза 1: Analyzer (AnalyzerRules)</FlowNode>
+    <Arrow direction="down" label="Resolved LogicalPlan" />
+    <FlowNode variant="process">Фаза 2: Logical Optimizer (OptimizerRules)</FlowNode>
+    <Arrow direction="down" label="Optimized LogicalPlan" />
+    <FlowNode variant="process">Фаза 3: Physical Optimizer (PhysicalOptimizerRules)</FlowNode>
+    <Arrow direction="down" label="Optimized ExecutionPlan" />
+    <FlowNode variant="output">Выполнение (RecordBatch stream)</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+### Фаза 1: Analyzer
+
+Analyzer работает с «сырым» логическим планом сразу после парсинга SQL. На этом этапе план ещё не полностью разрешён: типы могут быть неизвестны, неявные приведения не вставлены, wildcard `*` не развёрнут.
+
+Задачи Analyzer:
+- **Type coercion** — вставка неявных приведений типов (`Int32 + Float64` → оба к `Float64`)
+- **Разрешение `*`** — замена `SELECT *` на конкретный список колонок
+- **Inline TableAlias** — подстановка алиасов таблиц
+- **Семантическая валидация** — проверка существования колонок, корректности агрегаций
+
+Каждое правило реализует trait `AnalyzerRule`:
+
+```rust
+pub trait AnalyzerRule {
+    fn name(&self) -> &str;
+    fn analyze(
+        &self,
+        plan: LogicalPlan,
+        config: &ConfigOptions,
+    ) -> Result<LogicalPlan>;
+}
+```
+
+### Фаза 2: Logical Optimizer
+
+После анализа план полностью разрешён — типы известны, ссылки валидны. Logical Optimizer трансформирует план, сохраняя семантику, но улучшая эффективность: спускает фильтры ближе к источнику, удаляет ненужные проекции, упрощает выражения.
+
+Каждое правило реализует trait `OptimizerRule`:
+
+```rust
+pub trait OptimizerRule: Send + Sync {
+    fn name(&self) -> &str;
+
+    fn rewrite(
+        &self,
+        plan: LogicalPlan,
+        config: &dyn OptimizerConfig,
+    ) -> Result<Transformed<LogicalPlan>>;
+}
+```
+
+Ключевое отличие от AnalyzerRule: метод `rewrite` принимает план **по значению** (ownership) и возвращает `Transformed<LogicalPlan>`. Enum `Transformed` сигнализирует оптимизатору, было ли изменение:
+
+```rust
+pub enum Transformed<T> {
+    /// Данные изменены — оптимизатор может повторить проход
+    yes(T),
+    /// Данные не изменены — пропускаем повторный проход
+    no(T),
+}
+```
+
+### Фаза 3: Physical Optimizer
+
+Physical Optimizer работает с `ExecutionPlan` — конкретными операторами (HashJoinExec, SortExec, ParquetExec). Его задачи:
+- Выбор алгоритма соединения (Hash vs SortMerge vs NestedLoop)
+- Вставка операторов перераспределения (`RepartitionExec`)
+- Вставка операторов сортировки (`SortExec`) где требуется порядок
+- Оптимизация pipeline (объединение последовательных проекций)
+
+```rust
+pub trait PhysicalOptimizerRule: Send + Sync {
+    fn name(&self) -> &str;
+
+    fn optimize(
+        &self,
+        plan: Arc<dyn ExecutionPlan>,
+        config: &ConfigOptions,
+    ) -> Result<Arc<dyn ExecutionPlan>>;
+}
+```
+
+## Multi-pass выполнение
+
+Logical Optimizer не применяет каждое правило однократно. Он выполняет несколько проходов (passes) по всем правилам, пока план не стабилизируется или не будет достигнут лимит.
+
+```rust
+// Конфигурация максимального числа проходов
+let config = OptimizerContext::new()
+    .with_max_passes(3);  // По умолчанию: 3
+
+let optimizer = Optimizer::with_rules(rules);
+let optimized = optimizer.optimize(plan, &config, observe)?;
+```
+
+Логика multi-pass:
+1. Применить все правила по порядку
+2. Если хотя бы одно правило вернуло `Transformed::yes` — повторить проход
+3. Если все правила вернули `Transformed::no` или достигнут `max_passes` — остановиться
+
+<Callout type="note">
+Три прохода по умолчанию достаточны для большинства планов. Правила взаимно зависимы: `PushDownFilter` может создать новые возможности для `SimplifyExpressions`, которое в свою очередь позволит `EliminateFilter` удалить тривиальный фильтр `WHERE true`. Multi-pass гарантирует, что такие цепочки отработают полностью.
+</Callout>
+
+## Observer callback
+
+DataFusion предоставляет механизм observer для наблюдения за работой оптимизатора. Callback вызывается после каждого применения правила — это бесценный инструмент для отладки трансформаций.
+
+```rust
+use datafusion::optimizer::{Optimizer, OptimizerContext};
+use datafusion::logical_expr::LogicalPlan;
+use datafusion::common::Result;
+
+fn observe(plan: &LogicalPlan, rule: &dyn OptimizerRule) {
+    println!(
+        "After rule '{}': \n{}",
+        rule.name(),
+        plan.display_indent()
+    );
+}
+
+let optimizer = Optimizer::with_rules(rules);
+let config = OptimizerContext::new();
+
+// optimize с observer callback
+let optimized = optimizer.optimize(
+    logical_plan,
+    &config,
+    observe,  // fn(&LogicalPlan, &dyn OptimizerRule)
+)?;
+```
+
+Пример вывода observer при оптимизации `SELECT * FROM t WHERE a > 5 AND true`:
+
+```
+After rule 'simplify_expressions':
+  Filter: t.a > Int64(5)          -- AND true убрано
+    TableScan: t
+
+After rule 'push_down_filter':
+  TableScan: t, filter=[a > 5]   -- фильтр спущен в scan
+```
+
+<Callout type="tip">
+Observer — лучший способ понять, почему оптимизатор принял то или иное решение. Вместо сравнения начального и конечного планов, вы видите каждый шаг трансформации с именем правила.
+</Callout>
+
+## Порядок правил
+
+Порядок правил в цепочке имеет значение. DataFusion определяет порядок встроенных правил так, чтобы максимизировать возможности каждого следующего правила:
+
+```
+1. SimplifyExpressions     — упростить выражения (WHERE true AND x > 5 → WHERE x > 5)
+2. UnwrapCastInComparison  — убрать лишние CAST
+3. ReplaceDistinctWithAggregate — DISTINCT → GROUP BY
+4. DecorrelatePredicateSubquery — декорреляция подзапросов
+5. ScalarSubqueryToJoin    — скалярный подзапрос → JOIN
+6. ExtractEquijoinPredicate — выделить equi-join предикаты
+7. PushDownFilter          — спустить фильтры к источнику
+8. OptimizeProjections     — убрать ненужные проекции
+9. CommonSubexprEliminate  — устранить повторные вычисления
+10. EliminateLimit         — убрать LIMIT без эффекта
+```
+
+<Callout type="warning">
+При добавлении кастомных правил важно правильно выбрать позицию в цепочке. Правило, зависящее от упрощённых выражений, должно идти после `SimplifyExpressions`. Правило, работающее с фильтрами, — после `PushDownFilter`, чтобы фильтры уже были на месте.
+</Callout>
+
+## Создание Optimizer вручную
+
+Для тестирования или нестандартных сценариев можно создать оптимизатор с произвольным набором правил:
+
+```rust
+use datafusion::optimizer::{Optimizer, OptimizerContext, OptimizerRule};
+use std::sync::Arc;
+
+// Только два правила — для тестирования
+let optimizer = Optimizer::with_rules(vec![
+    Arc::new(MyCustomRule::default()),
+    Arc::new(AnotherRule::default()),
+]);
+
+let config = OptimizerContext::new()
+    .with_max_passes(5)      // Больше проходов для сложных планов
+    .with_skip_failing_rules(true); // Не останавливаться при ошибке правила
+
+let result = optimizer.optimize(plan, &config, |_, _| {})?;
+```
+
+## Интеграция через SessionStateBuilder
+
+В production правила обычно добавляются через `SessionStateBuilder`, который подключает их в соответствующую фазу конвейера:
+
+```rust
+use datafusion::execution::SessionStateBuilder;
+use datafusion::prelude::SessionContext;
+use std::sync::Arc;
+
+let state = SessionStateBuilder::new()
+    // Добавить кастомное правило анализа
+    .with_analyzer_rules(vec![
+        Arc::new(MyAnalyzerRule::default()),
+    ])
+    // Добавить кастомное правило логической оптимизации
+    .with_optimizer_rules(vec![
+        Arc::new(MyOptimizerRule::default()),
+    ])
+    // Добавить кастомное правило физической оптимизации
+    .with_physical_optimizer_rules(vec![
+        Arc::new(MyPhysicalRule::default()),
+    ])
+    .build();
+
+let ctx = SessionContext::new_with_state(state);
+```
+
+<Callout type="note">
+`SessionStateBuilder` заменяет устаревшие паттерны `SessionState::new()` и `SessionConfig::with_*`. Он позволяет полностью контролировать набор правил для каждой фазы конвейера.
+</Callout>
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Оптимизация проходит три фазы: Analyzer (разрешение типов) → Logical Optimizer (логические трансформации) → Physical Optimizer (выбор алгоритмов)
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `OptimizerRule::rewrite()` возвращает `Transformed<LogicalPlan>` — `yes` или `no` сигнализирует, было ли изменение
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Multi-pass: правила применяются повторно (до `max_passes`), пока план не стабилизируется
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Observer callback показывает план после каждого правила — ключевой инструмент отладки
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Порядок правил важен — каждое правило создаёт возможности для следующих
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> `SessionStateBuilder` — рекомендуемый способ регистрации кастомных правил на всех уровнях

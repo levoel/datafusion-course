@@ -1,0 +1,190 @@
+---
+title: "Основы распределённого выполнения"
+description: "Ограничения одного узла, партиционная модель DataFusion, target_partitions и RepartitionExec, pipeline breakers как точки распределения, переход от потоков к сети"
+order: 1
+difficulty: "advanced"
+estimatedTime: 15
+topics: ["distributed execution", "target_partitions", "RepartitionExec", "pipeline breakers", "partitioning", "shuffle"]
+---
+
+# Основы распределённого выполнения
+
+DataFusion спроектирован как встраиваемый query engine для одного процесса. Но данные растут — один узел упирается в RAM, CPU, пропускную способность диска. В этом модуле мы разберём три подхода к распределению DataFusion-запросов: Ballista, DataFusion Ray и кастомные решения. Начнём с фундамента: почему нужна распределённость и как партиционная модель DataFusion создаёт для неё естественные точки.
+
+## Когда одного узла недостаточно
+
+Однопроцессный DataFusion с `target_partitions = 16` параллельно обрабатывает данные в 16 потоках. Это покрывает большинство аналитических сценариев — TPC-H SF100 (100 GB) выполняется за секунды. Но три класса задач требуют нескольких узлов:
+
+**Объём данных превышает память одного узла.** DataFusion поддерживает spill-to-disk для сортировки и hash join, но при объёмах в терабайты один SSD становится узким местом. Параллельное чтение с нескольких узлов даёт линейный прирост пропускной способности I/O.
+
+**Вычислительная сложность не помещается в допустимое время.** Сложные аналитические запросы (multi-way join, оконные функции по миллиардам строк) могут занимать минуты на одном узле. Распределение по N узлам теоретически сокращает время в N раз, на практике — с учётом overhead сети и координации.
+
+**Данные изначально распределены.** Архитектура с шардированием (InfluxDB IOx, GreptimeDB) хранит данные на разных узлах. Перемещение всего к одному движку дороже, чем выполнение фрагментов плана локально и объединение результатов.
+
+## Партиционная модель DataFusion
+
+DataFusion разбивает выполнение на **партиции** — независимые потоки данных, обрабатываемые параллельно внутри одного процесса. Эту модель управляют два механизма.
+
+### target_partitions
+
+Параметр `target_partitions` определяет степень параллелизма:
+
+```rust
+use datafusion::prelude::SessionContext;
+
+let ctx = SessionContext::new();
+
+// По умолчанию — количество CPU-ядер
+ctx.state().config().target_partitions(); // e.g. 16
+
+// Можно задать вручную
+let config = SessionConfig::new()
+    .with_target_partitions(32);
+let ctx = SessionContext::new_with_config(config);
+```
+
+Каждый `ExecutionPlan` сообщает, сколько партиций он производит, через метод `output_partitioning()`. Физический оптимизатор вставляет `RepartitionExec`, когда требуется изменить распределение данных.
+
+### RepartitionExec
+
+`RepartitionExec` перераспределяет данные между партициями. Три стратегии:
+
+<DiagramContainer title="Стратегии RepartitionExec" className="my-6">
+  <Grid columns={3} className="gap-3 text-sm">
+    <DataBox label="RoundRobin" className="border-blue-500/30">
+      <div className="text-xs"><b>Назначение:</b> равномерная загрузка</div>
+      <div className="text-xs mt-1">Строки распределяются по партициям циклически</div>
+      <div className="text-xs mt-1 font-mono">RoundRobinBatch(n)</div>
+    </DataBox>
+    <DataBox label="Hash" className="border-emerald-500/30">
+      <div className="text-xs"><b>Назначение:</b> co-location для join/group by</div>
+      <div className="text-xs mt-1">Строки с одинаковым ключом попадают в одну партицию</div>
+      <div className="text-xs mt-1 font-mono">Hash([col], n)</div>
+    </DataBox>
+    <DataBox label="UnknownPartitioning" className="border-amber-500/30">
+      <div className="text-xs"><b>Назначение:</b> формальная обёртка</div>
+      <div className="text-xs mt-1">Количество партиций известно, распределение — нет</div>
+      <div className="text-xs mt-1 font-mono">UnknownPartitioning(n)</div>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+В однопроцессном DataFusion `RepartitionExec` перемещает `RecordBatch` между потоками через crossbeam-каналы. Это быстро — данные остаются в памяти одного процесса.
+
+## Pipeline breakers как точки распределения
+
+Физический оптимизатор DataFusion вставляет `RepartitionExec` через правило `EnforceDistribution` (мы рассматривали его в [М06 урок 5](/course/06-query-optimization/05-analyzer-and-physical-rules)). Эти точки — **pipeline breakers** — прерывают потоковое выполнение: данные из одной партиции должны быть перенаправлены в несколько целевых партиций по ключу.
+
+```
+-- До EnforceDistribution
+HashJoinExec: join_expr=customer_id
+  ParquetExec: orders.parquet (8 партиций)
+  ParquetExec: customers.parquet (4 партиции)
+
+-- После EnforceDistribution
+HashJoinExec: join_expr=customer_id
+  RepartitionExec: Hash([customer_id], 16)
+    ParquetExec: orders.parquet (8 партиций)
+  RepartitionExec: Hash([id], 16)
+    ParquetExec: customers.parquet (4 партиции)
+```
+
+Каждый `RepartitionExec` в распределённой системе становится **точкой сетевого shuffle** — вместо перемещения между потоками данные отправляются по сети между узлами.
+
+<DiagramContainer title="Однопроцессное vs распределённое перераспределение" className="my-6">
+  <Grid columns={2} className="gap-4 text-sm">
+    <DataBox label="Один процесс (DataFusion)" className="border-blue-500/30">
+      <FlowColumn className="gap-1 p-2">
+        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 1 (партиция 0)</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 2 (партиция 1)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode className="bg-blue-700/40 text-xs p-1 border border-blue-400/30">RepartitionExec (crossbeam channels)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 3 (партиция 0')</FlowNode>
+        <FlowNode className="bg-blue-950/60 text-xs p-1">Поток 4 (партиция 1')</FlowNode>
+      </FlowColumn>
+    </DataBox>
+    <DataBox label="Распределённая система" className="border-emerald-500/30">
+      <FlowColumn className="gap-1 p-2">
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor A (партиция 0)</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor B (партиция 1)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode className="bg-emerald-700/40 text-xs p-1 border border-emerald-400/30">Shuffle (Arrow IPC по сети)</FlowNode>
+        <Arrow direction="down" />
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor C (партиция 0')</FlowNode>
+        <FlowNode className="bg-emerald-950/60 text-xs p-1">Executor D (партиция 1')</FlowNode>
+      </FlowColumn>
+    </DataBox>
+  </Grid>
+</DiagramContainer>
+
+## От потоков к сети: что меняется
+
+Переход от однопроцессного к распределённому выполнению затрагивает три аспекта:
+
+### 1. Координация
+
+В однопроцессном DataFusion координация тривиальна — один `SessionContext` управляет всеми потоками. В распределённой системе нужен **планировщик** (scheduler): он разбивает план на этапы (query stages), распределяет задачи по узлам и отслеживает прогресс.
+
+### 2. Shuffle
+
+`RepartitionExec` в DataFusion перемещает `RecordBatch` между потоками через каналы в памяти. В распределённой системе данные сериализуются (обычно в Arrow IPC), передаются по сети и десериализуются. Это на порядки медленнее — сеть становится главным bottleneck.
+
+### 3. Отказоустойчивость
+
+Поток внутри процесса не «теряется» — если произошла ошибка, весь процесс падает. В распределённой системе отдельный executor может упасть, и планировщик должен решить: перезапустить задачу на другом узле или вернуть ошибку.
+
+<DiagramContainer title="Компоненты распределённого выполнения" className="my-6">
+  <FlowRow className="gap-4 text-sm items-start">
+    <DataBox label="Координация" className="border-blue-500/30 flex-1">
+      <div className="text-xs"><b>Однопроцессное:</b> SessionContext</div>
+      <div className="text-xs mt-1"><b>Распределённое:</b> Scheduler (Ballista) / Driver (Ray)</div>
+    </DataBox>
+    <DataBox label="Shuffle" className="border-emerald-500/30 flex-1">
+      <div className="text-xs"><b>Однопроцессное:</b> crossbeam channels</div>
+      <div className="text-xs mt-1"><b>Распределённое:</b> Arrow IPC / Flight / файлы</div>
+    </DataBox>
+    <DataBox label="Отказоустойчивость" className="border-amber-500/30 flex-1">
+      <div className="text-xs"><b>Однопроцессное:</b> весь процесс или ничего</div>
+      <div className="text-xs mt-1"><b>Распределённое:</b> retry, reschedule, checkpoint</div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+## Query stages: единица распределения
+
+Распределённые системы на основе DataFusion (Ballista, DataFusion Ray) разбивают физический план на **query stages** — фрагменты плана между pipeline breakers. Каждый query stage может выполняться независимо, как только доступны его входные данные.
+
+```
+-- Физический план (HashJoin с двумя источниками)
+HashJoinExec: customer_id = id
+├── RepartitionExec: Hash([customer_id], N)  ← граница stage
+│   └── ParquetExec: orders.parquet
+└── RepartitionExec: Hash([id], N)           ← граница stage
+    └── ParquetExec: customers.parquet
+
+-- Разбивка на query stages
+Stage 1: ParquetExec(orders) → ShuffleWriter(customer_id)
+Stage 2: ParquetExec(customers) → ShuffleWriter(id)
+Stage 3: ShuffleReader(orders) + ShuffleReader(customers) → HashJoinExec
+```
+
+Stage 1 и Stage 2 выполняются параллельно на разных executor-ах. Stage 3 начинается только после завершения обоих shuffle. Эта модель — DAG зависимостей между stage — лежит в основе и Ballista, и DataFusion Ray.
+
+## Что дальше
+
+В следующих уроках мы разберём три подхода к распределению DataFusion:
+
+- **Ballista** (уроки 2–3) — Rust-нативная система с архитектурой scheduler/executor, gRPC API и Arrow IPC shuffle
+- **DataFusion Ray** (урок 4) — Python-first подход, использующий Ray для распределения query stages
+- **Кастомные решения** (урок 5) — как InfluxDB IOx, GreptimeDB и другие строят собственное распределение поверх DataFusion как библиотеки
+
+Все три подхода используют одну и ту же концепцию: pipeline breakers определяют границы stage, а DataFusion ExecutionPlan — единицу выполнения внутри каждого stage.
+
+## Ключевые выводы
+
+- DataFusion — однопроцессный query engine. Распределение требует внешней координации, сетевого shuffle и отказоустойчивости
+- Партиционная модель DataFusion (`target_partitions`, `RepartitionExec`, `output_partitioning`) создаёт естественные точки для распределения
+- `EnforceDistribution` вставляет `RepartitionExec` — в распределённых системах эти точки становятся сетевым shuffle между executor-ами
+- Физический план разбивается на query stages между pipeline breakers. Каждый stage — независимая единица выполнения
+- Три подхода к распределению: Ballista (Rust-нативный, scheduler/executor), DataFusion Ray (Python + Ray), кастомные решения (DataFusion как библиотека)

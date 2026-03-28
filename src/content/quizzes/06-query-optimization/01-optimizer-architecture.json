@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "06-query-optimization/01-optimizer-architecture",
+  "moduleId": "06-query-optimization",
+  "_meta": { "idPrefix": "df-m06-01" },
+  "questions": [
+    {
+      "id": "df-m06-01-q1",
+      "type": "multiple-choice",
+      "question": "Какой порядок фаз оптимизации проходит запрос от SQL-текста до выполнения в DataFusion?",
+      "options": [
+        { "id": "a", "text": "Analyzer (AnalyzerRules) → Logical Optimizer (OptimizerRules) → Physical Optimizer (PhysicalOptimizerRules)" },
+        { "id": "b", "text": "Physical Optimizer → Logical Optimizer → Analyzer" },
+        { "id": "c", "text": "Logical Optimizer → Analyzer → Physical Optimizer" },
+        { "id": "d", "text": "Analyzer → Physical Optimizer → Logical Optimizer" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion использует трёхфазный конвейер: Analyzer разрешает типы и валидирует семантику на «сырым» логическом плане, Logical Optimizer трансформирует разрешённый план для эффективности, Physical Optimizer работает с конкретными ExecutionPlan-операторами (выбор алгоритмов, вставка Repartition/Sort).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Три фазы: A→L→P. Analyzer готовит план, Logical оптимизирует логику, Physical выбирает алгоритмы."
+    },
+    {
+      "id": "df-m06-01-q2",
+      "type": "multiple-choice",
+      "question": "Метод OptimizerRule::rewrite() возвращает Transformed<LogicalPlan>. Какое значение Transformed::yes(plan) сигнализирует оптимизатору?",
+      "options": [
+        { "id": "a", "text": "План был изменён — оптимизатор может запустить повторный проход по всем правилам" },
+        { "id": "b", "text": "План валиден — оптимизатор может завершить работу" },
+        { "id": "c", "text": "План содержит ошибку — оптимизатор должен откатить изменение" },
+        { "id": "d", "text": "Правило применилось частично — нужен ещё один проход только этого правила" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Transformed::yes означает, что правило изменило план. Оптимизатор использует этот сигнал для multi-pass: если хотя бы одно правило вернуло yes в текущем проходе, все правила запускаются заново. Transformed::no означает отсутствие изменений и позволяет пропустить повторный проход.",
+      "bloomLevel": "conceptual",
+      "studyHint": "yes = изменено → повторный проход. no = без изменений → пропуск. Это движет multi-pass логикой."
+    },
+    {
+      "id": "df-m06-01-q3",
+      "type": "multiple-choice",
+      "question": "Logical Optimizer по умолчанию выполняет максимум 3 прохода. Что произойдёт, если на третьем проходе одно из правил вернёт Transformed::yes?",
+      "options": [
+        { "id": "a", "text": "Оптимизация остановится — лимит max_passes достигнут, даже если план не стабилизирован" },
+        { "id": "b", "text": "Оптимизатор добавит четвёртый проход, поскольку план ещё не стабилен" },
+        { "id": "c", "text": "Оптимизатор вернёт ошибку о незавершённой оптимизации" },
+        { "id": "d", "text": "Правило, вернувшее yes, будет повторено изолированно без остальных правил" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Multi-pass останавливается по двум условиям: все правила вернули Transformed::no (стабилизация) или достигнут max_passes. Три прохода по умолчанию достаточны для большинства планов, но если план не стабилизировался — оптимизация завершается с текущим результатом. Можно увеличить через OptimizerContext::with_max_passes().",
+      "bloomLevel": "applied",
+      "studyHint": "Два стоп-условия: стабилизация (все no) или max_passes. Лимит защищает от бесконечных циклов взаимозависимых правил."
+    },
+    {
+      "id": "df-m06-01-q4",
+      "type": "multiple-choice",
+      "question": "Observer callback вызывается после каждого применения правила. Какие данные он получает?",
+      "options": [
+        { "id": "a", "text": "&LogicalPlan (текущее состояние плана) и &dyn OptimizerRule (применённое правило)" },
+        { "id": "b", "text": "Только имя правила в виде строки" },
+        { "id": "c", "text": "Diff между предыдущим и текущим планами в текстовом формате" },
+        { "id": "d", "text": "&ExecutionPlan и список метрик выполнения" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Observer имеет сигнатуру fn(&LogicalPlan, &dyn OptimizerRule). После каждого применения правила callback получает ссылку на план в текущем состоянии и ссылку на правило (для вызова name()). Это позволяет логировать трансформации: какое правило что изменило.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Observer = fn(&LogicalPlan, &dyn OptimizerRule). Логируйте rule.name() + plan.display_indent() для пошаговой отладки."
+    },
+    {
+      "id": "df-m06-01-q5",
+      "type": "multiple-choice",
+      "question": "Почему SimplifyExpressions расположено в цепочке правил раньше PushDownFilter?",
+      "options": [
+        { "id": "a", "text": "Упрощение выражений (например, WHERE true AND x > 5 → WHERE x > 5) создаёт более простые предикаты, которые PushDownFilter может эффективнее спустить к источнику" },
+        { "id": "b", "text": "PushDownFilter не работает с выражениями, содержащими литералы" },
+        { "id": "c", "text": "SimplifyExpressions требует информацию о том, какие фильтры уже спущены" },
+        { "id": "d", "text": "Порядок правил не имеет значения — multi-pass компенсирует любой порядок" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Порядок правил важен. SimplifyExpressions перед PushDownFilter означает, что тривиальные предикаты (AND true, NOT NOT x) уже устранены к моменту спуска фильтров. Хотя multi-pass может компенсировать неоптимальный порядок, правильная последовательность уменьшает количество необходимых проходов.",
+      "bloomLevel": "analytical",
+      "studyHint": "Каждое правило создаёт возможности для следующих. Simplify → PushDown: упрощённые предикаты спускаются легче."
+    }
+  ]
+}

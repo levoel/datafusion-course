@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "01-arrow-foundation/03-arrow-type-system",
+  "moduleId": "01-arrow-foundation",
+  "_meta": {
+    "idPrefix": "df-m01-03"
+  },
+  "questions": [
+    {
+      "id": "df-m01-03-q1",
+      "type": "multiple-choice",
+      "question": "Какой Arrow DataType следует использовать для хранения денежных сумм с точной арифметикой (без ошибок округления IEEE 754)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Float64 — достаточная точность для финансовых расчётов"
+        },
+        {
+          "id": "b",
+          "text": "Decimal128(precision, scale) — фиксированная точность без ошибок округления"
+        },
+        {
+          "id": "c",
+          "text": "Int64 — хранить сумму в копейках/центах"
+        },
+        {
+          "id": "d",
+          "text": "Utf8 — хранить как строку для максимальной точности"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Decimal128 обеспечивает точную арифметику без ошибок округления IEEE 754 (которые присущи Float32/Float64). DataFusion автоматически использует Decimal128 при работе с SQL-типом DECIMAL. Int64 в копейках — обходной путь, но Decimal128 — правильный инструмент для денежных сумм.",
+      "bloomLevel": "applied",
+      "studyHint": "Запомните: Float64 для измерений и координат, Decimal128 для денег и финансов."
+    },
+    {
+      "id": "df-m01-03-q2",
+      "type": "multiple-choice",
+      "question": "Чем отличается Utf8 от LargeUtf8 в Arrow?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Utf8 поддерживает только ASCII, LargeUtf8 — полный Unicode"
+        },
+        {
+          "id": "b",
+          "text": "Utf8 использует int32 offsets (макс. ~2 GB суммарно), LargeUtf8 — int64 offsets (до 2^63 байт)"
+        },
+        {
+          "id": "c",
+          "text": "LargeUtf8 автоматически сжимает длинные строки"
+        },
+        {
+          "id": "d",
+          "text": "Utf8 хранит строки по значению, LargeUtf8 — по ссылке"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Разница только в размере offset buffer: Utf8 использует int32 (максимальный суммарный размер данных ~2 GB), LargeUtf8 — int64 (до 2^63 байт). Оба типа хранят полный UTF-8. DataFusion по умолчанию работает с Utf8, LargeUtf8 нужен только для колонок с огромным суммарным объёмом текста.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Ключ — в offset buffer: int32 vs int64. Вспомните из урока 2, как offset buffer определяет границы строк."
+    },
+    {
+      "id": "df-m01-03-q3",
+      "type": "multiple-choice",
+      "question": "Какой вложенный тип Arrow представляет ассоциативный массив (key-value пары)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "List — массив пар (key, value)"
+        },
+        {
+          "id": "b",
+          "text": "Struct — именованная группа полей key и value"
+        },
+        {
+          "id": "c",
+          "text": "Map — внутренне List<Struct<key, value>> с гарантией уникальности ключей"
+        },
+        {
+          "id": "d",
+          "text": "Union — каждый элемент может быть ключом или значением"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Map в Arrow — это ассоциативный массив, внутренне реализованный как List<Struct<key, value>>. В отличие от обычного List<Struct>, Map гарантирует уникальность ключей. Struct — это именованная группа полей (аналог записи/объекта), а не key-value хранилище.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Map = List<Struct<key, value>> + уникальность ключей. Struct — фиксированные именованные поля."
+    },
+    {
+      "id": "df-m01-03-q4",
+      "type": "multiple-choice",
+      "question": "Что такое extension types в Arrow?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Новые примитивные типы, добавляемые в спецификацию Arrow с каждой версией"
+        },
+        {
+          "id": "b",
+          "text": "Пользовательская семантика поверх базовых типов без изменения byte layout — например, UUID хранится как FixedSizeBinary(16) с пометкой arrow.uuid"
+        },
+        {
+          "id": "c",
+          "text": "Типы из внешних библиотек, несовместимые с Arrow"
+        },
+        {
+          "id": "d",
+          "text": "Расширения для поддержки BLOB и CLOB типов"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Extension types добавляют семантику через metadata поля (ARROW:extension:name, ARROW:extension:metadata), не меняя byte layout. Система, не знающая о расширении, видит базовый тип и работает корректно. Система, понимающая расширение, интерпретирует данные точнее.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Обратная совместимость — ключ: extension type = metadata + базовый тип, работает даже без поддержки расширения."
+    },
+    {
+      "id": "df-m01-03-q5",
+      "type": "multiple-choice",
+      "question": "В какой Arrow DataType DataFusion преобразует SQL-тип VARCHAR при парсинге CREATE TABLE?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Binary"
+        },
+        {
+          "id": "b",
+          "text": "LargeUtf8"
+        },
+        {
+          "id": "c",
+          "text": "Utf8"
+        },
+        {
+          "id": "d",
+          "text": "FixedSizeBinary"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "DataFusion маппит SQL VARCHAR на Arrow Utf8 при парсинге запросов. Таблица соответствий SQL→Arrow: INTEGER→Int32, BIGINT→Int64, VARCHAR→Utf8, BOOLEAN→Boolean, DATE→Date32, TIMESTAMP→Timestamp(ns, tz), DECIMAL(p,s)→Decimal128(p,s).",
+      "bloomLevel": "applied",
+      "studyHint": "Запомните основные маппинги SQL→Arrow — они важны для понимания схем в DataFusion."
+    }
+  ]
+}

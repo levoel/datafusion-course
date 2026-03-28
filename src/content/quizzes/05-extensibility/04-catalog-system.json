@@ -1,0 +1,82 @@
+{
+  "lessonSlug": "05-extensibility/04-catalog-system",
+  "moduleId": "05-extensibility",
+  "_meta": { "idPrefix": "df-m05-04" },
+  "questions": [
+    {
+      "id": "df-m05-04-q1",
+      "type": "multiple-choice",
+      "question": "Какой порядок разрешения имён использует DataFusion для запроса SELECT * FROM analytics.raw.events?",
+      "options": [
+        { "id": "a", "text": "CatalogProvider 'analytics' → SchemaProvider 'raw' → TableProvider 'events'" },
+        { "id": "b", "text": "SchemaProvider 'analytics' → CatalogProvider 'raw' → TableProvider 'events'" },
+        { "id": "c", "text": "TableProvider 'analytics.raw.events' — плоское разрешение без иерархии" },
+        { "id": "d", "text": "SessionContext → TableProvider 'events' → фильтрация по schema='raw' и catalog='analytics'" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion использует трёхуровневую модель именования: каталог → схема → таблица. Запрос analytics.raw.events разрешается как: CatalogProvider с именем 'analytics' → его SchemaProvider с именем 'raw' → TableProvider с именем 'events'.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Трёхуровневая иерархия: CatalogProvider → SchemaProvider → TableProvider. Аналогично PostgreSQL: database → schema → table."
+    },
+    {
+      "id": "df-m05-04-q2",
+      "type": "multiple-choice",
+      "question": "Для каталога с тысячами таблиц загрузка всех метаданных при старте неэффективна. Какой паттерн решает эту проблему?",
+      "options": [
+        { "id": "a", "text": "Lazy loading в SchemaProvider::table() — загрузка метаданных при первом обращении к таблице с кэшированием" },
+        { "id": "b", "text": "Предзагрузка всех таблиц в фоновом потоке при создании SessionContext" },
+        { "id": "c", "text": "Ограничение числа таблиц на схему до 100 через конфигурацию" },
+        { "id": "d", "text": "Использование MemTable вместо удалённых источников для ускорения" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Метод table() в SchemaProvider асинхронный. Это позволяет реализовать lazy loading: при первом обращении к таблице загрузить метаданные из удалённого каталога и закэшировать. table_names() возвращает кэшированный список имён, обновляемый периодически.",
+      "bloomLevel": "applied",
+      "studyHint": "table() — async, значит можно делать сетевые запросы. Паттерн: кэш имён + lazy load метаданных при первом доступе."
+    },
+    {
+      "id": "df-m05-04-q3",
+      "type": "multiple-choice",
+      "question": "Какую роль играет TableProviderFactory в контексте SQL-команды CREATE EXTERNAL TABLE?",
+      "options": [
+        { "id": "a", "text": "Создаёт TableProvider на основе параметров из SQL (STORED AS, LOCATION, OPTIONS), отделяя синтаксис от реализации" },
+        { "id": "b", "text": "Валидирует SQL-синтаксис CREATE EXTERNAL TABLE на этапе парсинга" },
+        { "id": "c", "text": "Копирует внешние данные в локальное хранилище DataFusion" },
+        { "id": "d", "text": "Регистрирует новый SQL-диалект для работы с внешними источниками" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "TableProviderFactory разделяет SQL-синтаксис и реализацию. Пользователь пишет CREATE EXTERNAL TABLE ... STORED AS MYDB OPTIONS (...), а фабрика создаёт нужный TableProvider с конфигурацией из OPTIONS. Фабрика регистрируется по типу хранилища (STORED AS).",
+      "bloomLevel": "applied",
+      "studyHint": "TableProviderFactory связывает SQL-команду CREATE EXTERNAL TABLE с конкретной реализацией TableProvider. Ключ — STORED AS тип."
+    },
+    {
+      "id": "df-m05-04-q4",
+      "type": "multiple-choice",
+      "question": "В мультитенантном каталоге каждый тенант получает свой CatalogProvider. Какое преимущество даёт этот паттерн по сравнению с фильтрацией по tenant_id?",
+      "options": [
+        { "id": "a", "text": "Полная изоляция метаданных — тенант не может даже узнать имена таблиц других тенантов" },
+        { "id": "b", "text": "Ускорение запросов за счёт меньшего числа таблиц в INFORMATION_SCHEMA" },
+        { "id": "c", "text": "Возможность использовать разные версии DataFusion для разных тенантов" },
+        { "id": "d", "text": "Автоматическая репликация данных между тенантами" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Каталог на тенанта обеспечивает namespace-изоляцию на уровне метаданных. Тенант видит только свои схемы и таблицы. SELECT * FROM events разрешается в client_a.raw.events для тенанта A. Другие тенанты не видны ни через SQL, ни через INFORMATION_SCHEMA.",
+      "bloomLevel": "analytical",
+      "studyHint": "Изоляция через каталоги — это изоляция на уровне namespace (метаданные), не данных. Один DataFusion процесс, разные каталоги."
+    },
+    {
+      "id": "df-m05-04-q5",
+      "type": "multiple-choice",
+      "question": "ListingTable с with_table_partition_cols настроен на Hive partitioning (year/month/day). Запрос WHERE year = 2024 AND month = 3. Что происходит?",
+      "options": [
+        { "id": "a", "text": "DataFusion читает только файлы из year=2024/month=3/, пропуская остальные директории — partition pruning" },
+        { "id": "b", "text": "DataFusion читает все файлы и фильтрует по year и month на уровне RecordBatch" },
+        { "id": "c", "text": "DataFusion создаёт индекс по year/month для ускорения поиска файлов" },
+        { "id": "d", "text": "Ошибка — Hive partitioning требует точного указания всех уровней (year, month, day)" }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ListingTable с Hive partitioning выполняет partition pruning: по предикатам WHERE фильтрует директории, читая только файлы из подходящих партиций. Для year=2024 AND month=3 сканируются только файлы в year=2024/month=3/*, остальные пропускаются.",
+      "bloomLevel": "applied",
+      "studyHint": "Partition pruning = фильтрация на уровне директорий, до чтения файлов. Огромная экономия I/O для data lake с тысячами партиций."
+    }
+  ]
+}

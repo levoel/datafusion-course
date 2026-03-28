@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "01-arrow-foundation/02-arrow-memory-layout",
+  "moduleId": "01-arrow-foundation",
+  "_meta": {
+    "idPrefix": "df-m01-02"
+  },
+  "questions": [
+    {
+      "id": "df-m01-02-q1",
+      "type": "multiple-choice",
+      "question": "Из каких буферов состоит Arrow-массив типа Int32?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Validity bitmap + data buffer + offset buffer"
+        },
+        {
+          "id": "b",
+          "text": "Validity bitmap + data buffer (два буфера, без offset)"
+        },
+        {
+          "id": "c",
+          "text": "Только data buffer"
+        },
+        {
+          "id": "d",
+          "text": "Validity bitmap + offset buffer"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Fixed-width типы (Int32, Float64, Boolean) используют два буфера: validity bitmap (битовая маска NULL) и data buffer (сами значения). Offset buffer нужен только для типов переменной длины (строки, списки), где он хранит начало каждого значения в data buffer.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Запомните правило: fixed-width — 2 буфера, variable-width (Utf8, Binary) — 3 буфера."
+    },
+    {
+      "id": "df-m01-02-q2",
+      "type": "multiple-choice",
+      "question": "Arrow-массив Int32 содержит значения [28, 34, NULL, 41]. Что находится в data buffer на позиции 2 (позиция NULL)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Специальное значение -1, обозначающее NULL"
+        },
+        {
+          "id": "b",
+          "text": "Позиция пуста — байты не выделены"
+        },
+        {
+          "id": "c",
+          "text": "Undefined данные (обычно 0 или мусор) — null определяется validity bitmap, а не значением в буфере"
+        },
+        {
+          "id": "d",
+          "text": "Значение NaN (Not a Number)"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "В Arrow NULL — это не значение, а свойство позиции, определяемое validity bitmap (бит 2 = 0). Позиция NULL в data buffer содержит undefined данные. Это позволяет выделить буфер один раз и не сдвигать данные при появлении NULL. Проверка null — побитовая операция на bitmap.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Это принципиальное отличие Arrow от SQL (где NULL — специальное значение) и от Pandas (где NaN — sentinel)."
+    },
+    {
+      "id": "df-m01-02-q3",
+      "type": "multiple-choice",
+      "question": "Utf8 массив содержит [\"Rust\", \"Go\", NULL, \"Python\"]. Offset buffer: [0, 4, 6, 6, 12]. Как вычислить длину строки \"Go\"?",
+      "options": [
+        {
+          "id": "a",
+          "text": "offsets[1] = 4 — это и есть длина"
+        },
+        {
+          "id": "b",
+          "text": "offsets[2] - offsets[1] = 6 - 4 = 2 байта"
+        },
+        {
+          "id": "c",
+          "text": "Длина хранится в отдельном length buffer"
+        },
+        {
+          "id": "d",
+          "text": "Нужно сканировать data buffer до нулевого терминатора"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Формула длины i-го значения: offsets[i+1] - offsets[i]. Для \"Go\" (индекс 1): offsets[2] - offsets[1] = 6 - 4 = 2 байта. Offset buffer всегда содержит N+1 элементов, где N — количество значений. Для NULL offset не сдвигается (offsets[3] - offsets[2] = 6 - 6 = 0).",
+      "bloomLevel": "applied",
+      "studyHint": "Попрактикуйтесь на примере: восстановите data buffer из offset buffer + исходных строк."
+    },
+    {
+      "id": "df-m01-02-q4",
+      "type": "multiple-choice",
+      "question": "Почему Arrow требует выравнивание каждого буфера по 64 байт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ограничение операционной системы на минимальный размер allocation"
+        },
+        {
+          "id": "b",
+          "text": "64 байт — размер CPU cache line. Выравнивание предотвращает split-load и обеспечивает эффективную работу SIMD-инструкций"
+        },
+        {
+          "id": "c",
+          "text": "Это упрощает реализацию garbage collector"
+        },
+        {
+          "id": "d",
+          "text": "Требование протокола Arrow IPC для совместимости с Parquet"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Выравнивание по 64 байт соответствует размеру cache line на современных CPU. Это гарантирует, что начало буфера совпадает с началом cache line, предотвращая split-load (когда одно значение пересекает границу двух cache lines). SIMD-инструкции (AVX-512) также работают с 64-байтовыми блоками.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Связь: 64 байт alignment → cache line → SIMD efficiency — три уровня одной оптимизации."
+    },
+    {
+      "id": "df-m01-02-q5",
+      "type": "multiple-choice",
+      "question": "RecordBatch в Arrow — неизменяемая (immutable) структура. Что происходит при операции фильтрации?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удаляются строки из исходного RecordBatch"
+        },
+        {
+          "id": "b",
+          "text": "Создаётся новый RecordBatch, ссылающийся на подмножество буферов оригинала (zero-copy slice)"
+        },
+        {
+          "id": "c",
+          "text": "Все данные копируются в новый буфер с пропуском отфильтрованных строк"
+        },
+        {
+          "id": "d",
+          "text": "Создаётся битовая маска, а оригинальный RecordBatch помечается как частично удалённый"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "RecordBatch — immutable. Фильтрация, проекция и другие операции создают новый RecordBatch, который ссылается на подмножество буферов оригинала (zero-copy slice). Оригинал не изменяется. Это эффективно, потому что колоночные буферы могут быть переиспользованы без копирования.",
+      "bloomLevel": "applied",
+      "studyHint": "Immutable + zero-copy slice — это паттерн, который позволяет безопасно обрабатывать данные параллельно."
+    }
+  ]
+}
