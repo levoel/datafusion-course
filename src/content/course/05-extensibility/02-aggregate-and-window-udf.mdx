@@ -197,6 +197,10 @@ let sum_udaf = create_udaf(
 );
 ```
 
+<Callout type="warning">
+Функции `create_udaf` и `create_udwf` считаются устаревшими начиная с DataFusion 42.x. Для новых проектов используйте `AggregateUDF::new_from_impl(impl AggregateUDFImpl)` для агрегатных функций и `WindowUDF::new_from_impl(impl WindowUDFImpl)` для оконных. Convenience-функции сохранены только для обратной совместимости.
+</Callout>
+
 ## UDWF: пользовательские оконные функции
 
 Оконные функции вычисляют значения в контексте окна строк (OVER clause). Rust API использует trait `PartitionEvaluator`.

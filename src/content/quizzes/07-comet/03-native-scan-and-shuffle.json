@@ -24,7 +24,7 @@
         },
         {
           "id": "d",
-          "text": "native_datafusion — стандартный DataFusion ParquetExec, так как DataFusion является основным engine"
+          "text": "native_datafusion — стандартный DataFusion DataSourceExec, так как DataFusion является основным engine"
         }
       ],
       "correctAnswer": "a",

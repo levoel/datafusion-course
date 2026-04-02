@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "05-extensibility/08-testing-extensions",
+  "moduleId": "05-extensibility",
+  "_meta": {
+    "idPrefix": "df-m05-08"
+  },
+  "questions": [
+    {
+      "id": "df-m05-08-q1",
+      "type": "multiple-choice",
+      "question": "Что проверяет макрос assert_batches_eq! в тестах DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Сравнивает Vec<RecordBatch> с текстовым представлением таблицы — порядок строк имеет значение"
+        },
+        {
+          "id": "b",
+          "text": "Проверяет только количество строк в результате запроса"
+        },
+        {
+          "id": "c",
+          "text": "Сравнивает бинарное представление Arrow-массивов побайтово"
+        },
+        {
+          "id": "d",
+          "text": "Проверяет только типы данных колонок, игнорируя значения"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "assert_batches_eq! конвертирует Vec<RecordBatch> в текстовую таблицу (через pretty_format_batches) и сравнивает с ожидаемым массивом строк. Порядок строк важен — для недетерминированных результатов используйте assert_batches_sorted_eq!.",
+      "bloomLevel": "conceptual",
+      "studyHint": "assert_batches_eq! = golden-file стиль: ожидаемый результат — текстовая таблица. Порядок важен → нужен ORDER BY."
+    },
+    {
+      "id": "df-m05-08-q2",
+      "type": "multiple-choice",
+      "question": "Вы написали скалярный UDF `to_upper(text) -> text`. Какой паттерн тестирования корректен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Создать SessionContext → register_udf → выполнить SQL 'SELECT to_upper(name) FROM t' → assert_batches_eq! с ожидаемым результатом"
+        },
+        {
+          "id": "b",
+          "text": "Напрямую вызвать функцию invoke() с ArrayRef и проверить возвращённый массив, без SessionContext"
+        },
+        {
+          "id": "c",
+          "text": "Использовать sqllogictest с директивой 'statement ok' для проверки"
+        },
+        {
+          "id": "d",
+          "text": "Создать DataFrame API pipeline без SQL: ctx.read_batch() → .with_column(to_upper)"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Стандартный паттерн: SessionContext::new() → register_udf → SQL-запрос → assert_batches_eq!. Это тестирует полный путь: регистрация, SQL-парсинг, планирование, выполнение, конвертация результата. invoke() тестирует только функцию, пропуская интеграцию.",
+      "bloomLevel": "applied",
+      "studyHint": "Полный путь: register → SQL → assert. Тестирует интеграцию с планировщиком, а не только вычисление."
+    },
+    {
+      "id": "df-m05-08-q3",
+      "type": "multiple-choice",
+      "question": "Вы добавили OptimizerRule, удаляющее дублирующие фильтры. Что лучше: unit-тест с into_unoptimized_plan() или sqllogictest?",
+      "options": [
+        {
+          "id": "a",
+          "text": "sqllogictest — он проверяет правильность результата SQL-запроса, включая эффект оптимизации"
+        },
+        {
+          "id": "b",
+          "text": "Оба нужны: unit-тест проверяет трансформацию плана (правило работает), sqllogictest проверяет корректность результата (данные не искажены)"
+        },
+        {
+          "id": "c",
+          "text": "Unit-тест с into_unoptimized_plan() — достаточно проверить, что дубли убраны"
+        },
+        {
+          "id": "d",
+          "text": "Ни то, ни другое — нужен benchmark чтобы убедиться, что правило ускоряет запрос"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Unit-тест с into_unoptimized_plan() проверяет, что правило корректно трансформирует план (структурная проверка). sqllogictest проверяет, что результат SQL-запроса не изменился после оптимизации (функциональная проверка). Оба необходимы: правило может корректно убирать фильтры, но ломать семантику.",
+      "bloomLevel": "analytical",
+      "studyHint": "Unit-тест = 'правило трансформирует план правильно'. sqllogictest = 'результат запроса корректен'. Нужно и то, и другое."
+    },
+    {
+      "id": "df-m05-08-q4",
+      "type": "multiple-choice",
+      "question": "Почему SessionContext::new() предпочтительнее shared/static контекста для тестов?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SessionContext::new() быстрее создаётся, чем клонирование общего контекста"
+        },
+        {
+          "id": "b",
+          "text": "SessionContext::new() обязателен — DataFusion не поддерживает клонирование контекста"
+        },
+        {
+          "id": "c",
+          "text": "Каждый тест получает изолированный каталог, конфигурацию и пул памяти — нет shared state, тесты можно запускать параллельно"
+        },
+        {
+          "id": "d",
+          "text": "SessionContext::new() автоматически применяет все зарегистрированные расширения из Cargo.toml"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "SessionContext::new() создаёт полностью изолированный контекст: свой каталог, конфигурация, пул памяти. Тесты не влияют друг на друга и безопасно запускаются параллельно через cargo test. Shared контекст создаёт coupling между тестами — регистрация в одном тесте влияет на другой.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Изоляция: каждый тест = свой мини-мир. Нет shared state → нет flaky tests."
+    },
+    {
+      "id": "df-m05-08-q5",
+      "type": "multiple-choice",
+      "question": "Вы тестируете OptimizerRule. Нужно проверить, что план после оптимизации содержит ровно один Filter. Как получить план до встроенной оптимизации DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ctx.sql(query).await.into_optimized_plan() — вернёт план после всех оптимизаций"
+        },
+        {
+          "id": "b",
+          "text": "ctx.sql(query).await.into_unoptimized_plan() — вернёт логический план до применения оптимизатора"
+        },
+        {
+          "id": "c",
+          "text": "ctx.sql(query).await.logical_plan() — вернёт исходный AST"
+        },
+        {
+          "id": "d",
+          "text": "EXPLAIN без ANALYZE — покажет план без выполнения, но уже оптимизированный"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "into_unoptimized_plan() возвращает логический план до применения каких-либо оптимизаций. Это позволяет тестировать ваше правило изолированно: получить 'сырой' план, применить своё правило, проверить результат. into_optimized_plan() вернёт план после всех встроенных правил — не подходит для изолированного тестирования.",
+      "bloomLevel": "applied",
+      "studyHint": "into_unoptimized_plan() = сырой план. into_optimized_plan() = после всех оптимизаций. Для тестирования своего правила нужен сырой."
+    }
+  ]
+}

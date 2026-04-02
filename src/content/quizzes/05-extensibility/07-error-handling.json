@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "05-extensibility/07-error-handling",
+  "moduleId": "05-extensibility",
+  "_meta": {
+    "idPrefix": "df-m05-07"
+  },
+  "questions": [
+    {
+      "id": "df-m05-07-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion делит ошибки на Expected и Unexpected. К какой категории относится DataFusionError::Plan?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Unexpected — это ошибка внутри планировщика, указывающая на баг"
+        },
+        {
+          "id": "b",
+          "text": "Expected — пользователь указал некорректный SQL или несуществующую таблицу, и он может это исправить"
+        },
+        {
+          "id": "c",
+          "text": "Это обёртка (wrapper) — категория зависит от вложенной ошибки"
+        },
+        {
+          "id": "d",
+          "text": "Это структурный вариант — используется только внутри Collection"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Plan — Expected ошибка: пользователь указал некорректный SQL, несуществующую таблицу или колонку. Пользователь может исправить запрос. Unexpected (Internal) — это баг в системе, нарушение инварианта, которого не должно происходить.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Expected = пользователь может исправить (Plan, Execution, Configuration). Unexpected = баг (Internal)."
+    },
+    {
+      "id": "df-m05-07-q2",
+      "type": "multiple-choice",
+      "question": "В UDF при выполнении обнаруживается деление на ноль. Какой макрос ошибки использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "internal_err!(\"Division by zero\") — это неожиданная ситуация"
+        },
+        {
+          "id": "b",
+          "text": "plan_err!(\"Division by zero\") — ошибка в плане запроса"
+        },
+        {
+          "id": "c",
+          "text": "exec_err!(\"Division by zero: {a} / {b}\") — ошибка в данных при выполнении"
+        },
+        {
+          "id": "d",
+          "text": "not_impl_err!(\"Division by zero handling\") — функциональность не реализована"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Деление на ноль — ошибка в данных при выполнении (Expected). Пользователь передал данные, вызвавшие проблему. exec_err! — правильный выбор. plan_err! — для ошибок планирования (несуществующая таблица). internal_err! — для багов, невозможных состояний.",
+      "bloomLevel": "applied",
+      "studyHint": "exec_err! = ошибка в данных при выполнении. plan_err! = ошибка в SQL/плане. internal_err! = баг."
+    },
+    {
+      "id": "df-m05-07-q3",
+      "type": "multiple-choice",
+      "question": "Функция валидации конфигурации должна проверить 10 параметров и вернуть все ошибки сразу, а не останавливаться на первой. Какой подход корректен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Использовать .context() для каждой ошибки, создавая цепочку контекстов"
+        },
+        {
+          "id": "b",
+          "text": "Собрать ошибки в Vec и вернуть DataFusionError::Collection(errors)"
+        },
+        {
+          "id": "c",
+          "text": "Вернуть только первую ошибку через оператор ? — остальные обнаружатся при повторных запусках"
+        },
+        {
+          "id": "d",
+          "text": "Логировать все ошибки через tracing и вернуть Ok(()) — пользователь увидит их в логах"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusionError::Collection(Vec<DataFusionError>) предназначен именно для пакетных ошибок: собираете все ошибки в вектор, оборачиваете в Collection. Пользователь видит все проблемы сразу. context() — для добавления 'где произошло' к одной ошибке. Оператор ? останавливается на первой.",
+      "bloomLevel": "analytical",
+      "studyHint": "Collection = 'покажи все ошибки сразу'. context() = 'добавь информацию к одной ошибке'. ? = 'остановись на первой'."
+    },
+    {
+      "id": "df-m05-07-q4",
+      "type": "multiple-choice",
+      "question": "В расширении (UDF) пользователь передал 3 аргумента вместо ожидаемых 2. Разработчик написал internal_err!(\"Expected 2 arguments, got 3\"). Почему это неправильно?",
+      "options": [
+        {
+          "id": "a",
+          "text": "internal_err! не поддерживает форматирование строк с числами"
+        },
+        {
+          "id": "b",
+          "text": "internal_err! означает 'баг в системе', но пользователь сам вызвал эту ситуацию через SQL — нужно exec_err! или plan_err!"
+        },
+        {
+          "id": "c",
+          "text": "Для проверки количества аргументов нужно использовать assert_or_internal_err!, а не internal_err!"
+        },
+        {
+          "id": "d",
+          "text": "internal_err! создаёт панику вместо возврата Result"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "internal_err! генерирует DataFusionError::Internal — 'баг в системе, нарушение инварианта'. Но пользователь может вызвать эту ситуацию, зарегистрировав UDF и вызвав с неверным числом аргументов. Тест: может ли пользователь воспроизвести через SQL? Да → exec_err! или plan_err!, не internal_err!.",
+      "bloomLevel": "conceptual",
+      "studyHint": "internal_err! = 'этого не должно происходить'. Если пользователь может вызвать ситуацию → exec_err! или plan_err!."
+    },
+    {
+      "id": "df-m05-07-q5",
+      "type": "multiple-choice",
+      "question": "Вы пишете crate поверх DataFusion с собственным типом ошибки MyError (через thiserror). Реализация TableProvider::scan() должна вернуть Result<Arc<dyn ExecutionPlan>, DataFusionError>. Как обернуть MyError?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Реализовать From<MyError> for DataFusionError, используя DataFusionError::External(Box::new(e)) для вариантов без прямого аналога"
+        },
+        {
+          "id": "b",
+          "text": "Заменить MyError на DataFusionError во всём проекте — свой тип ошибки не нужен"
+        },
+        {
+          "id": "c",
+          "text": "Использовать .unwrap() внутри scan() — паника будет поймана runtime"
+        },
+        {
+          "id": "d",
+          "text": "Возвращать internal_err!(\"{}\", e) для всех вариантов MyError"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Паттерн интеграции: impl From<MyError> for DataFusionError, где каждый вариант MyError конвертируется в подходящий вариант DataFusionError. Для вариантов без прямого аналога — DataFusionError::External(Box::new(e)). Это сохраняет правильную классификацию ошибок и позволяет использовать оператор ?.",
+      "bloomLevel": "applied",
+      "studyHint": "From<MyError> for DataFusionError + External(Box::new(e)) для 'остальных'. Не internal_err! — это неверная классификация."
+    }
+  ]
+}

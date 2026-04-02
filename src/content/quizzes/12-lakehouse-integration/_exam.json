@@ -1,0 +1,335 @@
+{
+  "lessonSlug": "12-lakehouse-integration/_exam",
+  "moduleId": "12-lakehouse-integration",
+  "examTitle": "Экзамен: Lakehouse Integration",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "df-m12-exam"
+  },
+  "questions": [
+    {
+      "id": "df-m12-exam-q1",
+      "type": "multiple-choice",
+      "question": "Компания строит аналитическую платформу на S3. Требования: ACID-транзакции, time travel на 90 дней, concurrent ETL writers (10 job-ов), DataFusion как query engine. Какая архитектура оптимальна?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Raw Parquet + Hive partitioning + distributed lock для concurrent writes"
+        },
+        {
+          "id": "b",
+          "text": "Delta Lake с WriteSerializable isolation — ACID через transaction log, time travel через version history, concurrent appends без конфликтов. DataFusion интегрируется через delta-rs TableProvider"
+        },
+        {
+          "id": "c",
+          "text": "PostgreSQL с Parquet-расширением — ACID встроен, time travel через WAL"
+        },
+        {
+          "id": "d",
+          "text": "Apache Hudi — оптимизирован для concurrent writes и record-level upsert"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Delta Lake обеспечивает ACID через transaction log, time travel через version history (retention настраивается), concurrent writes через optimistic concurrency. WriteSerializable позволяет 10 ETL append-job-ам работать без конфликтов. DataFusion интегрируется через delta-rs (TableProvider). Raw Parquet не имеет ACID. Hudi нет нативной DataFusion-интеграции.",
+      "studyHint": "10 concurrent writers + ACID + DataFusion → Delta Lake + WriteSerializable.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m12-exam-q2",
+      "type": "multiple-choice",
+      "question": "Delta-таблица с 2000 файлов отсортирована по date. Запрос WHERE date = '2024-03-15' AND user_id = 42. File-level metadata skipping пропустит файлы по date, но не по user_id (min=1, max=1M в каждом файле). Как улучшить pruning по обоим колонкам?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Добавить Hive-партиционирование по user_id"
+        },
+        {
+          "id": "b",
+          "text": "dt.optimize.z_order(columns=['date', 'user_id']) — Z-ORDER интерливит оба колонки, сужая min/max диапазоны для обоих"
+        },
+        {
+          "id": "c",
+          "text": "Создать индекс на user_id"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить batch_size — больше строк за раз = меньше I/O"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Z-ORDER переупорядочивает данные внутри файлов, используя space-filling curve для нескольких колонок. После Z-ORDER по [date, user_id] каждый файл содержит узкий диапазон значений обоих колонок. Metadata skipping может пропустить файлы и по date, и по user_id. Hive-партиционирование по user_id создаст слишком много партиций (миллион), индексов в Delta нет.",
+      "studyHint": "Z-ORDER = multi-column pruning. Интерливит колонки → узкие min/max → эффективный skipping по нескольким предикатам.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m12-exam-q3",
+      "type": "multiple-choice",
+      "question": "Iceberg-таблица партиционирована по bucket(16, user_id). Что произойдёт при запросе WHERE user_id = 42?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Full scan — bucket transform не поддерживает equality predicate pushdown"
+        },
+        {
+          "id": "b",
+          "text": "Iceberg вычислит hash(42) % 16 = N и прочитает только bucket N — hidden partitioning работает для equality predicates на bucket transform"
+        },
+        {
+          "id": "c",
+          "text": "Ошибка — bucket partitioning несовместимо с WHERE по исходной колонке"
+        },
+        {
+          "id": "d",
+          "text": "Iceberg прочитает все 16 bucket-ов, потому что hash-функция непредсказуема"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Hidden partitioning работает для bucket transform: Iceberg вычисляет hash(user_id) % 16 для конкретного значения 42, определяет номер bucket и читает только файлы этого bucket. Пользователь пишет WHERE user_id = 42, не зная о bucket-ах. Для range predicates (WHERE user_id > 100) bucket partitioning не помогает — нужны все bucket-ы.",
+      "studyHint": "bucket(N, col) + equality predicate → 1 bucket из N. Range predicate → все bucket-ы.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m12-exam-q4",
+      "type": "multiple-choice",
+      "question": "DataFusion читает Delta-таблицу на S3. Первый запрос после запуска выполняется 10 секунд, последующие — 2 секунды. Что вызывает разницу?",
+      "options": [
+        {
+          "id": "a",
+          "text": "JIT-компиляция — DataFusion компилирует физический план при первом запуске"
+        },
+        {
+          "id": "b",
+          "text": "Загрузка transaction log — DeltaTable при первом запросе загружает и парсит _delta_log (JSON commits + checkpoint). Последующие запросы используют кешированное состояние"
+        },
+        {
+          "id": "c",
+          "text": "S3 rate limiting — первый запрос получает throttle"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion кеширует результаты запроса — второй запрос возвращает кеш"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При создании DeltaTable delta-rs загружает transaction log с S3: находит последний checkpoint, читает его, затем применяет incremental JSON commits. Для таблицы с историей 1000+ commits это может занять секунды. После загрузки состояние таблицы (список файлов, statistics) кешировано в памяти — последующие запросы используют кеш.",
+      "studyHint": "Cold start = загрузка transaction log. Warm = кешированное состояние. Checkpoint сокращает cold start.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m12-exam-q5",
+      "type": "multiple-choice",
+      "question": "Iceberg-таблица содержит 200K файлов. Команда рассматривает миграцию на Delta Lake для упрощения. Какой риск при миграции?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Потеря partition evolution — если schema партиционирования менялась, Delta зафиксирует её, и дальнейшая эволюция потребует полной перезаписи"
+        },
+        {
+          "id": "b",
+          "text": "Потеря данных — Delta не поддерживает 200K файлов"
+        },
+        {
+          "id": "c",
+          "text": "Delta Lake не поддерживает S3"
+        },
+        {
+          "id": "d",
+          "text": "Нет рисков — форматы полностью совместимы"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "При миграции с Iceberg на Delta теряется partition evolution: если схема партиционирования менялась (например, month → day), в Iceberg старые и новые файлы читаются прозрачно. В Delta — партиционирование фиксировано при создании. Также теряется hidden partitioning — в Delta пользователь должен явно указывать partition columns в запросах. 200K файлов Delta поддерживает, но checkpoint будет большим.",
+      "studyHint": "Iceberg → Delta: потеря partition evolution и hidden partitioning. Обратная миграция тоже нетривиальна.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m12-exam-q6",
+      "type": "multiple-choice",
+      "question": "DataFusion Python подключается к Iceberg-таблице. Код: `catalog = load_catalog('prod', type='rest', uri='http://catalog:8181'); table = catalog.load_table('db.events'); ctx.register_table_provider('events', table)`. Запрос возвращает пустой результат, хотя данные есть. Что проверить первым?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Версию DataFusion — Iceberg-интеграция доступна только с v52.0.0"
+        },
+        {
+          "id": "b",
+          "text": "Конфигурацию object store — каталог может вернуть metadata, но без настроенного ObjectStore для s3:// DataFusion не прочитает data files"
+        },
+        {
+          "id": "c",
+          "text": "Формат данных — Iceberg может хранить данные в ORC, который DataFusion не читает"
+        },
+        {
+          "id": "d",
+          "text": "SQL-синтаксис — Iceberg требует специальные команды вместо SELECT"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Типичная ошибка: каталог возвращает metadata (schema, file list), но DataFusion не настроен для чтения data files с object store. Если данные на s3://, нужен register_object_store('s3://bucket', storage_options). Без него DataFusion получает список файлов от TableProvider, но не может их прочитать — результат пустой или ошибка I/O.",
+      "studyHint": "Каталог = metadata. ObjectStore = data access. Оба нужны. Пустой результат → проверь ObjectStore.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m12-exam-q7",
+      "type": "multiple-choice",
+      "question": "SQL-запрос делает JOIN между Delta-таблицей (S3, 1 TB), Iceberg-таблицей (GCS, 100 GB) и локальным CSV (1 MB). Как DataFusion оптимизирует этот мультиформатный запрос?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion копирует все данные в локальную ФС, затем выполняет JOIN"
+        },
+        {
+          "id": "b",
+          "text": "Predicate pushdown в каждый TableProvider (Delta фильтрует по transaction log, Iceberg — по manifests), join reordering по statistics, hash join для execution — стандартная оптимизация, прозрачная для формата"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion отправляет подзапросы в Delta и Iceberg серверы для federated query"
+        },
+        {
+          "id": "d",
+          "text": "JOIN между разными object store невозможен — данные должны быть на одном storage"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion работает с абстракцией TableProvider. Оптимизатор не знает, что за формат или storage — он видит schema, statistics и может делать predicate pushdown. Каждый провайдер фильтрует свои файлы: Delta через transaction log, Iceberg через manifests, CSV — по наличию файла. Join reordering учитывает statistics от всех провайдеров.",
+      "studyHint": "TableProvider = единая абстракция. Оптимизатор не различает форматы. Predicate pushdown работает для каждого.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m12-exam-q8",
+      "type": "multiple-choice",
+      "question": "Delta Lake таблица: 100 файлов, partitioned by date, данные отсортированы по date. Запрос WHERE date = '2024-03-15' с metadata skipping читает 1 файл из 100. Как изменится количество прочитанных файлов, если данные НЕ отсортированы (random order)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Всё ещё 1 файл — Hive-партиционирование гарантирует, что файлы в partition date=2024-03-15/ содержат только эту дату"
+        },
+        {
+          "id": "b",
+          "text": "~50 файлов — без сортировки каждый файл может содержать данные за любую дату, min/max диапазоны перекрываются"
+        },
+        {
+          "id": "c",
+          "text": "100 файлов — metadata skipping не работает без сортировки"
+        },
+        {
+          "id": "d",
+          "text": "Зависит от batch_size"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Если данные не отсортированы по date, каждый файл содержит случайный набор дат. Min/max по date в каждом файле будут широкими (например, min=2024-01-01, max=2024-12-31). Metadata skipping проверяет min <= '2024-03-15' <= max — большинство файлов пройдёт эту проверку. Точное число зависит от распределения, но ~50% файлов — типичный результат. С Hive-партиционированием pruning работает на уровне директорий, а не metadata.",
+      "studyHint": "Сортировка → узкие min/max → эффективный skipping. Без сортировки → широкие min/max → мало пропусков.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m12-exam-q9",
+      "type": "multiple-choice",
+      "question": "Какой каталог Iceberg оптимален для локальной разработки с DataFusion, без внешних зависимостей?",
+      "options": [
+        {
+          "id": "a",
+          "text": "REST Catalog — стандартный, поддерживается всеми движками"
+        },
+        {
+          "id": "b",
+          "text": "SQL Catalog с SQLite: load_catalog('dev', type='sql', uri='sqlite:///tmp/catalog.db', warehouse='file:///tmp/warehouse') — файловый, без серверов"
+        },
+        {
+          "id": "c",
+          "text": "AWS Glue — бесплатный для разработки"
+        },
+        {
+          "id": "d",
+          "text": "Каталог не нужен — Iceberg работает path-based, как Delta Lake"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "SQL Catalog с SQLite — минимальная зависимость, один файл БД. warehouse=file:/// указывает на локальную директорию для данных. REST Catalog требует отдельный сервер. Glue — AWS-зависимость. Iceberg всегда требует каталог (в отличие от Delta, который path-based).",
+      "studyHint": "Iceberg dev: SQL Catalog + SQLite + file://. Production: REST Catalog.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m12-exam-q10",
+      "type": "multiple-choice",
+      "question": "Какое утверждение о Change Data Feed в Delta Lake НЕВЕРНО?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CDF отслеживает insert, update_preimage, update_postimage и delete между версиями"
+        },
+        {
+          "id": "b",
+          "text": "CDF позволяет строить incremental ETL — обрабатывать только изменённые записи"
+        },
+        {
+          "id": "c",
+          "text": "CDF работает автоматически для всех Delta-таблиц без дополнительной конфигурации — достаточно вызвать load_cdf()"
+        },
+        {
+          "id": "d",
+          "text": "CDF полезен для CDC-пайплайнов — отправка изменений в downstream-системы"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Change Data Feed нужно явно включить для таблицы (delta.enableChangeDataFeed = true). Без этой настройки load_cdf() вернёт ошибку. Включение CDF добавляет небольшой overhead при записи — Delta создаёт дополнительные файлы _change_data/ для отслеживания изменений.",
+      "studyHint": "CDF НЕ включён по умолчанию. Нужна явная настройка: delta.enableChangeDataFeed = true.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m12-exam-q11",
+      "type": "multiple-choice",
+      "question": "Микро-batch ETL записывает данные каждые 5 минут в Delta-таблицу. За неделю накопилось 2000 файлов по 2 MB. Query latency выросла с 0.5s до 8s. Какой план восстановления?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить target_partitions до 128 и batch_size до 65536"
+        },
+        {
+          "id": "b",
+          "text": "OPTIMIZE compact (2000 файлов → ~20 файлов по 128 MB), затем VACUUM для удаления старых мелких файлов. Настроить scheduled OPTIMIZE каждые 6 часов"
+        },
+        {
+          "id": "c",
+          "text": "Перейти с Delta на Iceberg — он лучше справляется с мелкими файлами"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить memory_limit — данные не помещаются в RAM"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "2000 файлов по 2 MB = типичный результат частого append. OPTIMIZE compact объединяет файлы в целевой размер (128-256 MB): ~4 GB / 128 MB ≈ 32 файла. VACUUM удаляет старые файлы после retention period. Scheduled OPTIMIZE предотвращает накопление в будущем. Это стандартный паттерн для streaming/micro-batch в Delta.",
+      "studyHint": "Micro-batch → мелкие файлы. Решение: scheduled OPTIMIZE compact + VACUUM.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m12-exam-q12",
+      "type": "multiple-choice",
+      "question": "Проект начинает с raw Parquet, потом планирует перейти на Delta Lake, и позже — возможно на Iceberg. Какой подход к архитектуре DataFusion-кода минимизирует стоимость миграции?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Использовать SQL-строки с именами файлов — при миграции поменять только строки"
+        },
+        {
+          "id": "b",
+          "text": "Все взаимодействия через register_table_provider(name, provider). SQL-запросы обращаются к именам таблиц, не к путям. При миграции меняется только код создания provider, а SQL остаётся без изменений"
+        },
+        {
+          "id": "c",
+          "text": "Написать абстрактную фабрику таблиц со всеми тремя форматами заранее"
+        },
+        {
+          "id": "d",
+          "text": "Стоимость миграции всегда высокая — архитектура не поможет"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "TableProvider — точка абстракции. Весь SQL-код обращается к именам таблиц (SELECT * FROM events), а не к формату или пути. При миграции Parquet → Delta: меняем register_parquet() на register_table_provider(name, DeltaTable(path)). SQL не меняется. Delta → Iceberg: меняем DeltaTable на catalog.load_table(). Абстрактная фабрика — over-engineering.",
+      "studyHint": "register_table_provider(name, provider) — точка миграции. SQL обращается к name, не к формату.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

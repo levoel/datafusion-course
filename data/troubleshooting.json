@@ -1,0 +1,524 @@
+{
+  "title": "Решение проблем Apache DataFusion",
+  "description": "Частые ошибки и проблемы при работе с Apache DataFusion — симптомы, причины и пошаговые решения.",
+  "filters": {
+    "primary": {
+      "label": "Область",
+      "field": "area",
+      "options": [
+        { "id": "arrow", "label": "Arrow / Память", "icon": "cube", "color": "blue" },
+        { "id": "sql", "label": "SQL / DataFrame", "icon": "code", "color": "purple" },
+        { "id": "extension", "label": "Расширения (UDF)", "icon": "plug", "color": "orange" },
+        { "id": "optimization", "label": "Оптимизация", "icon": "rocket", "color": "cyan" },
+        { "id": "python", "label": "Python-биндинги", "icon": "lightning", "color": "green" },
+        { "id": "distributed", "label": "Распределённое", "icon": "gear", "color": "teal" },
+        { "id": "docker", "label": "Docker / Лабы", "icon": "wrench", "color": "gray" }
+      ]
+    },
+    "secondary": {
+      "label": "Категория",
+      "field": "category",
+      "options": [
+        { "id": "compilation", "label": "Компиляция", "icon": "wrench", "color": "red" },
+        { "id": "runtime", "label": "Ошибки выполнения", "icon": "lightning", "color": "amber" },
+        { "id": "configuration", "label": "Конфигурация", "icon": "gear", "color": "indigo" },
+        { "id": "performance", "label": "Производительность", "icon": "rocket", "color": "cyan" },
+        { "id": "data", "label": "Данные / Схема", "icon": "cube", "color": "blue" }
+      ]
+    }
+  },
+  "entries": [
+    {
+      "errorMessage": "Arrow error: Schema mismatch: expected field 'id' of type Int64 but found Utf8",
+      "area": "arrow",
+      "category": "data",
+      "symptoms": [
+        "RecordBatch не создаётся — ошибка несовпадения типов колонок",
+        "При построении RecordBatch из массивов Arrow возвращается ArrowError",
+        "Тип данных в ArrayRef не соответствует ожидаемому в Schema"
+      ],
+      "cause": "Схема (Schema), переданная в RecordBatch::try_new(), объявляет один тип для поля, а реальный ArrayRef содержит другой. Часто возникает при ручном создании батчей или в TableProvider, когда schema() возвращает одну схему, а scan() — батчи с другой.",
+      "solution": [
+        "Сравните Schema из `schema()` с фактическими типами ArrayRef в батче",
+        "Используйте `arrow::compute::cast()` для приведения типов, если данные совместимы",
+        "Убедитесь, что `TableProvider::schema()` и `TableProvider::scan()` возвращают одинаковую схему"
+      ],
+      "relatedLessons": [
+        { "title": "Arrow Type System", "slug": "01-arrow-foundation/03-arrow-type-system" },
+        { "title": "Arrow in DataFusion", "slug": "01-arrow-foundation/06-arrow-in-datafusion" }
+      ]
+    },
+    {
+      "errorMessage": "Resources exhausted: Failed to allocate additional memory. Memory pool limit reached",
+      "area": "arrow",
+      "category": "runtime",
+      "symptoms": [
+        "Запрос прерывается с ошибкой о превышении лимита памяти",
+        "MemoryPool возвращает ResourcesExhausted при аллокации",
+        "Крупные JOIN или агрегации падают, хотя данные помещаются в RAM"
+      ],
+      "cause": "MemoryPool в DataFusion ограничивает общий объём памяти для запроса или сессии. При обработке больших объёмов данных (JOIN, сортировка, агрегация) промежуточные буферы превышают лимит пула.",
+      "solution": [
+        "Увеличьте лимит: `ctx.runtime_env().memory_pool.set_limit(bytes)`",
+        "Используйте `FairSpillPool` вместо `GreedyMemoryPool` для более равномерного распределения",
+        "Уменьшите `batch_size` в RuntimeConfig для снижения пикового потребления",
+        "Добавьте repartition перед JOIN для лучшего распределения данных"
+      ],
+      "relatedLessons": [
+        { "title": "Memory Management", "slug": "02-architecture/07-memory-management" },
+        { "title": "Runtime Configuration", "slug": "11-performance-tuning/01-runtime-configuration" }
+      ]
+    },
+    {
+      "errorMessage": "Arrow error: Cast error: Cannot cast value 'abc' to type Int32",
+      "area": "arrow",
+      "category": "data",
+      "symptoms": [
+        "SQL-запрос с CAST() или неявным приведением типов падает",
+        "Ошибка при попытке прочитать строковую колонку как числовую",
+        "Parquet/CSV файл содержит невалидные значения для целевого типа"
+      ],
+      "cause": "Arrow выполняет строгое приведение типов. Если строковое значение не может быть распарсено в целевой тип (например, 'abc' → Int32), cast завершается ошибкой вместо возврата NULL.",
+      "solution": [
+        "Используйте `TRY_CAST(col AS INT)` вместо `CAST()` — возвращает NULL при ошибке конвертации",
+        "Предварительно очистите данные: `SELECT * FROM t WHERE col ~ '^[0-9]+$'`",
+        "При чтении CSV задайте правильный schema в `CsvReadOptions::new().schema(&schema)`"
+      ],
+      "relatedLessons": [
+        { "title": "Arrow Type System", "slug": "01-arrow-foundation/03-arrow-type-system" },
+        { "title": "SQL Engine", "slug": "03-sql-dataframe-api/01-sql-engine" }
+      ]
+    },
+    {
+      "errorMessage": "Error during planning: table 'default.my_table' not found",
+      "area": "sql",
+      "category": "runtime",
+      "symptoms": [
+        "SQL-запрос к зарегистрированной таблице возвращает 'table not found'",
+        "После перезапуска программы таблицы пропадают из каталога",
+        "ctx.sql(\"SELECT * FROM my_table\") падает при первом вызове"
+      ],
+      "cause": "Таблица не зарегистрирована в текущем SessionContext. В DataFusion регистрация таблиц существует только в памяти — при каждом новом SessionContext нужно регистрировать заново. Также возможна ошибка в имени каталога/схемы.",
+      "solution": [
+        "Зарегистрируйте таблицу до выполнения запроса: `ctx.register_parquet(\"my_table\", \"path.parquet\", ...).await?`",
+        "Проверьте доступные таблицы: `ctx.sql(\"SHOW TABLES\").await?`",
+        "Укажите полное имя: `SELECT * FROM datafusion.public.my_table`",
+        "Для персистентного каталога реализуйте свой CatalogProvider"
+      ],
+      "relatedLessons": [
+        { "title": "Catalog and DataSources", "slug": "02-architecture/04-catalog-and-datasources" },
+        { "title": "Session Context", "slug": "02-architecture/05-session-context" }
+      ]
+    },
+    {
+      "errorMessage": "Schema error: Ambiguous reference to unqualified field \"id\"",
+      "area": "sql",
+      "category": "data",
+      "symptoms": [
+        "JOIN-запрос падает с ошибкой 'Ambiguous reference'",
+        "Колонка присутствует в нескольких таблицах, и DataFusion не может выбрать",
+        "Ошибка при SELECT без полного квалификатора таблицы"
+      ],
+      "cause": "Несколько таблиц в JOIN содержат колонку с одинаковым именем. DataFusion требует явного указания таблицы-источника для неоднозначных ссылок, как и стандартный SQL.",
+      "solution": [
+        "Используйте полную квалификацию: `SELECT a.id, b.id FROM table_a a JOIN table_b b ON a.id = b.id`",
+        "Задайте алиасы таблицам: `FROM orders AS o JOIN products AS p`",
+        "В DataFrame API: `left.join(right, JoinType::Inner, &[\"id\"], &[\"id\"], None)?`"
+      ],
+      "relatedLessons": [
+        { "title": "Select and Analytics", "slug": "03-sql-dataframe-api/02-select-and-analytics" },
+        { "title": "Join and Subquery Optimization", "slug": "06-query-optimization/03-join-and-subquery-optimization" }
+      ]
+    },
+    {
+      "errorMessage": "This feature is not implemented: Window function with RANGE BETWEEN for non-temporal types",
+      "area": "sql",
+      "category": "runtime",
+      "symptoms": [
+        "Оконная функция с RANGE BETWEEN возвращает 'not implemented'",
+        "Работает с ROWS BETWEEN, но падает с RANGE BETWEEN",
+        "Сложные оконные выражения не поддерживаются"
+      ],
+      "cause": "DataFusion поддерживает RANGE BETWEEN только для ограниченного набора типов (numeric, temporal). Для строковых и других типов рамка RANGE не реализована. Это известное ограничение, а не баг.",
+      "solution": [
+        "Замените `RANGE BETWEEN` на `ROWS BETWEEN` — в большинстве случаев результат эквивалентен",
+        "Для temporal-колонок убедитесь, что тип — Timestamp, а не Utf8",
+        "Проверьте текущий список поддерживаемых функций: `SELECT * FROM information_schema.df_settings`"
+      ],
+      "relatedLessons": [
+        { "title": "Window Functions", "slug": "03-sql-dataframe-api/03-window-functions" },
+        { "title": "SQL vs DataFrame", "slug": "03-sql-dataframe-api/06-sql-vs-dataframe" }
+      ]
+    },
+    {
+      "errorMessage": "EXPLAIN ANALYZE shows CoalesceBatchesExec with 0 rows output",
+      "area": "sql",
+      "category": "performance",
+      "symptoms": [
+        "EXPLAIN ANALYZE показывает 0 строк на одном из шагов плана",
+        "Запрос возвращает пустой результат, хотя данные есть",
+        "FilterExec отсекает все строки — предикат не совпадает с данными"
+      ],
+      "cause": "Фильтр не совпадает с данными из-за несовпадения типов (например, строковый '1' != числовой 1), регистра (case-sensitive сравнение), или предикат применяется к пустому батчу после предыдущей операции.",
+      "solution": [
+        "Запустите `EXPLAIN ANALYZE` и найдите шаг с output_rows=0",
+        "Проверьте типы колонок: `DESCRIBE my_table`",
+        "Убедитесь, что литерал имеет правильный тип: `WHERE id = CAST('1' AS INT)` вместо `WHERE id = '1'`",
+        "Используйте `EXPLAIN` (без ANALYZE) для просмотра логического плана до оптимизации"
+      ],
+      "relatedLessons": [
+        { "title": "EXPLAIN and Debugging", "slug": "03-sql-dataframe-api/05-explain-and-debugging" },
+        { "title": "Query Plan Analysis", "slug": "11-performance-tuning/04-query-plan-analysis" }
+      ]
+    },
+    {
+      "errorMessage": "error[E0277]: the trait bound `Utf8: ArrowPrimitiveType` is not satisfied",
+      "area": "extension",
+      "category": "compilation",
+      "symptoms": [
+        "Scalar UDF не компилируется с ошибкой trait bound",
+        "Попытка использовать `as_primitive_array::<Utf8>()` вызывает ошибку типов",
+        "Rust не находит реализацию ArrowPrimitiveType для строковых типов"
+      ],
+      "cause": "В Arrow типы Utf8/LargeUtf8/Binary — не примитивные. Они хранятся как offset-буфер + данные, а не как массив значений фиксированного размера. Для строковых массивов нужны специализированные downcast-методы.",
+      "solution": [
+        "Используйте `as_string::<i32>(array)` вместо `as_primitive_array::<Utf8>(array)`",
+        "Для бинарных данных: `as_binary::<i32>(array)` или `as_large_binary(array)`",
+        "Изучите набор downcast-функций в `arrow::array` — каждый тип данных имеет свой метод"
+      ],
+      "relatedLessons": [
+        { "title": "Scalar UDF", "slug": "05-extensibility/01-scalar-udf" },
+        { "title": "Arrow Type System", "slug": "01-arrow-foundation/03-arrow-type-system" }
+      ]
+    },
+    {
+      "errorMessage": "Execution error: UDF returned a different schema than expected. Expected Int64, got Float64",
+      "area": "extension",
+      "category": "runtime",
+      "symptoms": [
+        "UDF регистрируется успешно, но падает при вызове в запросе",
+        "Ошибка 'returned a different schema' при выполнении SQL с пользовательской функцией",
+        "Тип возврата UDF не совпадает с объявленным в return_type()"
+      ],
+      "cause": "Функция return_type() в ScalarUDF объявляет один тип, а фактический ArrayRef, возвращаемый из invoke(), содержит другой. DataFusion проверяет соответствие после выполнения функции.",
+      "solution": [
+        "Сравните тип в `return_type()` с типом ArrayRef в `invoke()`",
+        "Если тип зависит от входных данных, используйте `return_type_from_exprs()` вместо статического return_type",
+        "Используйте `arrow::compute::cast()` в конце invoke() для приведения к ожидаемому типу"
+      ],
+      "relatedLessons": [
+        { "title": "Scalar UDF", "slug": "05-extensibility/01-scalar-udf" },
+        { "title": "Testing Extensions", "slug": "05-extensibility/08-testing-extensions" }
+      ]
+    },
+    {
+      "errorMessage": "thread 'tokio-runtime-worker' panicked at 'Schema returned by TableProvider::scan() does not match TableProvider::schema()'",
+      "area": "extension",
+      "category": "runtime",
+      "symptoms": [
+        "Кастомный TableProvider падает с паникой при первом запросе",
+        "SELECT * FROM custom_table вызывает panic в рантайме",
+        "Схема, возвращаемая scan(), не совпадает со schema()"
+      ],
+      "cause": "DataFusion валидирует, что RecordBatch из ExecutionPlan (возвращённого scan()) соответствует схеме, объявленной в schema(). Если TableProvider создаёт схему динамически или с ошибкой, возникает несовпадение.",
+      "solution": [
+        "Убедитесь, что `schema()` и `scan()` используют один и тот же объект Arc<Schema>",
+        "Сохраните схему в поле структуры при создании провайдера: `self.schema.clone()`",
+        "Если schema зависит от проекции — проверьте, что `scan(projection)` корректно фильтрует поля"
+      ],
+      "relatedLessons": [
+        { "title": "Table Provider", "slug": "05-extensibility/03-table-provider" },
+        { "title": "Error Handling", "slug": "05-extensibility/07-error-handling" }
+      ]
+    },
+    {
+      "errorMessage": "thread 'tokio-runtime-worker' panicked at 'OptimizerRule failed: index out of bounds'",
+      "area": "extension",
+      "category": "runtime",
+      "symptoms": [
+        "Пользовательское правило оптимизации вызывает панику",
+        "Запросы с определёнными паттернами (JOIN, подзапрос) крашат оптимизатор",
+        "Panic с трейсом, указывающим на кастомный OptimizerRule"
+      ],
+      "cause": "Кастомный OptimizerRule неправильно обрабатывает структуру логического плана. Типичные причины: обращение к children по индексу без проверки длины, отсутствие обработки всех вариантов LogicalPlan enum, или мутация плана без пересчёта схемы.",
+      "solution": [
+        "Оборачивайте тело правила в `catch_unwind` на этапе отладки для получения backtrace",
+        "Проверяйте plan.inputs().len() перед обращением по индексу",
+        "Используйте `plan.map_children()` или `plan.rewrite()` вместо ручного обхода дерева",
+        "Покройте правило тестами с EXPLAIN для различных паттернов запросов"
+      ],
+      "relatedLessons": [
+        { "title": "Custom Optimizer Rules", "slug": "06-query-optimization/04-custom-optimizer-rules" },
+        { "title": "Analyzer and Physical Rules", "slug": "06-query-optimization/05-analyzer-and-physical-rules" }
+      ]
+    },
+    {
+      "errorMessage": "error[E0433]: failed to resolve: use of undeclared crate or module `datafusion`",
+      "area": "extension",
+      "category": "compilation",
+      "symptoms": [
+        "Проект не компилируется после добавления зависимости datafusion",
+        "cargo build выдаёт ошибку 'use of undeclared crate or module'",
+        "Ошибка появляется при импорте datafusion::prelude::*"
+      ],
+      "cause": "Версия datafusion в Cargo.toml не совпадает с версиями смежных крейтов (datafusion-common, datafusion-expr, arrow). DataFusion требует строгого совпадения версий всех своих подкрейтов.",
+      "solution": [
+        "Используйте одну версию для всех datafusion-* крейтов в Cargo.toml",
+        "Проверьте совместимость: `cargo tree -i datafusion` — все версии должны совпадать",
+        "Для DataFusion 40+ используйте `arrow = { version = \"53\" }` (версия Arrow привязана к конкретной версии DataFusion)"
+      ],
+      "relatedLessons": [
+        { "title": "Crate Architecture", "slug": "02-architecture/06-crate-architecture" },
+        { "title": "Extensibility Patterns", "slug": "05-extensibility/06-extensibility-patterns" }
+      ]
+    },
+    {
+      "errorMessage": "Warning: No statistics available for table 'large_table'. Join ordering may be suboptimal",
+      "area": "optimization",
+      "category": "performance",
+      "symptoms": [
+        "JOIN-запрос между большими таблицами выполняется медленно",
+        "EXPLAIN показывает неоптимальный порядок JOIN (большая таблица слева)",
+        "Планировщик не использует hash join, когда это было бы эффективнее"
+      ],
+      "cause": "Без статистики (row count, column cardinality) оптимизатор не может выбрать порядок JOIN и тип JOIN. DataFusion использует эвристики, которые часто неоптимальны для больших данных.",
+      "solution": [
+        "Зарегистрируйте таблицу с включённой статистикой: `CsvReadOptions::new().has_header(true)` + `ANALYZE TABLE`",
+        "Для Parquet файлов статистика считывается автоматически из row group metadata",
+        "Вручную укажите hint: `SELECT /*+ HASH_JOIN(a, b) */ ...` (если поддерживается)",
+        "Задайте порядок вручную: маленькую таблицу ставьте в правую сторону JOIN"
+      ],
+      "relatedLessons": [
+        { "title": "Statistics and Cost", "slug": "06-query-optimization/06-statistics-and-cost" },
+        { "title": "Join and Subquery Optimization", "slug": "06-query-optimization/03-join-and-subquery-optimization" }
+      ]
+    },
+    {
+      "errorMessage": "Resources exhausted: Join operation exceeded memory limit. Consider increasing memory or reducing data size",
+      "area": "optimization",
+      "category": "performance",
+      "symptoms": [
+        "Hash Join падает с out-of-memory на больших таблицах",
+        "Запрос с несколькими JOIN потребляет всю доступную память",
+        "Декартово произведение из-за отсутствия или неправильного условия JOIN"
+      ],
+      "cause": "Hash Join строит хеш-таблицу целиком в памяти для правой стороны JOIN. Если правая таблица огромна или условие JOIN слишком широкое (cross join), происходит взрыв памяти.",
+      "solution": [
+        "Проверьте условие JOIN — убедитесь, что есть ON clause и он достаточно селективен",
+        "Поместите меньшую таблицу справа: `big_table JOIN small_table`",
+        "Включите spill-to-disk: настройте `FairSpillPool` с путём для временных файлов",
+        "Разбейте запрос: материализуйте промежуточные результаты через CREATE TABLE AS"
+      ],
+      "relatedLessons": [
+        { "title": "Join and Subquery Optimization", "slug": "06-query-optimization/03-join-and-subquery-optimization" },
+        { "title": "Partition and Parallelism", "slug": "11-performance-tuning/02-partition-and-parallelism" }
+      ]
+    },
+    {
+      "errorMessage": "Query execution takes 10x longer than expected: only 1 partition used",
+      "area": "optimization",
+      "category": "configuration",
+      "symptoms": [
+        "Запрос использует только одно ядро CPU при наличии многих",
+        "EXPLAIN ANALYZE показывает partitions=1 для большого файла",
+        "Время выполнения не улучшается при увеличении target_partitions"
+      ],
+      "cause": "Один большой файл (CSV или JSON) читается как одна партиция, так как DataFusion не может разбить текстовый файл на параллельные чанки. Parquet файлы с одним row group имеют ту же проблему.",
+      "solution": [
+        "Разбейте данные на несколько файлов и зарегистрируйте директорию: `ctx.register_parquet(\"t\", \"data/\", ...)`",
+        "Конвертируйте CSV в Parquet с несколькими row groups",
+        "Настройте `target_partitions` в SessionConfig: `config.with_target_partitions(num_cpus::get())`",
+        "Добавьте repartition после чтения: `.repartition(Partitioning::RoundRobinBatch(8))`"
+      ],
+      "relatedLessons": [
+        { "title": "Partition and Parallelism", "slug": "11-performance-tuning/02-partition-and-parallelism" },
+        { "title": "File Layout Optimization", "slug": "11-performance-tuning/03-file-layout-optimization" }
+      ]
+    },
+    {
+      "errorMessage": "ModuleNotFoundError: No module named 'datafusion'",
+      "area": "python",
+      "category": "configuration",
+      "symptoms": [
+        "import datafusion вызывает ModuleNotFoundError",
+        "pip install datafusion завершился успешно, но модуль не импортируется",
+        "В virtualenv модуль не найден"
+      ],
+      "cause": "Пакет datafusion-python требует совместимой версии Python (3.8+) и может не собираться на некоторых платформах (ARM Linux). Также возможен конфликт между системным Python и virtualenv.",
+      "solution": [
+        "Установите в активный virtualenv: `python -m venv .venv && source .venv/bin/activate && pip install datafusion`",
+        "Проверьте установку: `pip show datafusion` — убедитесь, что Location соответствует sys.path",
+        "На macOS ARM: `pip install datafusion --no-binary :all:` для сборки из исходников",
+        "Убедитесь, что используете Python 3.8+: `python --version`"
+      ],
+      "relatedLessons": [
+        { "title": "Installation and Context", "slug": "04-datafusion-python/01-installation-and-context" },
+        { "title": "Python Ecosystem", "slug": "04-datafusion-python/05-python-ecosystem" }
+      ]
+    },
+    {
+      "errorMessage": "ArrowInvalid: Expected a PyArrow Array of type int64, got type object (PyArrow version mismatch)",
+      "area": "python",
+      "category": "compilation",
+      "symptoms": [
+        "Ошибка при передаче PyArrow RecordBatch в DataFusion Python",
+        "ArrowInvalid при вызове ctx.register_record_batches()",
+        "После обновления PyArrow старый код перестал работать"
+      ],
+      "cause": "datafusion-python привязан к конкретной версии PyArrow через Rust-биндинги (pyo3-arrow). Если установленная версия PyArrow не совпадает с ожидаемой, данные передаются с неправильным маппингом типов.",
+      "solution": [
+        "Проверьте совместимость: `pip show datafusion pyarrow` — версии должны быть совместимы",
+        "Установите рекомендуемую версию PyArrow: `pip install 'pyarrow>=14.0,<16.0'` (для datafusion 37+)",
+        "Пересоздайте virtualenv с чистыми зависимостями: `pip install datafusion` подтянет совместимый pyarrow"
+      ],
+      "relatedLessons": [
+        { "title": "Installation and Context", "slug": "04-datafusion-python/01-installation-and-context" },
+        { "title": "DataFrame in Python", "slug": "04-datafusion-python/02-dataframe-in-python" }
+      ]
+    },
+    {
+      "errorMessage": "TypeError: Expected a PyArrow RecordBatch or RecordBatchReader, got pandas.core.frame.DataFrame",
+      "area": "python",
+      "category": "data",
+      "symptoms": [
+        "Передача pandas DataFrame в ctx.register_record_batches() вызывает TypeError",
+        "Попытка использовать pandas объекты напрямую в DataFusion API",
+        "Ошибка при смешивании pandas и Arrow API"
+      ],
+      "cause": "DataFusion Python работает с PyArrow, а не с pandas напрямую. Функции регистрации ожидают RecordBatch или RecordBatchReader. Pandas DataFrame нужно конвертировать через PyArrow.",
+      "solution": [
+        "Конвертируйте DataFrame в Arrow: `table = pa.Table.from_pandas(df)` затем `ctx.register_record_batches(\"t\", [table.to_batches()])`",
+        "Или используйте `ctx.from_pandas(df)` если такой метод доступен в вашей версии",
+        "Для обратной конвертации: `result.to_pandas()` на результате запроса"
+      ],
+      "relatedLessons": [
+        { "title": "DataFrame in Python", "slug": "04-datafusion-python/02-dataframe-in-python" },
+        { "title": "Advanced Patterns", "slug": "04-datafusion-python/06-advanced-patterns" }
+      ]
+    },
+    {
+      "errorMessage": "Ballista error: Scheduler unavailable: Connection refused (os error 111) at localhost:50050",
+      "area": "distributed",
+      "category": "runtime",
+      "symptoms": [
+        "Ballista клиент не может подключиться к scheduler",
+        "BallistaContext::remote() возвращает Connection refused",
+        "Scheduler процесс запущен, но не принимает соединения"
+      ],
+      "cause": "Scheduler не запущен, не успел инициализироваться, или слушает на другом адресе/порту. В Docker-окружении возможна проблема с сетью между контейнерами.",
+      "solution": [
+        "Проверьте статус scheduler: `curl http://localhost:50050/api/state`",
+        "Убедитесь, что scheduler слушает: `ss -tlnp | grep 50050`",
+        "В Docker: используйте имя сервиса вместо localhost: `BallistaContext::remote(\"scheduler\", 50050, ...)`",
+        "Дождитесь инициализации: scheduler может запускаться 5-10 секунд"
+      ],
+      "relatedLessons": [
+        { "title": "Ballista Architecture", "slug": "08-distributed-execution/02-ballista-architecture" },
+        { "title": "Ballista in Practice", "slug": "08-distributed-execution/03-ballista-in-practice" }
+      ]
+    },
+    {
+      "errorMessage": "Ballista error: Failed to serialize physical plan: UDF 'my_custom_fn' is not registered in the execution context",
+      "area": "distributed",
+      "category": "runtime",
+      "symptoms": [
+        "Запрос с кастомным UDF выполняется локально, но падает в Ballista",
+        "Ошибка сериализации при отправке плана на executor",
+        "UDF зарегистрирована в клиенте, но не найдена на worker"
+      ],
+      "cause": "В распределённом режиме физический план сериализуется и отправляется на executor-ы. Кастомные UDF должны быть зарегистрированы на каждом executor при старте, иначе десериализация плана не найдёт функцию.",
+      "solution": [
+        "Зарегистрируйте UDF в FunctionRegistry на каждом executor при старте",
+        "Используйте `--udf-lib` флаг для загрузки shared library с UDF",
+        "Альтернатива: замените UDF на стандартные SQL-выражения для распределённых запросов"
+      ],
+      "relatedLessons": [
+        { "title": "Ballista in Practice", "slug": "08-distributed-execution/03-ballista-in-practice" },
+        { "title": "Distributed Foundations", "slug": "08-distributed-execution/01-distributed-foundations" }
+      ]
+    },
+    {
+      "errorMessage": "Ballista error: Task failed: ShuffleReader failed to fetch partition from executor-2 (connection timed out)",
+      "area": "distributed",
+      "category": "configuration",
+      "symptoms": [
+        "Распределённый запрос зависает на фазе shuffle",
+        "Некоторые executor-ы не могут обменяться данными",
+        "Таймауты при чтении промежуточных результатов"
+      ],
+      "cause": "Executor-ы не могут связаться друг с другом напрямую (peer-to-peer). Частые причины: firewall блокирует порты между нодами, неправильная конфигурация внешнего адреса executor (advertise address), или сеть Docker overlay не настроена.",
+      "solution": [
+        "Убедитесь, что порты executor-ов доступны между нодами (по умолчанию 50051)",
+        "Задайте внешний адрес: `--external-host <node_ip>` при запуске executor",
+        "В Docker Compose: используйте единую overlay-сеть для всех сервисов",
+        "Увеличьте таймауты: `--shuffle-reader-timeout 60s`"
+      ],
+      "relatedLessons": [
+        { "title": "Ballista in Practice", "slug": "08-distributed-execution/03-ballista-in-practice" },
+        { "title": "Choosing Strategy", "slug": "08-distributed-execution/05-choosing-strategy" }
+      ]
+    },
+    {
+      "errorMessage": "docker build: cargo build killed (signal 9, OOM) during datafusion compilation",
+      "area": "docker",
+      "category": "compilation",
+      "symptoms": [
+        "Docker build зависает и крашится при компиляции datafusion",
+        "Процесс cargo build убивается с signal 9 (SIGKILL) внутри контейнера",
+        "Docker Desktop показывает 100% использование памяти"
+      ],
+      "cause": "Компиляция DataFusion и Arrow из исходников требует 4-8 GB RAM. Docker Desktop по умолчанию ограничивает контейнеры 2 GB, что недостаточно для параллельной компиляции Rust.",
+      "solution": [
+        "Увеличьте лимит памяти Docker Desktop до 8 GB (Settings → Resources → Memory)",
+        "Ограничьте параллельность: `ENV CARGO_BUILD_JOBS=2` в Dockerfile",
+        "Используйте multi-stage build: собирайте в builder-образе, копируйте только бинарник в финальный",
+        "Используйте готовые бинарные образы: `FROM datafusion/datafusion-cli:latest`"
+      ],
+      "relatedLessons": [
+        { "title": "Capstone Hands-on Lab", "slug": "14-capstone/02-hands-on-lab" },
+        { "title": "Runtime Configuration", "slug": "11-performance-tuning/01-runtime-configuration" }
+      ]
+    },
+    {
+      "errorMessage": "Permission denied (os error 13): /data/output/results.parquet",
+      "area": "docker",
+      "category": "configuration",
+      "symptoms": [
+        "Запись результатов запроса в файл внутри контейнера падает с Permission denied",
+        "Volume mount не имеет прав на запись",
+        "Контейнер запускается от root, но volume принадлежит другому пользователю"
+      ],
+      "cause": "Docker volume mount наследует права хост-директории. Если процесс внутри контейнера работает от другого UID, чем владелец директории на хосте, запись невозможна.",
+      "solution": [
+        "Задайте UID при запуске: `docker run -u $(id -u):$(id -g) ...`",
+        "Создайте директорию заранее с правами: `mkdir -p ./output && chmod 777 ./output`",
+        "В Dockerfile: `RUN mkdir /data/output && chown 1000:1000 /data/output`",
+        "Используйте named volumes вместо bind mounts: `docker volume create datafusion_output`"
+      ],
+      "relatedLessons": [
+        { "title": "Capstone Hands-on Lab", "slug": "14-capstone/02-hands-on-lab" },
+        { "title": "Capstone Overview", "slug": "14-capstone/01-capstone-overview" }
+      ]
+    },
+    {
+      "errorMessage": "Parquet error: Arrow schema does not match Parquet file schema. Missing field: 'timestamp'",
+      "area": "arrow",
+      "category": "data",
+      "symptoms": [
+        "Чтение Parquet файла падает с ошибкой schema mismatch",
+        "Файл читался раньше, но после добавления колонки — ошибка",
+        "Несколько Parquet файлов в директории имеют разные схемы"
+      ],
+      "cause": "DataFusion при чтении директории Parquet файлов ожидает единую схему. Если файлы были созданы с разными версиями схемы (schema evolution), или первый файл задаёт схему, которой нет в остальных, возникает ошибка.",
+      "solution": [
+        "Используйте `schema_merge` при регистрации: `ParquetReadOptions::default().schema_merge(true)`",
+        "Укажите явную схему при чтении: `ctx.register_parquet_with_schema(\"t\", path, schema, opts)`",
+        "Перепишите файлы с единой схемой через DataFusion: `CREATE TABLE ... AS SELECT * FROM old_table`"
+      ],
+      "relatedLessons": [
+        { "title": "Object Store and Multi-Format", "slug": "12-lakehouse-integration/04-object-store-multiformat" },
+        { "title": "Lakehouse Architecture", "slug": "12-lakehouse-integration/01-lakehouse-architecture" }
+      ]
+    }
+  ]
+}

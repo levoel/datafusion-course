@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "13-real-world-patterns/01-custom-analytics-engines",
+  "moduleId": "13-real-world-patterns",
+  "_meta": {
+    "idPrefix": "df-m13-01"
+  },
+  "questions": [
+    {
+      "id": "df-m13-01-q1",
+      "type": "multiple-choice",
+      "question": "Почему DataFusion называется embedded query engine, а не standalone СУБД?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion имеет встроенный HTTP-сервер, но его нужно настроить"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion — библиотека без сетевого сервера: вы оборачиваете SessionContext в свой сервис (Axum, Tonic) и контролируете каждый слой от парсинга HTTP до формата ответа"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion работает только через CLI — для сети нужен внешний прокси"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion — standalone СУБД, но без поддержки транзакций"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion — embedded движок без собственного сетевого слоя. Вы встраиваете SessionContext в свой Rust-сервис и решаете, как принимать запросы (REST, gRPC, WebSocket), как аутентифицировать клиентов и в каком формате отдавать результаты. Это отличает его от standalone СУБД (PostgreSQL, ClickHouse), которые имеют собственный wire protocol.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Embedded = библиотека. Вы контролируете сетевой слой, DataFusion — только выполнение запросов."
+    },
+    {
+      "id": "df-m13-01-q2",
+      "type": "multiple-choice",
+      "question": "Как правильно валидировать SQL от клиента, чтобы запретить DDL и DML в analytics API?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Regex: если SQL не начинается с SELECT — отклонить"
+        },
+        {
+          "id": "b",
+          "text": "DFParser::parse_sql() → проверить тип каждого Statement — разрешить только Query и Explain"
+        },
+        {
+          "id": "c",
+          "text": "Выполнить запрос в read-only транзакции DataFusion"
+        },
+        {
+          "id": "d",
+          "text": "Создать SessionContext без зарегистрированных таблиц — DDL невозможен"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DFParser::parse_sql() парсит SQL в AST и возвращает список Statement. Проверяя тип каждого Statement (Query, Explain — разрешены, остальные — запрещены), вы корректно обрабатываете комментарии, строковые литералы, вложенные выражения и DataFusion-специфичные команды (COPY, CREATE EXTERNAL TABLE). Regex ненадёжен: SQL в комментариях, CTE и подзапросы его обманут.",
+      "bloomLevel": "applied",
+      "studyHint": "Парсер > regex. DFParser::parse_sql() → match Statement → whitelist разрешённых типов."
+    },
+    {
+      "id": "df-m13-01-q3",
+      "type": "multiple-choice",
+      "question": "Сервис обрабатывает одновременно lookup-запросы (SELECT ... WHERE id = ?) и тяжёлые аналитические запросы (JOIN + GROUP BY). Один тяжёлый запрос блокирует лёгкие. Какой паттерн решает проблему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить target_partitions — все запросы ускорятся"
+        },
+        {
+          "id": "b",
+          "text": "Классифицировать запросы по логическому плану (наличие Join, Aggregate) и маршрутизировать на отдельные SessionContext с разной конфигурацией (Fast Lane / Heavy Lane)"
+        },
+        {
+          "id": "c",
+          "text": "Использовать UnboundedMemoryPool — тяжёлые запросы не будут ограничены"
+        },
+        {
+          "id": "d",
+          "text": "Все запросы помещать в очередь и выполнять последовательно"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Query routing по классу запроса: анализируем LogicalPlan на наличие Join и Aggregate, маршрутизируем lookup-запросы на контекст с малым memory limit и коротким timeout (Fast Lane), а аналитику — на контекст с FairSpillPool и длинным timeout (Heavy Lane). Каждый класс имеет свои ресурсы, тяжёлый запрос не блокирует лёгкие.",
+      "bloomLevel": "analytical",
+      "studyHint": "Classify by LogicalPlan → route to separate SessionContext. Fast Lane (lookup) vs Heavy Lane (analytics)."
+    },
+    {
+      "id": "df-m13-01-q4",
+      "type": "multiple-choice",
+      "question": "SessionContext::clone() в DataFusion — дорогая операция или дешёвая? Что разделяется между клонами?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Дорогая: создаётся полная копия каталога, RuntimeEnv и конфигурации"
+        },
+        {
+          "id": "b",
+          "text": "Дешёвая (O(1)): клонируются Arc-указатели — каталог, RuntimeEnv и конфигурация общие, а каждый запрос получает свой TaskContext при выполнении"
+        },
+        {
+          "id": "c",
+          "text": "Средняя: каталог копируется, но RuntimeEnv общий"
+        },
+        {
+          "id": "d",
+          "text": "Зависит от количества зарегистрированных таблиц — O(n) на таблицу"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "SessionContext внутри использует Arc для всех ключевых структур (каталог, RuntimeEnv, конфигурация). Clone — это клонирование Arc-указателей, O(1). Каталог таблиц, MemoryPool и DiskManager разделяются между клонами. Изоляция обеспечивается на уровне TaskContext при выполнении конкретного запроса.",
+      "bloomLevel": "conceptual",
+      "studyHint": "SessionContext::clone() = Arc::clone() для внутренних структур. O(1), каталог общий."
+    },
+    {
+      "id": "df-m13-01-q5",
+      "type": "multiple-choice",
+      "question": "Для BI-инструментов (DBeaver, Tableau) нужен протокол подключения к DataFusion-сервису. JSON REST имеет высокий overhead сериализации. Какой протокол оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "WebSocket с JSON — стриминг снизит задержку"
+        },
+        {
+          "id": "b",
+          "text": "Arrow Flight SQL — стандартный протокол, передаёт данные в нативном Arrow IPC формате без сериализации, поддерживается JDBC/ODBC драйверами"
+        },
+        {
+          "id": "c",
+          "text": "PostgreSQL wire protocol — BI-инструменты уже умеют с ним работать"
+        },
+        {
+          "id": "d",
+          "text": "GraphQL — позволяет клиенту запрашивать только нужные поля"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Arrow Flight SQL — стандартный протокол для передачи табличных данных в нативном Arrow IPC формате. Нет сериализации/десериализации (в отличие от JSON), данные передаются в бинарном виде с нулевым overhead. BI-инструменты (DBeaver, Tableau) подключаются через JDBC/ODBC Flight SQL драйверы без кастомного кода.",
+      "bloomLevel": "applied",
+      "studyHint": "Arrow Flight SQL = zero-copy Arrow IPC + JDBC/ODBC support. Идеален для BI."
+    }
+  ]
+}

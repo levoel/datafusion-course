@@ -83,7 +83,7 @@ pub enum Transformed<T> {
 
 ### Фаза 3: Physical Optimizer
 
-Physical Optimizer работает с `ExecutionPlan` — конкретными операторами (HashJoinExec, SortExec, ParquetExec). Его задачи:
+Physical Optimizer работает с `ExecutionPlan` — конкретными операторами (HashJoinExec, SortExec, DataSourceExec). Его задачи:
 - Выбор алгоритма соединения (Hash vs SortMerge vs NestedLoop)
 - Вставка операторов перераспределения (`RepartitionExec`)
 - Вставка операторов сортировки (`SortExec`) где требуется порядок

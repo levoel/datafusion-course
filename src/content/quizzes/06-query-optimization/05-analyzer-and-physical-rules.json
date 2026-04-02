@@ -124,7 +124,7 @@
         },
         {
           "id": "b",
-          "text": "Заменяет ParquetExec на SortedExec для указания порядка"
+          "text": "Заменяет DataSourceExec на SortedExec для указания порядка"
         },
         {
           "id": "c",

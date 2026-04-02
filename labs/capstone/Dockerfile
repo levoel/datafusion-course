@@ -12,7 +12,7 @@ RUN apt-get update && \
 
 # Python-зависимости
 RUN pip install --no-cache-dir \
-    datafusion>=43.0.0 \
+    datafusion>=52.0.0 \
     pyarrow>=18.0.0 \
     pandas>=2.2.0
 

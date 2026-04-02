@@ -91,7 +91,7 @@
     {
       "id": "df-m03-exam-q4",
       "type": "multiple-choice",
-      "question": "EXPLAIN ANALYZE показывает: ParquetExec (output_rows: 5000000), FilterExec (output_rows: 500), SortExec (output_rows: 500), GlobalLimitExec (output_rows: 10). Какой узел является главным узким местом и как его оптимизировать?",
+      "question": "EXPLAIN ANALYZE показывает: DataSourceExec (output_rows: 5000000), FilterExec (output_rows: 500), SortExec (output_rows: 500), GlobalLimitExec (output_rows: 10). Какой узел является главным узким местом и как его оптимизировать?",
       "options": [
         {
           "id": "a",
@@ -99,7 +99,7 @@
         },
         {
           "id": "b",
-          "text": "ParquetExec — читает 5M строк, из которых нужно 500. Нужно проверить predicate pushdown и статистики row group в Parquet-файле"
+          "text": "DataSourceExec — читает 5M строк, из которых нужно 500. Нужно проверить predicate pushdown и статистики row group в Parquet-файле"
         },
         {
           "id": "c",
@@ -111,9 +111,9 @@
         }
       ],
       "correctAnswer": "b",
-      "explanation": "ParquetExec читает 5M строк, но FilterExec пропускает только 500 — селективность 0.01%. Это означает, что predicate pushdown не сработал или row group статистики отсутствуют. При работающем pushdown ParquetExec пропустил бы целые row groups, сократив чтение в десятки раз.",
+      "explanation": "DataSourceExec читает 5M строк, но FilterExec пропускает только 500 — селективность 0.01%. Это означает, что predicate pushdown не сработал или row group статистики отсутствуют. При работающем pushdown DataSourceExec пропустил бы целые row groups, сократив чтение в десятки раз.",
       "bloomLevel": "analytical",
-      "studyHint": "Ищите узлы с наибольшим ratio input/output. ParquetExec 5M → FilterExec 500 = pushdown не работает."
+      "studyHint": "Ищите узлы с наибольшим ratio input/output. DataSourceExec 5M → FilterExec 500 = pushdown не работает."
     },
     {
       "id": "df-m03-exam-q5",
@@ -280,7 +280,7 @@
     {
       "id": "df-m03-exam-q11",
       "type": "multiple-choice",
-      "question": "Pipeline обрабатывает CSV-данные: ctx.read_csv() → DataFrame → filter → aggregate → collect. EXPLAIN ANALYZE показывает CsvExec без predicate pushdown. Почему pushdown не работает и что делать?",
+      "question": "Pipeline обрабатывает CSV-данные: ctx.read_csv() → DataFrame → filter → aggregate → collect. EXPLAIN ANALYZE показывает DataSourceExec (format=csv) без predicate pushdown. Почему pushdown не работает и что делать?",
       "options": [
         {
           "id": "a",
@@ -300,7 +300,7 @@
         }
       ],
       "correctAnswer": "b",
-      "explanation": "CSV — текстовый построчный формат без метаданных о содержимом. CsvExec всегда читает все строки и передаёт их FilterExec. Parquet содержит статистики (min/max/null_count) по каждому row group, что позволяет ParquetExec пропускать целые блоки. Конвертация в Parquet — стандартная оптимизация.",
+      "explanation": "CSV — текстовый построчный формат без метаданных о содержимом. DataSourceExec (format=csv) всегда читает все строки и передаёт их FilterExec. Parquet содержит статистики (min/max/null_count) по каждому row group, что позволяет DataSourceExec (format=parquet) пропускать целые блоки. Конвертация в Parquet — стандартная оптимизация.",
       "bloomLevel": "analytical",
       "studyHint": "Predicate pushdown работает с Parquet (статистики row group), но не с CSV (нет метаданных). Конвертация CSV → Parquet — первый шаг оптимизации."
     },

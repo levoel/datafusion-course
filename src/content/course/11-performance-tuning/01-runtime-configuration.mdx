@@ -1,0 +1,337 @@
+---
+title: "Конфигурация runtime: SessionConfig, RuntimeEnv и лимиты"
+description: "SessionConfig (batch_size, target_partitions, memory limits), RuntimeEnvBuilder, конфигурация через SQL SET, профили производительности и best practices"
+order: 1
+difficulty: "advanced"
+estimatedTime: 14
+topics: ["SessionConfig", "RuntimeEnvBuilder", "batch_size", "target_partitions", "memory_limit", "spill_compression", "configuration"]
+---
+
+# Конфигурация runtime: SessionConfig, RuntimeEnv и лимиты
+
+В модуле 02 мы изучили [управление памятью](/course/02-architecture/07-memory-management) — MemoryPool, FairSpillPool и DiskManager. Теперь переходим к системной настройке всего runtime: какие параметры критичны для производительности, как их задавать и как строить профили конфигурации для разных нагрузок.
+
+## Архитектура конфигурации DataFusion
+
+DataFusion разделяет конфигурацию на два уровня:
+
+<DiagramContainer title="Два уровня конфигурации DataFusion" className="my-6">
+  <FlowRow className="gap-8 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="process" tooltip="Параметры запросов: batch_size, target_partitions, оптимизации планировщика">SessionConfig</FlowNode>
+      <DataBox label="Отвечает за" className="border-blue-500/30 w-64">
+        <div className="text-xs">Размер batch, партиции, оптимизации, формат вывода, SQL-диалект</div>
+      </DataBox>
+      <DataBox label="Область" className="border-blue-500/30 w-64">
+        <div className="text-xs">Каждый SessionContext имеет свой экземпляр — можно менять между запросами</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="process" tooltip="Инфраструктура: пул памяти, диск для spill, object store">RuntimeEnv</FlowNode>
+      <DataBox label="Отвечает за" className="border-blue-500/30 w-64">
+        <div className="text-xs">MemoryPool, DiskManager, ObjectStoreRegistry, кеш</div>
+      </DataBox>
+      <DataBox label="Область" className="border-blue-500/30 w-64">
+        <div className="text-xs">Разделяется между контекстами — создаётся один раз при старте</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+<Callout type="tip">
+**Правило:** SessionConfig меняется «дёшево» (можно на каждый запрос), RuntimeEnv создаётся «дорого» (один раз на приложение). Не пересоздавайте RuntimeEnv для каждого запроса.
+</Callout>
+
+## SessionConfig: ключевые параметры производительности
+
+### batch_size — размер RecordBatch
+
+`batch_size` определяет, сколько строк обрабатывается в одном RecordBatch за раз. Значение по умолчанию — 8192.
+
+```rust
+use datafusion::prelude::*;
+
+// Программно
+let config = SessionConfig::new()
+    .with_batch_size(4096);
+
+let ctx = SessionContext::new_with_config(config);
+```
+
+```sql
+-- Через SQL
+SET datafusion.execution.batch_size = 4096;
+```
+
+**Влияние на производительность:**
+
+<DiagramContainer title="Влияние batch_size на производительность" className="my-6">
+  <FlowRow className="gap-6 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Меньше памяти на batch, больше вызовов poll_next(), больше overhead на SIMD-прогрев">Маленький batch (512-2048)</FlowNode>
+      <DataBox label="Плюсы" className="border-emerald-500/30 w-56">
+        <div className="text-xs">Меньше пиковое потребление памяти, лучше для memory-constrained сред</div>
+      </DataBox>
+      <DataBox label="Минусы" className="border-red-500/30 w-56">
+        <div className="text-xs">Больше overhead на вызовы, хуже SIMD-утилизация, чаще spill</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="output" tooltip="Больше памяти на batch, меньше вызовов, лучше SIMD-утилизация">Большой batch (8192-65536)</FlowNode>
+      <DataBox label="Плюсы" className="border-emerald-500/30 w-56">
+        <div className="text-xs">Лучше SIMD и кеш-локальность, меньше overhead на вызовы</div>
+      </DataBox>
+      <DataBox label="Минусы" className="border-red-500/30 w-56">
+        <div className="text-xs">Больше пиковое потребление, может вызвать ранний spill</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+<Callout type="note">
+Для memory-limited сред (контейнеры с 512 MB — 2 GB) уменьшение `batch_size` до 1024-2048 уменьшает вероятность spill. Для аналитических серверов с 16+ GB — значение по умолчанию (8192) оптимально.
+</Callout>
+
+### target_partitions — параллелизм выполнения
+
+`target_partitions` определяет целевое количество партиций при выполнении запросов. По умолчанию равен количеству CPU-ядер.
+
+```rust
+let config = SessionConfig::new()
+    .with_target_partitions(8);
+```
+
+```sql
+SET datafusion.execution.target_partitions = 8;
+```
+
+**Как target_partitions влияет на план:**
+
+```sql
+-- При target_partitions = 16:
+-- DataSourceExec (1 partition) 
+--   → RepartitionExec: RoundRobinBatch(16)  -- расширяет до 16
+--     → AggregateExec: mode=Partial          -- 16 параллельных partial
+--       → CoalesceBatchesExec
+--         → RepartitionExec: Hash([key], 16)
+--           → AggregateExec: mode=FinalPartitioned
+```
+
+<Callout type="warning">
+**Увеличение target_partitions не всегда ускоряет запросы.** Каждая партиция потребляет память для промежуточных буферов. При memory_limit = 2 GB и target_partitions = 32 каждая партиция получит ~62 MB — крупные Hash Join могут не поместиться и упасть с ResourcesExhausted. Формула: `memory_per_partition ≈ memory_limit / target_partitions`.
+</Callout>
+
+### Управление repartition-стратегиями
+
+DataFusion предлагает несколько флагов для контроля автоматического repartitioning:
+
+```rust
+let config = SessionConfig::new()
+    .with_repartition_joins(true)        // repartition для join keys
+    .with_repartition_aggregations(true)  // repartition для GROUP BY
+    .with_repartition_windows(true)       // repartition для PARTITION BY в window
+    .with_repartition_sorts(true)         // параллельная сортировка
+    .with_repartition_file_scans(true);   // разбивка крупных файлов на партиции
+```
+
+```sql
+SET datafusion.optimizer.repartition_joins = true;
+SET datafusion.optimizer.repartition_aggregations = true;
+SET datafusion.optimizer.repartition_windows = true;
+SET datafusion.optimizer.repartition_sorts = true;
+SET datafusion.optimizer.repartition_file_scans = true;
+```
+
+<Callout type="tip">
+Все флаги включены по умолчанию. Отключайте их только при диагностике — например, `repartition_joins = false` убирает Hash-repartition перед Join, что полезно если данные уже разложены по ключу join.
+</Callout>
+
+## RuntimeEnvBuilder: настройка инфраструктуры
+
+RuntimeEnv определяет инфраструктуру выполнения. Создаётся через builder:
+
+```rust
+use datafusion::execution::runtime_env::RuntimeEnvBuilder;
+use datafusion::execution::memory_pool::FairSpillPool;
+use datafusion::execution::disk_manager::DiskManagerConfig;
+use std::sync::Arc;
+
+let runtime = RuntimeEnvBuilder::new()
+    // Пул памяти: 4 GB с fair-распределением и spill
+    .with_memory_pool(Arc::new(FairSpillPool::new(4_000_000_000)))
+    // Менеджер диска для spill-файлов
+    .with_disk_manager(DiskManagerConfig::NewOs)
+    .build_arc()?;
+
+// Комбинируем с SessionConfig
+let config = SessionConfig::new()
+    .with_batch_size(8192)
+    .with_target_partitions(8);
+
+let ctx = SessionContext::new_with_config_rt(config, runtime);
+```
+
+<Callout type="note">
+`DiskManagerConfig::NewOs` использует системную temp-директорию для spill-файлов. Для production укажите конкретный путь: `DiskManagerConfig::NewSpecified(vec!["/data/spill".into()])` — это даёт контроль над дисковым пространством и позволяет разместить spill на быстром SSD.
+</Callout>
+
+### Сжатие spill-файлов
+
+DataFusion v44+ поддерживает сжатие spill-файлов для уменьшения I/O:
+
+```rust
+use datafusion::common::config::SpillCompression;
+
+let config = SessionConfig::new()
+    .with_spill_compression(SpillCompression::Zstd);
+```
+
+```sql
+SET datafusion.execution.spill_compression = 'zstd';
+```
+
+**Выбор алгоритма сжатия:**
+
+<DiagramContainer title="Алгоритмы сжатия spill-файлов" className="my-6">
+  <FlowRow className="gap-4 p-4 justify-center flex-wrap">
+    <DataBox label="Zstd" className="border-blue-500/30 w-48">
+      <div className="text-xs">Хороший баланс: ~3:1 compression ratio, средняя скорость. Рекомендуется по умолчанию</div>
+    </DataBox>
+    <DataBox label="LZ4" className="border-emerald-500/30 w-48">
+      <div className="text-xs">Быстрее сжатие/разжатие, но ниже ratio (~2:1). Для CPU-bound нагрузок</div>
+    </DataBox>
+    <DataBox label="Snappy" className="border-amber-500/30 w-48">
+      <div className="text-xs">Самый быстрый на decompress, ratio ~1.5:1. Для SSD с высоким IOPS</div>
+    </DataBox>
+    <DataBox label="None" className="border-red-500/30 w-48">
+      <div className="text-xs">Без сжатия. Максимальный I/O, но ноль CPU overhead. Для RAM-disk</div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+## Конфигурация через SQL SET
+
+Для интерактивной работы все параметры SessionConfig доступны через SQL:
+
+```sql
+-- Посмотреть все параметры
+SHOW ALL;
+
+-- Посмотреть конкретный параметр
+SHOW datafusion.execution.batch_size;
+
+-- Посмотреть группу параметров
+SHOW ALL LIKE '%partition%';
+
+-- Изменить параметр для текущей сессии
+SET datafusion.execution.target_partitions = 4;
+SET datafusion.execution.batch_size = 1024;
+```
+
+<Callout type="tip">
+`SET` влияет только на текущий SessionContext. Если вы создаёте новый SessionContext с тем же RuntimeEnv, он получит значения по умолчанию. Для «глобальных» настроек используйте SessionConfig при создании контекста.
+</Callout>
+
+## Профили конфигурации для типичных нагрузок
+
+### Профиль: Аналитический сервер (16+ GB RAM, 8+ ядер)
+
+```rust
+let runtime = RuntimeEnvBuilder::new()
+    .with_memory_pool(Arc::new(FairSpillPool::new(12_000_000_000))) // 12 GB
+    .with_disk_manager(DiskManagerConfig::NewSpecified(
+        vec!["/data/spill".into()]
+    ))
+    .build_arc()?;
+
+let config = SessionConfig::new()
+    .with_batch_size(8192)
+    .with_target_partitions(8)
+    .with_spill_compression(SpillCompression::Zstd)
+    .with_repartition_joins(true)
+    .with_repartition_aggregations(true);
+
+let ctx = SessionContext::new_with_config_rt(config, runtime);
+```
+
+### Профиль: Контейнер с лимитом 2 GB
+
+```rust
+let runtime = RuntimeEnvBuilder::new()
+    .with_memory_pool(Arc::new(FairSpillPool::new(1_500_000_000))) // 1.5 GB
+    .with_disk_manager(DiskManagerConfig::NewOs)
+    .build_arc()?;
+
+let config = SessionConfig::new()
+    .with_batch_size(1024)       // уменьшаем — меньше памяти на batch
+    .with_target_partitions(4)   // меньше партиций — больше памяти на каждую
+    .with_spill_compression(SpillCompression::Zstd);
+
+let ctx = SessionContext::new_with_config_rt(config, runtime);
+```
+
+<Callout type="warning">
+Оставляйте 25-30% памяти контейнера для OS, GC (если Python), и overhead самого DataFusion. Для контейнера с 2 GB лимитом MemoryPool не должен превышать ~1.5 GB.
+</Callout>
+
+### Профиль: Embedded / Edge (512 MB RAM)
+
+```rust
+let runtime = RuntimeEnvBuilder::new()
+    .with_memory_pool(Arc::new(FairSpillPool::new(350_000_000))) // 350 MB
+    .with_disk_manager(DiskManagerConfig::NewOs)
+    .build_arc()?;
+
+let config = SessionConfig::new()
+    .with_batch_size(512)
+    .with_target_partitions(2)
+    .with_spill_compression(SpillCompression::Lz4)  // быстрее Zstd
+    .with_repartition_joins(false)    // экономим память
+    .with_repartition_windows(false);
+
+let ctx = SessionContext::new_with_config_rt(config, runtime);
+```
+
+## Best practices конфигурации
+
+<DiagramContainer title="Чек-лист настройки DataFusion" className="my-6">
+  <FlowColumn className="gap-3 p-4">
+    <FlowNode variant="process" tooltip="Всегда начинайте с дефолтов и замеряйте baseline">1. Начните с дефолтов — замерьте baseline через EXPLAIN ANALYZE</FlowNode>
+    <FlowNode variant="process" tooltip="memory_limit / target_partitions — если ratio < 100 MB, уменьшите партиции">2. Проверьте memory/partition ratio</FlowNode>
+    <FlowNode variant="process" tooltip="FairSpillPool + DiskManager + compression — для production обязательно">3. Настройте spill: FairSpillPool + DiskManager + compression</FlowNode>
+    <FlowNode variant="process" tooltip="Один файл — мало партиций. Много мелких файлов — overhead на open. 64-256 MB / файл оптимально">4. Проверьте file layout — размер и количество файлов</FlowNode>
+    <FlowNode variant="process" tooltip="Уменьшите batch_size только если видите чрезмерный spill или high peak memory">5. Тюните batch_size только по результатам профилирования</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+### Антипаттерны
+
+| Антипаттерн | Почему плохо | Что делать |
+|---|---|---|
+| `target_partitions = 128` на 8-ядерной машине | 128 задач конкурируют за 8 ядер, overhead на scheduling и память | `target_partitions = num_cores` или `num_cores * 2` |
+| `batch_size = 1` для «минимизации памяти» | Уничтожает SIMD-vectorization, каждый batch имеет fixed overhead | Минимум 256, рекомендуется 1024+ |
+| Без MemoryPool в production | OOM вместо контролируемой ошибки | FairSpillPool + memory_limit < 80% доступной RAM |
+| `DiskManagerConfig::Disabled` при FairSpillPool | Spill невозможен — FairSpillPool вернёт ResourcesExhausted | Всегда включайте DiskManager с FairSpillPool |
+| Пересоздание RuntimeEnv на каждый запрос | Потеря кешей ObjectStore, пересоздание пулов потоков | Один RuntimeEnv → много SessionContext |
+
+## Мониторинг конфигурации в runtime
+
+```rust
+// Прочитать текущие значения конфигурации
+let config = ctx.copied_config();
+println!("batch_size: {}", config.batch_size());
+println!("target_partitions: {}", config.target_partitions());
+
+// Через SQL
+let df = ctx.sql("SHOW ALL LIKE '%batch%'").await?;
+df.show().await?;
+```
+
+## Итоги
+
+- **SessionConfig** — «дешёвая» конфигурация, меняется на каждый запрос: batch_size, target_partitions, repartition-флаги
+- **RuntimeEnv** — «дорогая» инфраструктура, создаётся один раз: MemoryPool, DiskManager, ObjectStore
+- **batch_size** по умолчанию (8192) оптимален для большинства случаев — уменьшайте только для memory-constrained сред
+- **target_partitions** должен соответствовать количеству ядер — больше не значит быстрее
+- **FairSpillPool + DiskManager + spill_compression** — обязательная комбинация для production
+- Следующий урок: [партиционирование и параллелизм](/course/11-performance-tuning/02-partition-and-parallelism) — как DataFusion распараллеливает работу

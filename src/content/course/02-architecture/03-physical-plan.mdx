@@ -67,24 +67,24 @@ pub enum Partitioning {
       <FlowColumn className="gap-1 items-center">
         <FlowNode variant="process" tooltip="Частичная агрегация: вычисляет промежуточные аккумуляторы в своей партиции">AggregateExec (partial)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="input" tooltip="Чтение одного файла или row group Parquet — отдельная партиция данных">ParquetExec (part 0)</FlowNode>
+        <FlowNode variant="input" tooltip="Чтение одного файла или row group Parquet — отдельная партиция данных">DataSourceExec (part 0)</FlowNode>
       </FlowColumn>
       <FlowColumn className="gap-1 items-center">
         <FlowNode variant="process" tooltip="Частичная агрегация: вычисляет промежуточные аккумуляторы в своей партиции">AggregateExec (partial)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="input" tooltip="Чтение второго файла Parquet параллельно с другими партициями">ParquetExec (part 1)</FlowNode>
+        <FlowNode variant="input" tooltip="Чтение второго файла Parquet параллельно с другими партициями">DataSourceExec (part 1)</FlowNode>
       </FlowColumn>
       <FlowColumn className="gap-1 items-center">
         <FlowNode variant="process" tooltip="Частичная агрегация: вычисляет промежуточные аккумуляторы в своей партиции">AggregateExec (partial)</FlowNode>
         <Arrow direction="down" />
-        <FlowNode variant="input" tooltip="Чтение третьего файла Parquet — все партиции исполняются параллельно через tokio">ParquetExec (part 2)</FlowNode>
+        <FlowNode variant="input" tooltip="Чтение третьего файла Parquet — все партиции исполняются параллельно через tokio">DataSourceExec (part 2)</FlowNode>
       </FlowColumn>
     </FlowRow>
   </FlowColumn>
 </DiagramContainer>
 
 В этой схеме:
-- `ParquetExec` создаёт по одной партиции на файл (или row group)
+- `DataSourceExec` создаёт по одной партиции на файл (или row group)
 - `AggregateExec (partial)` вычисляет промежуточные агрегаты в каждой партиции параллельно
 - `AggregateExec (final)` объединяет промежуточные результаты
 - `CoalescePartitionsExec` сводит N партиций в одну для глобальной сортировки
@@ -122,7 +122,7 @@ pub trait RecordBatchStream: Stream<Item = Result<RecordBatch>> {
 DataFusion использует **pull-модель** (volcano model): потребитель запрашивает данные у производителя:
 
 ```
-SortExec.next()          →  AggregateExec.next()    →  FilterExec.next()   →  ParquetExec.next()
+SortExec.next()          →  AggregateExec.next()    →  FilterExec.next()   →  DataSourceExec.next()
          ← RecordBatch   ←            RecordBatch    ←          RecordBatch ←          RecordBatch
 ```
 
@@ -228,7 +228,7 @@ let df = ctx.sql("EXPLAIN SELECT region, SUM(amount) FROM orders GROUP BY region
 //   AggregateExec: mode=Final, gby=[region@0 as region], aggr=[SUM(orders.amount)]
 //     CoalescePartitionsExec
 //       AggregateExec: mode=Partial, gby=[region@0 as region], aggr=[SUM(orders.amount)]
-//         ParquetExec: file_groups={...}, projection=[region, amount]
+//         DataSourceExec: file_groups={...}, format=parquet, projection=[region, amount]
 ```
 
 Обратите внимание: физический план содержит два `AggregateExec` (Partial + Final) и `CoalescePartitionsExec` между ними — деталей, которых нет в логическом плане.

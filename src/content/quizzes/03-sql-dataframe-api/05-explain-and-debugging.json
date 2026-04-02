@@ -89,7 +89,7 @@
     {
       "id": "df-m03-05-q4",
       "type": "multiple-choice",
-      "question": "Запрос EXPLAIN ANALYZE показывает, что ParquetExec читает 10 миллионов строк, а FilterExec пропускает только 1000. Какая оптимизация может уменьшить количество прочитанных строк?",
+      "question": "Запрос EXPLAIN ANALYZE показывает, что DataSourceExec читает 10 миллионов строк, а FilterExec пропускает только 1000. Какая оптимизация может уменьшить количество прочитанных строк?",
       "options": [
         {
           "id": "a",
@@ -101,7 +101,7 @@
         },
         {
           "id": "c",
-          "text": "Проверить, применяется ли predicate pushdown к ParquetExec — фильтр должен опускаться до уровня чтения файла"
+          "text": "Проверить, применяется ли predicate pushdown к DataSourceExec — фильтр должен опускаться до уровня чтения файла"
         },
         {
           "id": "d",
@@ -109,9 +109,9 @@
         }
       ],
       "correctAnswer": "c",
-      "explanation": "Если фильтр применяется только в FilterExec после полного чтения файла, это значит, что predicate pushdown не сработал. Нужно проверить: поддерживает ли тип данных pushdown, корректен ли формат фильтра, есть ли статистики в Parquet-файле. При работающем pushdown ParquetExec пропускает целые row groups.",
+      "explanation": "Если фильтр применяется только в FilterExec после полного чтения файла, это значит, что predicate pushdown не сработал. Нужно проверить: поддерживает ли тип данных pushdown, корректен ли формат фильтра, есть ли статистики в Parquet-файле. При работающем pushdown DataSourceExec пропускает целые row groups.",
       "bloomLevel": "analytical",
-      "studyHint": "Если ParquetExec читает в разы больше, чем проходит через фильтр — ищите причину сбоя predicate pushdown."
+      "studyHint": "Если DataSourceExec читает в разы больше, чем проходит через фильтр — ищите причину сбоя predicate pushdown."
     },
     {
       "id": "df-m03-05-q5",

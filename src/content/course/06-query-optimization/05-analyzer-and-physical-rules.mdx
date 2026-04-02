@@ -160,17 +160,17 @@ DataFusion содержит десятки физических правил. К
 ```
 -- До EnforceDistribution
 HashJoinExec: on=[(customer_id, id)]
-  ParquetExec: orders         -- партиционирован по file_groups
-  ParquetExec: customers      -- партиционирован по file_groups
+  DataSourceExec: orders, format=parquet  -- партиционирован по file_groups
+  DataSourceExec: customers, format=parquet  -- партиционирован по file_groups
 
 -- После EnforceDistribution
 HashJoinExec: mode=Partitioned, on=[(customer_id, id)]
   CoalesceBatchesExec: target_batch_size=8192
     RepartitionExec: partitioning=Hash([customer_id], 16)
-      ParquetExec: orders
+      DataSourceExec: orders, format=parquet
   CoalesceBatchesExec: target_batch_size=8192
     RepartitionExec: partitioning=Hash([id], 16)
-      ParquetExec: customers
+      DataSourceExec: customers, format=parquet
 ```
 
 `RepartitionExec` перераспределяет данные по хешу ключа join — строки с одинаковым `customer_id` попадут в одну партицию, что позволяет параллельный HashJoin.
@@ -193,12 +193,12 @@ HashJoinExec: mode=Partitioned, on=[(customer_id, id)]
 
 -- До
 ProjectionExec: expr=[timestamp, value]
-  ParquetExec: ... (не отсортирован)
+  DataSourceExec: ... (не отсортирован)
 
 -- После EnforceSorting (для ORDER BY timestamp)
 SortExec: expr=[timestamp@0 ASC]
   ProjectionExec: expr=[timestamp, value]
-    ParquetExec: ...
+    DataSourceExec: ...
 ```
 
 EnforceSorting также оптимизирует существующие сортировки:

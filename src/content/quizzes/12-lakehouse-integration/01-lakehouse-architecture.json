@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "12-lakehouse-integration/01-lakehouse-architecture",
+  "moduleId": "12-lakehouse-integration",
+  "_meta": {
+    "idPrefix": "df-m12-01"
+  },
+  "questions": [
+    {
+      "id": "df-m12-01-q1",
+      "type": "multiple-choice",
+      "question": "Какую проблему Data Lake решает lakehouse-архитектура?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Высокую стоимость хранения — lakehouse использует более дешёвые SSD"
+        },
+        {
+          "id": "b",
+          "text": "Отсутствие ACID-транзакций, schema enforcement и time travel — lakehouse добавляет транзакционный слой метаданных поверх open-format файлов на object store"
+        },
+        {
+          "id": "c",
+          "text": "Медленный SQL — lakehouse заменяет Parquet на проприетарный колоночный формат"
+        },
+        {
+          "id": "d",
+          "text": "Vendor lock-in — lakehouse шифрует данные, чтобы они были доступны только одному движку"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Data Lake хранит данные дёшево в открытых форматах, но без ACID-транзакций, schema enforcement и time travel. Lakehouse добавляет транзакционный слой (Delta Lake, Iceberg) поверх тех же Parquet-файлов на object store — сохраняя открытость и дешевизну, но добавляя гарантии согласованности.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Lakehouse = Data Lake (дешёвый open storage) + Data Warehouse (ACID, schema, time travel)."
+    },
+    {
+      "id": "df-m12-01-q2",
+      "type": "multiple-choice",
+      "question": "Через какой механизм DataFusion интегрируется с Delta Lake и Apache Iceberg?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion содержит встроенный парсер _delta_log и Iceberg manifest — форматы реализованы в ядре движка"
+        },
+        {
+          "id": "b",
+          "text": "Через trait TableProvider — delta-rs и iceberg-rust реализуют этот trait, предоставляя schema, file pruning и statistics"
+        },
+        {
+          "id": "c",
+          "text": "Через SQL-расширения — добавляются новые SQL-команды READ_DELTA и READ_ICEBERG"
+        },
+        {
+          "id": "d",
+          "text": "Через JDBC-драйвер — DataFusion подключается к серверу Delta/Iceberg по сети"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion не знает деталей Delta или Iceberg. Библиотеки delta-rs и iceberg-rust реализуют trait TableProvider, предоставляя DataFusion: schema (описание колонок), file pruning (список файлов для конкретного запроса) и statistics (min/max/null_count для оптимизатора). DataFusion работает с абстракцией, не с конкретным форматом.",
+      "bloomLevel": "conceptual",
+      "studyHint": "TableProvider — единая точка интеграции. DataFusion не знает, что за формат — видит только schema + files + stats."
+    },
+    {
+      "id": "df-m12-01-q3",
+      "type": "multiple-choice",
+      "question": "Таблица содержит 1000 Parquet-файлов. Запрос WHERE date = '2024-03-15' совпадает с 10 файлами. Как file pruning Delta Lake ускоряет выполнение по сравнению с raw Parquet?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Никак — DataFusion и так читает row group statistics из Parquet footer каждого файла"
+        },
+        {
+          "id": "b",
+          "text": "Delta хранит min/max stats в transaction log — один read вместо 1000 footer reads. Для S3 с ~50ms латентностью на запрос это экономит ~50 секунд I/O"
+        },
+        {
+          "id": "c",
+          "text": "Delta перемещает нужные файлы ближе к compute-узлу"
+        },
+        {
+          "id": "d",
+          "text": "Delta сжимает файлы эффективнее, чем raw Parquet"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Без Delta DataFusion читает footer каждого из 1000 файлов (по ~10 KB, но с ~50ms латентностью на S3 = ~50 секунд). С Delta — один read transaction log (JSON или checkpoint) содержит min/max для всех файлов. Результат: 1 I/O вместо 1000. После pruning DataFusion читает только 10 нужных файлов.",
+      "bloomLevel": "applied",
+      "studyHint": "File pruning из transaction log: 1 read (log) + N reads (данные) vs 1000 reads (footer) + N reads (данные)."
+    },
+    {
+      "id": "df-m12-01-q4",
+      "type": "multiple-choice",
+      "question": "Команда выбирает формат таблиц для нового аналитического хранилища. Требования: multi-engine (Spark + Flink + DataFusion), частая эволюция схемы партиционирования, 500K+ файлов. Какой формат оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Apache Hudi — оптимизирован для upsert-нагрузок и record-level indexing"
+        },
+        {
+          "id": "b",
+          "text": "Delta Lake — простой transaction log, широкое adoption"
+        },
+        {
+          "id": "c",
+          "text": "Apache Iceberg — multi-engine by design, partition evolution без перезаписи, manifest-архитектура масштабируется при 500K+ файлов"
+        },
+        {
+          "id": "d",
+          "text": "Raw Parquet с Hive-партиционированием — самый простой вариант"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "Multi-engine support (Spark + Flink + DataFusion) — Iceberg проектировался для этого, у каждого движка есть нативная интеграция. Partition evolution — уникальная возможность Iceberg, Delta требует перезаписи. 500K+ файлов — manifest-архитектура Iceberg распределяет statistics по manifest-файлам (~1000 файлов каждый), в отличие от Delta, где один checkpoint содержит все stats.",
+      "bloomLevel": "analytical",
+      "studyHint": "Iceberg = multi-engine + partition evolution + масштабируемые метаданные. Delta = простота + Databricks-стек."
+    },
+    {
+      "id": "df-m12-01-q5",
+      "type": "multiple-choice",
+      "question": "Какую роль играет DataFusion в lakehouse-архитектуре?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Управляет transaction log — создаёт commits, обеспечивает ACID"
+        },
+        {
+          "id": "b",
+          "text": "Хранит данные — управляет размещением файлов на object store"
+        },
+        {
+          "id": "c",
+          "text": "Query engine layer — парсит SQL, оптимизирует план, исполняет запросы, получая schema и file lists от TableProvider (Delta/Iceberg)"
+        },
+        {
+          "id": "d",
+          "text": "Каталог — хранит реестр всех таблиц и их метаданные"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "DataFusion — query engine layer. Он не управляет транзакциями (это Delta/Iceberg), не хранит данные (это object store), не ведёт каталог (это REST/Glue/Hive). DataFusion парсит SQL, строит и оптимизирует план запроса, исполняет его, запрашивая файлы через TableProvider.",
+      "bloomLevel": "conceptual",
+      "studyHint": "DataFusion = парсинг + оптимизация + исполнение. Transaction log и storage — чужая ответственность."
+    }
+  ]
+}

@@ -108,7 +108,21 @@ SELECT region, product_category, SUM(amount) AS total
 FROM orders
 GROUP BY region, product_category
 ORDER BY region, total DESC;
+```
 
+<Callout type="tip">
+Начиная с DataFusion v48, поддерживается `ORDER BY ALL` — сортировка по всем колонкам SELECT в порядке их объявления. Это удобно для запросов с большим количеством колонок, где не нужно перечислять каждую:
+
+```sql
+SELECT region, product_category, SUM(amount) AS total
+FROM orders
+GROUP BY region, product_category
+ORDER BY ALL;
+-- Эквивалентно: ORDER BY region, product_category, total
+```
+</Callout>
+
+```sql
 -- HAVING фильтрует группы (после агрегации)
 SELECT region, COUNT(*) AS cnt
 FROM orders

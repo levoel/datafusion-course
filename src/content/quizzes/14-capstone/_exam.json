@@ -1,14 +1,14 @@
 {
-  "lessonSlug": "10-capstone/_exam",
-  "moduleId": "10-capstone",
+  "lessonSlug": "14-capstone/_exam",
+  "moduleId": "14-capstone",
   "examTitle": "Экзамен: Capstone — итоговый",
   "passThreshold": 70,
   "_meta": {
-    "idPrefix": "df-m10-exam"
+    "idPrefix": "df-m14-exam"
   },
   "questions": [
     {
-      "id": "df-m10-exam-q1",
+      "id": "df-m14-exam-q1",
       "type": "multiple-choice",
       "question": "В capstone-проекте SQL-запрос GROUP BY category, region выполняется через DataFusion Python. На каких этапах pipeline проявляются знания из модулей M01, M02 и M06?",
       "options": [
@@ -35,7 +35,7 @@
       "studyHint": "Один запрос — три модуля: M01 (формат данных), M02 (планирование), M06 (оптимизация). Python = тот же Rust pipeline."
     },
     {
-      "id": "df-m10-exam-q2",
+      "id": "df-m14-exam-q2",
       "type": "multiple-choice",
       "question": "Capstone использует register_parquet для регистрации таблиц. В Comet (M07) данные Spark передаются через protobuf. В InfluxDB (M05, M09) данные хранятся в кастомном формате. Какой общий паттерн DataFusion объединяет эти три сценария?",
       "options": [
@@ -62,7 +62,7 @@
       "studyHint": "TableProvider = общий trait для всех источников данных. Parquet, Spark, кастомное хранилище → Arrow RecordBatch → единый executor."
     },
     {
-      "id": "df-m10-exam-q3",
+      "id": "df-m14-exam-q3",
       "type": "multiple-choice",
       "question": "В лабораторной реализуется UDAF weighted_avg (M04). В модуле 6 изучались правила оптимизации. Может ли оптимизатор DataFusion применить predicate pushdown ниже UDAF в плане?",
       "options": [
@@ -89,7 +89,7 @@
       "studyHint": "Predicate pushdown ниже Aggregate: по зависимости от столбцов. WHERE на входных → pushdown. HAVING на результатах → после агрегации."
     },
     {
-      "id": "df-m10-exam-q4",
+      "id": "df-m14-exam-q4",
       "type": "multiple-choice",
       "question": "Capstone-архитектура включает Report Generator (сохранение в Parquet). В production Report Generator мог бы отправлять данные через Arrow Flight (M09 FDAP-стек). Какое преимущество Flight перед REST API для передачи аналитических результатов?",
       "options": [
@@ -116,7 +116,7 @@
       "studyHint": "Flight: Arrow на проводе → zero-copy. REST+JSON: текст → потеря типов + 3-10x overhead + парсинг. FDAP: Parquet (диск) → Arrow (память) → Flight (сеть)."
     },
     {
-      "id": "df-m10-exam-q5",
+      "id": "df-m14-exam-q5",
       "type": "multiple-choice",
       "question": "Капстон-движок работает на single node (DataFusion Python). Компания хочет масштабировать его на кластер. На основе модуля 8, какой подход минимизирует изменения в коде?",
       "options": [
@@ -143,7 +143,7 @@
       "studyHint": "Python single-node → кластер: DataFusion Ray (RayContext вместо SessionContext). Ballista = Rust-native. Comet = Spark."
     },
     {
-      "id": "df-m10-exam-q6",
+      "id": "df-m14-exam-q6",
       "type": "multiple-choice",
       "question": "В capstone classify_amount UDF обрабатывает каждый элемент массива через Python-цикл. В модуле 2 описано vectorized execution DataFusion. Как можно ускорить этот UDF, сохранив Python?",
       "options": [
@@ -170,7 +170,7 @@
       "studyHint": "Python UDF оптимизация: for-loop → pa.compute (C++, без GIL). if_else, greater, less — vectorized на весь массив."
     },
     {
-      "id": "df-m10-exam-q7",
+      "id": "df-m14-exam-q7",
       "type": "multiple-choice",
       "question": "Данные capstone хранятся в Parquet (M01). Запрос SELECT category, SUM(amount) FROM sales WHERE amount > 10000 использует predicate pushdown. На каком уровне Parquet-файла происходит фильтрация до чтения данных?",
       "options": [
@@ -192,12 +192,12 @@
         }
       ],
       "correctAnswer": "c",
-      "explanation": "Parquet (модуль 1): файл разбит на row groups (обычно 128MB). Footer содержит metadata с min/max для каждого столбца в каждом row group. DataFusion (модуль 6): ParquetExec проверяет min/max перед чтением. Для WHERE amount > 10000: если max(amount) row group < 10000 → skip. Projection pushdown: только столбцы category и amount декодируются из оставшихся row groups.",
+      "explanation": "Parquet (модуль 1): файл разбит на row groups (обычно 128MB). Footer содержит metadata с min/max для каждого столбца в каждом row group. DataFusion (модуль 6): DataSourceExec проверяет min/max перед чтением. Для WHERE amount > 10000: если max(amount) row group < 10000 → skip. Projection pushdown: только столбцы category и amount декодируются из оставшихся row groups.",
       "bloomLevel": "analytical",
       "studyHint": "Parquet pushdown: row group level. Footer min/max → skip groups. Projection: только нужные столбцы. Два уровня фильтрации до чтения данных."
     },
     {
-      "id": "df-m10-exam-q8",
+      "id": "df-m14-exam-q8",
       "type": "multiple-choice",
       "question": "В модуле 5 изучались кастомные TableProvider. Если бы capstone-проект должен был читать данные из PostgreSQL вместо Parquet-файлов, какой подход к расширению DataFusion наиболее корректен?",
       "options": [
@@ -224,7 +224,7 @@
       "studyHint": "PostgreSQL → кастомный TableProvider. supports_filters_pushdown() → SQL WHERE. Готовое: datafusion-contrib. Сохраняется весь стек DataFusion."
     },
     {
-      "id": "df-m10-exam-q9",
+      "id": "df-m14-exam-q9",
       "type": "multiple-choice",
       "question": "Capstone-проект генерирует 10 000 записей о продажах. В production-системе данных может быть 10 млрд строк. Какая оптимизация из M06 становится критичной при масштабировании?",
       "options": [
@@ -251,7 +251,7 @@
       "studyHint": "Масштаб 10 млрд: predicate pushdown (95% skip) + join reordering (маленькая таблица как build) = наибольший эффект. Оптимизатор M06 — не роскошь."
     },
     {
-      "id": "df-m10-exam-q10",
+      "id": "df-m14-exam-q10",
       "type": "multiple-choice",
       "question": "DataFusion применяет Partial → Final агрегацию для параллелизма (M02). В capstone weighted_avg UDAF merge() складывает sum_vw и sum_w. Для какого UDAF паттерн Partial → Final НЕ работает корректно без специальной обработки?",
       "options": [
@@ -278,7 +278,7 @@
       "studyHint": "Decomposable (SUM, COUNT, MAX, AVG): Partial → merge → Final = корректно. Non-decomposable (медиана, percentile): нужен sketch в state(). Ключевой вопрос: можно ли слить частичные результаты арифметически?"
     },
     {
-      "id": "df-m10-exam-q11",
+      "id": "df-m14-exam-q11",
       "type": "multiple-choice",
       "question": "В модуле 7 Comet транслирует Spark-план в DataFusion через protobuf. В capstone ctx.sql() транслирует SQL в LogicalPlan. Оба маршрута заканчиваются выполнением на DataFusion. Какой ключевой этап присутствует в capstone, но отсутствует в Comet?",
       "options": [
@@ -305,7 +305,7 @@
       "studyHint": "Capstone: SQL → DataFusion parser → LogicalPlan → Optimizer → PhysicalPlan. Comet: Spark PhysicalPlan → protobuf → DataFusion PhysicalPlan. Comet минует DataFusion SQL-парсер и оптимизатор."
     },
     {
-      "id": "df-m10-exam-q12",
+      "id": "df-m14-exam-q12",
       "type": "multiple-choice",
       "question": "Capstone-проект применяет знания всего курса в одном проекте. Если бы вместо мини аналитического движка нужно было построить streaming-систему для реального времени, какие компоненты DataFusion пришлось бы расширить и какой проект экосистемы уже это сделал?",
       "options": [

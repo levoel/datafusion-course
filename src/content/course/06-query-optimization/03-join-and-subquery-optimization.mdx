@@ -50,11 +50,11 @@ HashJoinExec: mode=Partitioned, join_type=Inner, on=[(customer_id@1, id@0)]
   -- build side (правая сторона, обычно меньшая таблица)
   CoalesceBatchesExec: target_batch_size=8192
     RepartitionExec: partitioning=Hash([id@0], 16)
-      ParquetExec: file_groups={...}, projection=[id, name]   -- customers
+      DataSourceExec: file_groups={...}, format=parquet, projection=[id, name]   -- customers
   -- probe side (левая сторона)
   CoalesceBatchesExec: target_batch_size=8192
     RepartitionExec: partitioning=Hash([customer_id@1], 16)
-      ParquetExec: file_groups={...}, projection=[id, customer_id]  -- orders
+      DataSourceExec: file_groups={...}, format=parquet, projection=[id, customer_id]  -- orders
 ```
 
 **Partitioned mode** — обе стороны перераспределяются по ключу join через `RepartitionExec`, каждая партиция строит свою хеш-таблицу. Это позволяет параллельное выполнение.
@@ -203,7 +203,7 @@ SELECT * FROM events ORDER BY timestamp DESC LIMIT 10;
 ```
 GlobalLimitExec: skip=0, fetch=10
   SortExec: expr=[timestamp@0 DESC], fetch=10  -- fetch=10 → TopK
-    ParquetExec: ...
+    DataSourceExec: ...
 ```
 
 Обратите внимание на `fetch=10` в `SortExec` — это признак TopK-оптимизации. DataFusion передаёт лимит вниз в sort operator, который использует bounded heap вместо полной сортировки.
@@ -241,6 +241,10 @@ WHERE d.category = 'electronics';
 
 <Callout type="tip">
 Динамические фильтры наиболее эффективны, когда dimension-таблица мала и сильно фильтрована, а fact-таблица велика. Этот паттерн типичен для star-schema моделей в аналитических хранилищах.
+</Callout>
+
+<Callout type="tip">
+В DataFusion 51–52 динамическая фильтрация расширена через механизм *sideways information passing*: probe side может получать фильтры от build side ещё до начала join, что позволяет `DataSourceExec` пропускать целые row groups при сканировании Parquet-файлов. Это особенно заметно на больших fact-таблицах с высокой селективностью dimension-фильтра.
 </Callout>
 
 ## Диагностика через EXPLAIN

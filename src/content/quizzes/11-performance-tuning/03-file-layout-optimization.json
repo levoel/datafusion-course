@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "11-performance-tuning/03-file-layout-optimization",
+  "moduleId": "11-performance-tuning",
+  "_meta": {
+    "idPrefix": "df-m11-03"
+  },
+  "questions": [
+    {
+      "id": "df-m11-03-q1",
+      "type": "multiple-choice",
+      "question": "Parquet-файл содержит 20 row groups, данные не отсортированы. Запрос: WHERE date = '2024-03-15'. EXPLAIN ANALYZE показывает row_groups_pruned_statistics = 0. Почему pushdown не работает?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion не поддерживает predicate pushdown для Parquet"
+        },
+        {
+          "id": "b",
+          "text": "Без сортировки min(date) и max(date) каждого row group перекрываются (например, 2024-01..2024-12), поэтому ни один RG не может быть безопасно пропущен"
+        },
+        {
+          "id": "c",
+          "text": "Нужно явно включить pushdown: SET datafusion.execution.parquet.pushdown = true"
+        },
+        {
+          "id": "d",
+          "text": "Predicate pushdown работает только для partition columns, не для обычных колонок"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Predicate pushdown использует min/max статистики row groups. Если данные не отсортированы по date, каждый row group содержит строки со всего диапазона дат. Min(date) ≈ min(all), max(date) ≈ max(all) для каждого RG — фильтр date = '2024-03-15' попадает в диапазон каждого RG. Решение: пересортировать данные по date → каждый RG покроет узкий диапазон → pushdown пропустит большинство RG.",
+      "bloomLevel": "analytical",
+      "studyHint": "Нет сортировки → min/max перекрываются → pushdown бесполезен. Сортируйте по колонке из WHERE."
+    },
+    {
+      "id": "df-m11-03-q2",
+      "type": "multiple-choice",
+      "question": "Таблица events содержит 500M строк. Запрос WHERE user_id = 'abc123' по колонке с 10M уникальных значений. Какой механизм DataFusion оптимален для пропуска row groups?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Min/max статистики — если user_id > 'abc123' в RG, он пропускается"
+        },
+        {
+          "id": "b",
+          "text": "Bloom filter на колонку user_id — проверяет «точно нет» для equality-предикатов, пропускает RG без user_id = 'abc123'"
+        },
+        {
+          "id": "c",
+          "text": "Partition pruning по user_id"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не может оптимизировать equality на high-cardinality колонках"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для equality-предикатов на high-cardinality колонках min/max статистики практически бесполезны: min='aaa001', max='zzz999' для большинства RG — ни один не пропускается. Bloom filter проверяет «точно нет» для конкретного значения: если bloom filter RG говорит, что 'abc123' отсутствует, весь RG пропускается. При fpp=0.01 и 10M уникальных значений bloom filter надёжно фильтрует ~99% RG.",
+      "bloomLevel": "applied",
+      "studyHint": "Equality + high cardinality → bloom filter. Range + low cardinality → сортировка + min/max."
+    },
+    {
+      "id": "df-m11-03-q3",
+      "type": "multiple-choice",
+      "question": "Какой размер row group оптимален для чтения Parquet из S3 через DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "1-5 MB — мельче гранулярность для параллельного чтения"
+        },
+        {
+          "id": "b",
+          "text": "128-256 MB — один HTTP GET request на row group, минимизируем количество сетевых запросов"
+        },
+        {
+          "id": "c",
+          "text": "1 GB — один файл = один row group для максимальной компрессии"
+        },
+        {
+          "id": "d",
+          "text": "Размер row group не влияет на производительность при чтении из S3"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При чтении из S3 каждый row group — отдельный HTTP GET request (range request). Мелкие RG (1-5 MB) создают сотни HTTP-запросов с overhead на TLS handshake, TCP slow-start и S3 latency (~50-200ms). Крупные RG (128-256 MB) — один request на RG, overhead амортизируется. Слишком крупные (1 GB) ухудшают параллелизм — одна задача читает один RG.",
+      "bloomLevel": "applied",
+      "studyHint": "S3/GCS: 128-256 MB на RG. Каждый RG = HTTP GET. Мелкие RG → HTTP overhead. Крупные RG → меньше параллелизм."
+    },
+    {
+      "id": "df-m11-03-q4",
+      "type": "multiple-choice",
+      "question": "Директория содержит 5000 Parquet-файлов по 2 MB каждый (результат streaming-инъекции). target_partitions = 8. Как это влияет на производительность DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "5000 файлов — идеально для параллелизма, DataFusion будет использовать все 5000 партиций"
+        },
+        {
+          "id": "b",
+          "text": "Overhead на открытие 5000 файлов (чтение footer, создание reader для каждого) значительно замедляет query planning и execution. Нужен compaction до 16-32 файлов"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion автоматически компактирует мелкие файлы при чтении"
+        },
+        {
+          "id": "d",
+          "text": "Количество файлов не влияет — DataFusion группирует их в target_partitions"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "5000 мелких файлов: (1) query planning перечисляет все 5000 файлов в object store — медленный listing; (2) для каждого файла читается footer — 5000 HTTP GET (для S3); (3) DataFusion группирует файлы в 8 file groups, но overhead на открытие остаётся. Compaction: объединить в 16-32 файла по 128-256 MB с сортировкой → быстрее planning, меньше I/O overhead.",
+      "bloomLevel": "analytical",
+      "studyHint": "5000 мелких файлов = 5000 открытий + listing. Компактируйте до target_partitions × 2-4 файлов."
+    },
+    {
+      "id": "df-m11-03-q5",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT region, SUM(amount) FROM wide_table GROUP BY region на таблице с 50 колонками. EXPLAIN ANALYZE показывает bytes_scanned = 12 GB. Таблица занимает 15 GB. Почему DataFusion прочитал 80% данных при использовании только 3 колонок?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion не поддерживает projection pushdown для Parquet"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion применяет projection pushdown: projection=[region, amount, status] — читает только 3 колонки. 12 GB из 15 GB означает, что эти 3 колонки занимают 80% данных (например, amount — массив DECIMAL)"
+        },
+        {
+          "id": "c",
+          "text": "В запросе используется подзапрос с SELECT *, который заставляет DataFusion прочитать все колонки"
+        },
+        {
+          "id": "d",
+          "text": "Нужно явно указать ONLY region, amount в SELECT для включения projection pushdown"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion автоматически применяет projection pushdown — в EXPLAIN ANALYZE видно projection=[region, amount] (или +status для WHERE). Если bytes_scanned = 12 GB при 15 GB — значит эти колонки физически занимают 80% файла. Это нормально для колонок с длинными строками или массивами. Проверить: посмотреть metadata файла, чтобы увидеть размер каждой column chunk.",
+      "bloomLevel": "analytical",
+      "studyHint": "Projection pushdown автоматический. bytes_scanned зависит от размера выбранных колонок, не от их количества."
+    }
+  ]
+}

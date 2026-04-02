@@ -323,7 +323,7 @@ GROUP BY dept
    - `HashAggregateExec(SUM)` → проверяет: `SUM` поддерживается, `GROUP BY` column поддерживается → `CometHashAggregateExec`
 4. **CometNativeExec** сериализует всё дерево в protobuf
 5. **JNI** передаёт `byte[]` в Rust
-6. **PhysicalPlanner** десериализует и строит: `AggregateExec → FilterExec → ParquetExec`
+6. **PhysicalPlanner** десериализует и строит: `AggregateExec → FilterExec → DataSourceExec`
 7. **DataFusion** исполняет план нативно, возвращает `RecordBatch`
 
 ## Итоги

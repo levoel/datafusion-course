@@ -16,7 +16,7 @@
         },
         {
           "id": "b",
-          "text": "HashJoinExec, SortExec, FilterExec, ParquetExec"
+          "text": "HashJoinExec, SortExec, FilterExec, DataSourceExec"
         },
         {
           "id": "c",

@@ -212,6 +212,10 @@ ctx.sql("SELECT to_upper_ru(name) FROM users").await?;
 
 UDF регистрируются в `SessionState` и доступны во всех SQL-запросах этой сессии.
 
+<Callout type="warning">
+Функция `create_udf` считается устаревшей (deprecated) начиная с DataFusion v43+. Рекомендуется использовать `ScalarUDF::new_from_impl` — он даёт полный контроль над типами, nullable-поведением и документацией функции. Подробнее см. модуль UDF.
+</Callout>
+
 ## Жизненный цикл запроса через SessionContext
 
 ```

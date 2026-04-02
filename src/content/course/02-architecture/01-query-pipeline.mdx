@@ -25,7 +25,7 @@ topics: ["Query Pipeline", "SQL Parsing", "LogicalPlan", "PhysicalPlan", "Execut
     <Arrow direction="down" label="Optimizer (правила)" />
     <FlowNode variant="process" tooltip="Оптимизированный план: после pushdown фильтров, проекций и упрощения выражений">Optimized LogicalPlan</FlowNode>
     <Arrow direction="down" label="PhysicalPlanner" />
-    <FlowNode variant="process" tooltip="Дерево конкретных алгоритмов: HashJoin, SortExec, ParquetExec с партиционированием">ExecutionPlan (дерево)</FlowNode>
+    <FlowNode variant="process" tooltip="Дерево конкретных алгоритмов: HashJoin, SortExec, DataSourceExec с партиционированием">ExecutionPlan (дерево)</FlowNode>
     <Arrow direction="down" label="execute(partition)" />
     <FlowNode variant="output" tooltip="Асинхронный поток RecordBatch — финальный результат запроса">SendableRecordBatchStream</FlowNode>
   </FlowColumn>
@@ -122,7 +122,7 @@ AST содержит структуру запроса: какие колонк�
 
 | LogicalPlan | ExecutionPlan | Выбор |
 |-------------|---------------|-------|
-| TableScan | `ParquetExec` / `CsvExec` / `MemoryExec` | По типу источника |
+| TableScan | `DataSourceExec` / `MemoryExec` | По типу источника |
 | Filter | `FilterExec` | Всегда один вариант |
 | Aggregate | `AggregateExec` (Hash или Sort) | По размеру данных и наличию сортировки |
 | Sort | `SortExec` / `SortPreservingMergeExec` | По партиционированию |

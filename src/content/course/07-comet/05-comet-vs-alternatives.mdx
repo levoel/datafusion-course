@@ -189,6 +189,10 @@ Comet демонстрирует паттерн использования DataF
 - Comet транслирует внешние планы (Spark) в эти примитивы
 - Аналогичный паттерн используют InfluxDB IOx (InfluxQL → DataFusion) и GreptimeDB (PromQL → DataFusion)
 
+<Callout type="tip">
+С версии DataFusion 48 появился крейт [`datafusion-spark`](https://docs.rs/datafusion-spark) — набор Spark-совместимых скалярных функций для DataFusion. Это позволяет использовать Spark-специфичные функции (например, `conv`, `hex`, `unhex`) напрямую в DataFusion без Comet. Крейт полезен при миграции Spark SQL-запросов на «чистый» DataFusion.
+</Callout>
+
 В следующем модуле мы рассмотрим альтернативный подход — распределённое исполнение через Ballista и DataFusion Ray, где DataFusion работает не как embedded engine, а как ядро распределённой системы.
 
 ## Итоги

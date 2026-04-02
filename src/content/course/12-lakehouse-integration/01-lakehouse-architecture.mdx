@@ -1,0 +1,374 @@
+---
+title: "Lakehouse-архитектура: от хранилищ к открытым форматам таблиц"
+description: "Эволюция Data Warehouse → Data Lake → Lakehouse, открытые форматы таблиц (Delta Lake, Apache Iceberg, Apache Hudi), роль DataFusion как query engine layer"
+order: 1
+difficulty: "advanced"
+estimatedTime: 14
+topics: ["Lakehouse", "Delta Lake", "Apache Iceberg", "Apache Hudi", "Open Table Format", "Data Warehouse", "Data Lake", "DataFusion"]
+---
+
+# Lakehouse-архитектура: от хранилищ к открытым форматам таблиц
+
+В предыдущих модулях мы работали с DataFusion как движком для Parquet-файлов, CSV и JSON. Но в реальных аналитических системах данные живут не в россыпи файлов — они организованы в таблицы с транзакциями, версионированием и метаданными. Этот урок объясняет, почему индустрия пришла к lakehouse-архитектуре и какую роль в ней играет DataFusion.
+
+## Три поколения аналитических хранилищ
+
+Чтобы понять lakehouse, нужно увидеть проблемы, которые решало каждое предыдущее поколение.
+
+<DiagramContainer title="Эволюция аналитических хранилищ" className="my-6">
+  <FlowRow className="gap-4 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Snowflake, BigQuery, Redshift — структурированные данные, SQL, ACID, но vendor lock-in и высокая стоимость">Data Warehouse</FlowNode>
+      <DataBox label="Плюсы" className="border-blue-500/30 w-52">
+        <div className="text-xs">ACID, SQL, схема, производительность для BI</div>
+      </DataBox>
+      <DataBox label="Минусы" className="border-red-500/30 w-52">
+        <div className="text-xs">Vendor lock-in, дорого, только структурированные данные</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="process" tooltip="HDFS, S3 + Hive — дёшево, любые форматы, но нет транзакций и согласованности">Data Lake</FlowNode>
+      <DataBox label="Плюсы" className="border-blue-500/30 w-52">
+        <div className="text-xs">Дёшево, любые данные, открытые форматы</div>
+      </DataBox>
+      <DataBox label="Минусы" className="border-red-500/30 w-52">
+        <div className="text-xs">Нет ACID, data swamp, нет schema enforcement</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="output" tooltip="S3 + Delta/Iceberg + DataFusion/Spark — открытые форматы с транзакциями и метаданными">Lakehouse</FlowNode>
+      <DataBox label="Плюсы" className="border-emerald-500/30 w-52">
+        <div className="text-xs">ACID на object store, открытые форматы, schema evolution</div>
+      </DataBox>
+      <DataBox label="Роль DataFusion" className="border-emerald-500/30 w-52">
+        <div className="text-xs">Query engine layer — читает метаданные, пропускает файлы, исполняет SQL</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+### Data Warehouse: структура и контроль
+
+Классические хранилища (Snowflake, BigQuery, Redshift) предоставляют полный контроль: ACID-транзакции, оптимизированное хранение, SQL-интерфейс. Проблема в том, что данные заперты внутри проприетарного формата. Вы не можете прочитать данные Snowflake напрямую из DataFusion или Spark — только через API самого Snowflake.
+
+```
+Стоимость: $$$$ (compute + storage + egress)
+Форматы: проприетарные
+Движок: встроенный, не заменяем
+Lock-in: высокий
+```
+
+### Data Lake: свобода и хаос
+
+Data Lake (HDFS, S3 + Hive) решил проблему стоимости и открытости: данные хранятся в Parquet/ORC на дешёвом object store, а compute отделён от storage. Но без транзакций и schema enforcement озёра превращались в "болота данных":
+
+- Concurrent writers перезаписывают файлы друг друга
+- Нет атомарных обновлений — читатель видит частично записанные данные
+- Schema drift — новые поля появляются без контроля
+- Нет time travel — нельзя запросить данные "как было вчера"
+
+```
+Стоимость: $ (только object store + отдельный compute)
+Форматы: открытые (Parquet, ORC, Avro)
+Движок: любой (Spark, Presto, DataFusion)
+Согласованность: отсутствует
+```
+
+### Lakehouse: лучшее из двух миров
+
+Lakehouse добавляет транзакционный слой поверх object store. Данные по-прежнему хранятся в открытых колоночных форматах (Parquet), но рядом лежит журнал транзакций (transaction log), который обеспечивает:
+
+- **ACID-транзакции** — атомарные записи и обновления
+- **Time travel** — запросы к любой версии данных
+- **Schema enforcement** — контроль типов при записи
+- **Schema evolution** — безопасное добавление и переименование колонок
+- **File-level metadata** — статистики min/max для пропуска файлов при чтении
+
+<Callout type="tip">
+Ключевая идея lakehouse: данные остаются в открытом формате (Parquet) на дешёвом storage, а транзакционная семантика обеспечивается метаданными — без vendor lock-in.
+</Callout>
+
+## Три открытых формата таблиц
+
+Индустрия выработала три основных формата, каждый из которых добавляет транзакционный слой поверх Parquet-файлов.
+
+<DiagramContainer title="Сравнение открытых форматов таблиц" className="my-6">
+  <FlowRow className="gap-4 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Databricks, 2019. JSON transaction log, простота, широкое adoption">Delta Lake</FlowNode>
+      <DataBox label="Transaction log" className="border-blue-500/30 w-56">
+        <div className="text-xs font-mono">_delta_log/*.json + *.checkpoint.parquet</div>
+      </DataBox>
+      <DataBox label="Особенности" className="border-blue-500/30 w-56">
+        <div className="text-xs">Простой формат лога, Change Data Feed, file-level stats в каждом commit</div>
+      </DataBox>
+      <DataBox label="DataFusion" className="border-emerald-500/30 w-56">
+        <div className="text-xs font-mono">delta-rs → TableProvider</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="process" tooltip="Netflix/Apple, 2017. Manifest-файлы, partition evolution, hidden partitioning">Apache Iceberg</FlowNode>
+      <DataBox label="Transaction log" className="border-orange-500/30 w-56">
+        <div className="text-xs font-mono">metadata/*.json + manifest-list + manifest-files</div>
+      </DataBox>
+      <DataBox label="Особенности" className="border-orange-500/30 w-56">
+        <div className="text-xs">Hidden partitioning, partition evolution, multi-engine support by design</div>
+      </DataBox>
+      <DataBox label="DataFusion" className="border-emerald-500/30 w-56">
+        <div className="text-xs font-mono">iceberg-rust → TableProvider</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="output" tooltip="Uber, 2016. Upsert-ориентирован, record-level indexing">Apache Hudi</FlowNode>
+      <DataBox label="Transaction log" className="border-purple-500/30 w-56">
+        <div className="text-xs font-mono">.hoodie/timeline + commit metadata</div>
+      </DataBox>
+      <DataBox label="Особенности" className="border-purple-500/30 w-56">
+        <div className="text-xs">Record-level upsert, incremental queries, compaction</div>
+      </DataBox>
+      <DataBox label="DataFusion" className="border-yellow-500/30 w-56">
+        <div className="text-xs">Ограниченная интеграция — через Parquet-читатель, без транзакций</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+### Delta Lake
+
+Создан Databricks в 2019 году. Transaction log — серия JSON-файлов в директории `_delta_log/`, каждый описывает набор добавленных и удалённых файлов. Периодически лог компактируется в checkpoint (Parquet-файл со снапшотом состояния).
+
+Ключевые возможности:
+- **ACID** через optimistic concurrency — writer читает текущую версию, формирует commit, атомарно записывает. При конфликте — retry
+- **Time travel** — `VERSION AS OF N` или `TIMESTAMP AS OF '2024-01-15'`
+- **File-level statistics** — min/max для каждой колонки в каждом файле, записанные в commit JSON. Позволяют пропускать файлы при фильтрации без чтения Parquet-метаданных
+- **Change Data Feed** — отслеживание изменений между версиями
+
+```
+storage/
+├── _delta_log/
+│   ├── 00000000000000000000.json   ← первый commit
+│   ├── 00000000000000000001.json   ← второй commit
+│   ├── 00000000000000000010.checkpoint.parquet  ← checkpoint
+│   └── _last_checkpoint              ← указатель на последний checkpoint
+├── part-00000-...-.parquet          ← данные
+├── part-00001-...-.parquet
+└── part-00002-...-.parquet
+```
+
+### Apache Iceberg
+
+Создан Netflix в 2017 году, развивается Apache Foundation. Использует трёхуровневую иерархию метаданных: metadata file → manifest list → manifest files → data files. Это сложнее Delta, но даёт уникальные возможности:
+
+- **Hidden partitioning** — пользователь не указывает партиционирование в запросах, движок определяет его из метаданных. `SELECT * FROM events WHERE ts > '2024-01-01'` автоматически использует партиционирование по `month(ts)`
+- **Partition evolution** — можно изменить схему партиционирования без перезаписи данных. Старые файлы читаются по старой схеме, новые — по новой
+- **Schema evolution** — безопасное добавление, удаление и переименование колонок с отслеживанием по column ID
+
+```
+warehouse/
+├── metadata/
+│   ├── v1.metadata.json              ← текущее состояние таблицы
+│   ├── snap-001-manifest-list.avro   ← список manifest-файлов
+│   └── manifest-001.avro             ← файлы данных + статистики
+├── data/
+│   ├── ts_month=2024-01/
+│   │   ├── 00000-0-...-.parquet
+│   │   └── 00001-0-...-.parquet
+│   └── ts_month=2024-02/
+│       └── 00000-0-...-.parquet
+└── version-hint.text
+```
+
+### Apache Hudi
+
+Создан Uber в 2016 году для обработки огромных потоков данных с обновлениями. Ориентирован на upsert-сценарии: каждая запись имеет уникальный ключ, и Hudi поддерживает эффективное обновление отдельных записей без перезаписи всей партиции.
+
+<Callout type="note">
+В экосистеме DataFusion полноценная интеграция реализована для Delta Lake и Iceberg. Hudi-таблицы можно читать как Parquet-файлы (без транзакционной семантики), но нативной интеграции с поддержкой timeline и compaction нет.
+</Callout>
+
+## Роль DataFusion в lakehouse-архитектуре
+
+DataFusion в lakehouse выступает как query engine layer — компонент, отвечающий за исполнение SQL-запросов поверх таблиц в открытых форматах. Это разделение ответственности:
+
+<DiagramContainer title="DataFusion как query engine layer в lakehouse" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowNode variant="input" tooltip="SQL-запросы от пользователей, BI-инструментов, приложений">SQL / DataFrame API</FlowNode>
+    <DataBox label="Query Engine (DataFusion)" className="border-emerald-500/30 w-72">
+      <div className="text-xs">
+        Парсинг → Логический план → Оптимизация → Физический план → Исполнение
+      </div>
+    </DataBox>
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <DataBox label="Table Format" className="border-blue-500/30 w-44">
+        <div className="text-xs">Delta Lake / Iceberg — метаданные, транзакции, schema</div>
+      </DataBox>
+      <DataBox label="Object Store" className="border-orange-500/30 w-44">
+        <div className="text-xs">S3 / GCS / Azure — хранение Parquet-файлов</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Как DataFusion взаимодействует с форматами таблиц
+
+Интеграция работает через trait `TableProvider`. Библиотеки delta-rs и iceberg-rust реализуют этот trait, предоставляя DataFusion:
+
+1. **Schema** — описание колонок таблицы
+2. **File pruning** — список файлов, которые нужно прочитать для конкретного запроса (на основе predicate pushdown в метаданные формата)
+3. **Statistics** — статистики min/max/null_count для оптимизатора
+
+DataFusion не знает деталей transaction log — он работает с `TableProvider` как с абстракцией. Это позволяет подключать новые форматы без изменения самого движка.
+
+```rust
+// Rust: подключение Delta-таблицы
+let delta_table = deltalake::open_table("s3://bucket/table").await?;
+ctx.register_table("orders", Arc::new(delta_table))?;
+
+// DataFusion не знает, что это Delta — видит TableProvider
+let df = ctx.sql("SELECT * FROM orders WHERE date = '2024-01-15'").await?;
+```
+
+### File pruning: ключевое преимущество
+
+Без открытого формата таблиц DataFusion читает все Parquet-файлы и фильтрует внутри каждого. С Delta Lake или Iceberg движок получает предварительно отфильтрованный список файлов:
+
+<DiagramContainer title="File pruning с Delta Lake" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowNode variant="input" tooltip="SQL-запрос с WHERE-условием">WHERE date = '2024-01-15'</FlowNode>
+    <FlowRow className="gap-6 justify-center flex-wrap">
+      <FlowColumn className="gap-2 items-center">
+        <FlowNode variant="process" tooltip="Без Delta: читаем все файлы">Без формата таблиц</FlowNode>
+        <DataBox label="Чтение" className="border-red-500/30 w-48">
+          <div className="text-xs">1000 файлов → filter → 15 файлов с данными за 15 января</div>
+        </DataBox>
+        <DataBox label="I/O" className="border-red-500/30 w-48">
+          <div className="text-xs">Прочитано 1000 × footer + row groups</div>
+        </DataBox>
+      </FlowColumn>
+      <FlowColumn className="gap-2 items-center">
+        <FlowNode variant="output" tooltip="С Delta: transaction log содержит min/max по date">С Delta Lake</FlowNode>
+        <DataBox label="Чтение" className="border-emerald-500/30 w-48">
+          <div className="text-xs">Transaction log → 15 файлов (min/max date match)</div>
+        </DataBox>
+        <DataBox label="I/O" className="border-emerald-500/30 w-48">
+          <div className="text-xs">Прочитан 1 JSON commit + 15 файлов</div>
+        </DataBox>
+      </FlowColumn>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+Для таблицы с 1000 файлов это разница между чтением 1000 Parquet-footer и чтением одного JSON-файла с метаданными. На практике это даёт ускорение в 2-10x для селективных запросов.
+
+## Выбор формата: Delta Lake vs Iceberg
+
+На март 2026 года оба формата активно развиваются и поддерживаются в экосистеме DataFusion:
+
+| Критерий | Delta Lake | Apache Iceberg |
+|---|---|---|
+| **Зрелость в DataFusion** | delta-rs — стабильная интеграция с DF ≥43.0.0 | iceberg-rust — активная разработка, DF ≥45.0.0 |
+| **Transaction log** | JSON-файлы (простой формат, легко дебажить) | Avro manifest-файлы (сложнее, но эффективнее при большом количестве файлов) |
+| **Partition evolution** | Нет — партиционирование фиксировано при создании | Да — можно изменить схему партиционирования без перезаписи |
+| **Hidden partitioning** | Нет — пользователь явно указывает partition columns | Да — движок выводит партиционирование из метаданных |
+| **Schema evolution** | Add/rename columns | Add/rename/drop columns с column ID tracking |
+| **Экосистема** | Spark, DataFusion, Polars, DuckDB | Spark, Flink, Trino, DataFusion |
+| **Python API** | `deltalake` (delta-rs bindings) | `pyiceberg` (iceberg-rust bindings) |
+
+<Callout type="tip">
+Правило выбора: если уже используете Databricks/Spark-стек — Delta Lake. Если нужна максимальная гибкость метаданных и multi-engine support — Iceberg. Для DataFusion оба формата интегрируются одинаково — через `TableProvider`.
+</Callout>
+
+## Архитектурные паттерны lakehouse с DataFusion
+
+### Паттерн 1: Embedded analytics
+
+DataFusion встраивается в приложение как библиотека (in-process). Данные читаются из Delta Lake на локальном диске или S3:
+
+```rust
+// Rust: embedded analytics engine
+let ctx = SessionContext::new();
+let delta = deltalake::open_table("./data/events").await?;
+ctx.register_table("events", Arc::new(delta))?;
+
+// SQL-запросы исполняются in-process, без сетевых вызовов
+let result = ctx.sql("
+    SELECT user_id, count(*) as event_count
+    FROM events
+    WHERE event_date >= '2024-01-01'
+    GROUP BY user_id
+    ORDER BY event_count DESC
+    LIMIT 100
+").await?;
+```
+
+### Паттерн 2: Query service
+
+DataFusion работает как сервер (например, через Arrow Flight SQL), обслуживая множество клиентов. Таблицы Delta/Iceberg регистрируются при старте:
+
+```
+Клиенты (BI, notebooks, приложения)
+         │
+         ▼
+  ┌─────────────┐
+  │ Flight SQL   │  ← DataFusion + Arrow Flight
+  │ Server       │
+  └──────┬──────┘
+         │
+    ┌────┴────┐
+    │         │
+Delta Lake  Iceberg    ← TableProvider
+    │         │
+    S3 / GCS / Azure   ← Object Store
+```
+
+### Паттерн 3: ETL pipeline
+
+DataFusion читает данные из одного формата, трансформирует и записывает в другой. Типичный сценарий — миграция с raw Parquet на Delta Lake:
+
+```python
+# Python: миграция Parquet → Delta Lake
+import datafusion
+from deltalake import write_deltalake
+
+ctx = datafusion.SessionContext()
+ctx.register_parquet("raw_events", "s3://raw-bucket/events/")
+
+# Трансформация через SQL
+result = ctx.sql("""
+    SELECT
+        event_id,
+        user_id,
+        event_type,
+        CAST(timestamp AS TIMESTAMP) as event_ts,
+        DATE_TRUNC('day', CAST(timestamp AS TIMESTAMP)) as event_date
+    FROM raw_events
+    WHERE event_type IS NOT NULL
+""")
+
+# Запись в Delta формат
+write_deltalake(
+    "s3://lakehouse/events",
+    result.to_arrow_table(),
+    partition_by=["event_date"],
+    mode="overwrite"
+)
+```
+
+## Что дальше
+
+В следующих уроках мы подробно разберём каждый формат:
+- **Урок 02** — Delta Lake: интеграция с DataFusion, time travel, file-level metadata skipping
+- **Урок 03** — Apache Iceberg: каталоги, hidden partitioning, partition evolution
+- **Урок 04** — Object Store: доступ к S3/GCS/Azure, конфигурация credentials, выбор между форматами
+
+<Callout type="note">
+Все примеры кода в этом модуле используют DataFusion v52.0.0+ (Python v52.3.0). API для более ранних версий может отличаться — проверяйте совместимость в changelog проекта.
+</Callout>
+
+## Ключевые выводы
+
+1. **Lakehouse** = открытые колоночные форматы (Parquet) + транзакционный слой (Delta/Iceberg) + дешёвый object store
+2. **DataFusion** выступает как query engine layer — не знает деталей формата, работает через `TableProvider`
+3. **Delta Lake** — простой transaction log (JSON), хорошая интеграция с DataFusion через delta-rs
+4. **Apache Iceberg** — сложнее, но гибче (hidden partitioning, partition evolution), интегрируется через iceberg-rust
+5. **File pruning** — главное преимущество формата таблиц: движок читает только нужные файлы, пропуская остальные по метаданным

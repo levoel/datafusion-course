@@ -1,0 +1,438 @@
+---
+title: "Apache Iceberg и DataFusion: каталоги, hidden partitioning, schema evolution"
+description: "Интеграция Apache Iceberg с DataFusion через iceberg-rust и pyiceberg, архитектура метаданных, hidden partitioning, partition evolution, schema evolution и catalog API"
+order: 3
+difficulty: "advanced"
+estimatedTime: 16
+topics: ["Apache Iceberg", "iceberg-rust", "pyiceberg", "Catalog", "Hidden Partitioning", "Partition Evolution", "Schema Evolution", "TableProvider"]
+---
+
+# Apache Iceberg и DataFusion: каталоги, hidden partitioning, schema evolution
+
+Iceberg — второй по популярности открытый формат таблиц в экосистеме DataFusion. В отличие от Delta Lake, Iceberg проектировался с нуля для multi-engine support: одна и та же таблица читается DataFusion, Spark, Flink и Trino без адаптеров.
+
+## Архитектура метаданных Iceberg
+
+Iceberg использует трёхуровневую иерархию метаданных — это сложнее Delta Lake, но масштабируется лучше при большом количестве файлов и партиций.
+
+<DiagramContainer title="Трёхуровневая архитектура метаданных Iceberg" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowNode variant="input" tooltip="Catalog хранит указатель на текущий metadata file для каждой таблицы">Catalog (REST, Hive, Glue, JDBC)</FlowNode>
+    <DataBox label="Metadata File (v1.metadata.json)" className="border-blue-500/30 w-72">
+      <div className="text-xs">
+        Schema, partition spec, sort order, текущий snapshot ID, список всех snapshots
+      </div>
+    </DataBox>
+    <DataBox label="Manifest List (snap-001.avro)" className="border-orange-500/30 w-72">
+      <div className="text-xs">
+        Список manifest-файлов для snapshot + summary (added/deleted files count)
+      </div>
+    </DataBox>
+    <DataBox label="Manifest File (manifest-001.avro)" className="border-emerald-500/30 w-72">
+      <div className="text-xs">
+        Список data files + per-file stats (min/max/null_count) + partition values
+      </div>
+    </DataBox>
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <DataBox label="Parquet файлы" className="border-purple-500/30 w-40">
+        <div className="text-xs font-mono">data/*.parquet</div>
+      </DataBox>
+      <DataBox label="Delete файлы" className="border-red-500/30 w-40">
+        <div className="text-xs font-mono">data/*.parquet (positional deletes)</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+### Почему три уровня?
+
+- **Metadata file** — атомарно заменяется при commit (как Delta JSON, но один файл на всю таблицу)
+- **Manifest list** — позволяет быстро определить, какие manifest-файлы содержат данные для конкретного snapshot
+- **Manifest file** — группирует data files по партициям, хранит per-file statistics для pruning
+
+При наличии 100 000 файлов Delta Lake хранит stats в одном checkpoint (может быть сотни MB). Iceberg распределяет stats по manifest-файлам — каждый отвечает за ~1000 файлов, что позволяет читать только нужные manifests.
+
+<Callout type="tip">
+Правило: чем больше файлов в таблице, тем заметнее преимущество Iceberg перед Delta в скорости planning (построение списка файлов для чтения). Для таблиц &lt;10 000 файлов разница минимальна.
+</Callout>
+
+## Интеграция с DataFusion
+
+### Python API через pyiceberg
+
+```python
+import datafusion
+from pyiceberg.catalog import load_catalog
+
+# Подключение к каталогу (REST catalog, Hive Metastore, Glue, etc.)
+catalog = load_catalog(
+    "my_catalog",
+    **{
+        "type": "rest",
+        "uri": "http://iceberg-rest:8181",
+        "s3.endpoint": "http://minio:9000",
+        "s3.access-key-id": "admin",
+        "s3.secret-access-key": "password",
+    }
+)
+
+# Загрузка таблицы из каталога
+table = catalog.load_table("analytics.events")
+
+# Регистрация в DataFusion
+ctx = datafusion.SessionContext()
+ctx.register_table_provider("events", table)
+
+# SQL-запросы — hidden partitioning работает автоматически
+df = ctx.sql("""
+    SELECT event_type, count(*) as cnt
+    FROM events
+    WHERE event_ts >= '2024-03-01' AND event_ts < '2024-04-01'
+    GROUP BY event_type
+""")
+df.show()
+```
+
+<Callout type="note">
+В отличие от Delta Lake, где таблица открывается по пути к директории, Iceberg требует каталог. Каталог — это реестр таблиц, который хранит указатель на текущий metadata file. Без каталога Iceberg-таблица недоступна.
+</Callout>
+
+### Типы каталогов
+
+| Каталог | Описание | Когда использовать |
+|---|---|---|
+| **REST Catalog** | HTTP API (Tabular, Polaris, Gravitino) | Продакшен, multi-engine |
+| **Hive Metastore** | JDBC-хранилище метаданных | Существующий Hadoop/Spark-стек |
+| **AWS Glue** | AWS-managed catalog | AWS-инфраструктура |
+| **SQL Catalog** | PostgreSQL/MySQL/SQLite | Простые сетапы, разработка |
+| **File Catalog** | Metadata в filesystem | Локальная разработка, тесты |
+
+Для локальной разработки с DataFusion проще всего использовать SQL или File catalog:
+
+```python
+# Локальный SQLite-каталог для разработки
+catalog = load_catalog(
+    "dev",
+    **{
+        "type": "sql",
+        "uri": "sqlite:///tmp/iceberg_catalog.db",
+        "warehouse": "file:///tmp/iceberg_warehouse",
+    }
+)
+```
+
+### Rust API через iceberg-rust
+
+```rust
+use datafusion::prelude::*;
+use iceberg::Catalog;
+use iceberg_catalog_rest::RestCatalog;
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    let ctx = SessionContext::new();
+
+    // Подключение к REST-каталогу
+    let catalog = RestCatalog::new(/* config */);
+
+    // Загрузка таблицы
+    let table = catalog
+        .load_table(&TableIdent::from_strs(["analytics", "events"])?)
+        .await?;
+
+    // Регистрация — IcebergTable реализует TableProvider
+    ctx.register_table("events", Arc::new(table))?;
+
+    let df = ctx.sql("SELECT count(*) FROM events").await?;
+    df.show().await?;
+    Ok(())
+}
+```
+
+<Callout type="warning">
+iceberg-rust находится в активной разработке (Apache инкубатор). API может меняться между минорными версиями. Проверяйте совместимость с вашей версией DataFusion в changelog iceberg-rust.
+</Callout>
+
+## Hidden Partitioning
+
+Главное архитектурное отличие Iceberg от Delta Lake — пользователю не нужно знать схему партиционирования для написания запросов.
+
+### Проблема с explicit partitioning
+
+В Delta Lake (и Hive) партиционирование видно в запросах:
+
+```sql
+-- Delta Lake / Hive: нужно знать, что таблица партиционирована по date
+-- и что партиция — это колонка в данных
+SELECT * FROM events WHERE date = '2024-03-01'
+
+-- Если партиционирование по month(event_ts), а вы пишете:
+SELECT * FROM events WHERE event_ts = '2024-03-01T12:00:00'
+-- ...партиция НЕ будет использована, будет full scan
+```
+
+### Решение Iceberg: transform functions
+
+Iceberg определяет партиционирование через transform functions, которые движок применяет автоматически:
+
+```python
+from pyiceberg.schema import Schema
+from pyiceberg.types import NestedField, TimestampType, StringType, LongType
+from pyiceberg.partitioning import PartitionSpec, PartitionField
+from pyiceberg.transforms import MonthTransform
+
+schema = Schema(
+    NestedField(1, "event_id", LongType(), required=True),
+    NestedField(2, "event_ts", TimestampType(), required=True),
+    NestedField(3, "event_type", StringType(), required=True),
+)
+
+# Партиционирование: month(event_ts)
+spec = PartitionSpec(
+    PartitionField(
+        source_id=2,  # event_ts
+        field_id=1000,
+        transform=MonthTransform(),
+        name="event_month"
+    )
+)
+```
+
+Теперь любой запрос с фильтром по `event_ts` автоматически использует партиции:
+
+```sql
+-- Iceberg: любой предикат на event_ts использует партиции автоматически
+SELECT * FROM events
+WHERE event_ts >= TIMESTAMP '2024-03-01 00:00:00'
+  AND event_ts < TIMESTAMP '2024-04-01 00:00:00'
+-- Движок применяет month() к предикату → читает только партицию 2024-03
+```
+
+<DiagramContainer title="Hidden partitioning vs explicit partitioning" className="my-6">
+  <FlowRow className="gap-6 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Delta/Hive: пользователь должен знать и использовать partition columns">Explicit (Delta/Hive)</FlowNode>
+      <DataBox label="Запрос" className="border-red-500/30 w-56">
+        <div className="text-xs font-mono">WHERE date = '2024-03-01'</div>
+      </DataBox>
+      <DataBox label="Проблема" className="border-red-500/30 w-56">
+        <div className="text-xs">Пользователь должен знать partition column. WHERE event_ts = ... не использует партицию</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="output" tooltip="Iceberg: движок автоматически применяет transform к предикату">Hidden (Iceberg)</FlowNode>
+      <DataBox label="Запрос" className="border-emerald-500/30 w-56">
+        <div className="text-xs font-mono">WHERE event_ts &gt;= '2024-03-01'</div>
+      </DataBox>
+      <DataBox label="Результат" className="border-emerald-500/30 w-56">
+        <div className="text-xs">Движок видит month(event_ts) transform → автоматически пропускает ненужные партиции</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+### Доступные transforms
+
+| Transform | Описание | Пример |
+|---|---|---|
+| `identity` | Партиционирование по значению колонки | `identity(country)` |
+| `year` | По году из timestamp | `year(event_ts)` → 2024 |
+| `month` | По месяцу | `month(event_ts)` → 2024-03 |
+| `day` | По дню | `day(event_ts)` → 2024-03-15 |
+| `hour` | По часу | `hour(event_ts)` → 2024-03-15-14 |
+| `bucket(N)` | Hash bucketing | `bucket(16, user_id)` → 0-15 |
+| `truncate(W)` | Усечение строки/числа | `truncate(3, city)` → "Mos" |
+
+## Partition Evolution
+
+Уникальная возможность Iceberg — изменение схемы партиционирования без перезаписи данных.
+
+### Сценарий
+
+Таблица создана с `month(event_ts)`. Через полгода нагрузка выросла, и нужно партиционирование по дням:
+
+```python
+from pyiceberg.transforms import DayTransform
+
+table = catalog.load_table("analytics.events")
+
+# Эволюция партиционирования: month → day
+with table.update_spec() as update:
+    update.remove_field("event_month")   # удаляем month
+    update.add_field(
+        source_column_name="event_ts",
+        transform=DayTransform(),
+        name="event_day"
+    )
+```
+
+После этого:
+- **Старые файлы** остаются в месячных партициях — не перезаписываются
+- **Новые файлы** записываются в дневные партиции
+- **Запросы** прозрачно читают обе схемы — Iceberg знает, какая схема действовала для каждого файла
+
+<DiagramContainer title="Partition evolution: month → day" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowColumn className="gap-2 items-center">
+        <FlowNode variant="input" tooltip="Файлы, записанные до эволюции">Старые файлы</FlowNode>
+        <DataBox label="Партиция" className="border-blue-500/30 w-48">
+          <div className="text-xs font-mono">event_month=2024-01/<br/>event_month=2024-02/<br/>event_month=2024-03/</div>
+        </DataBox>
+      </FlowColumn>
+      <FlowColumn className="gap-2 items-center">
+        <FlowNode variant="output" tooltip="Файлы, записанные после эволюции">Новые файлы</FlowNode>
+        <DataBox label="Партиция" className="border-emerald-500/30 w-48">
+          <div className="text-xs font-mono">event_day=2024-04-01/<br/>event_day=2024-04-02/<br/>event_day=2024-04-03/</div>
+        </DataBox>
+      </FlowColumn>
+    </FlowRow>
+    <DataBox label="Запрос: WHERE event_ts = '2024-03-15'" className="border-orange-500/30 w-72">
+      <div className="text-xs">Iceberg: проверяет spec #0 (month) для старых manifest → читает event_month=2024-03. Для новых manifest → spec #1 (day) не содержит данных за март.</div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
+
+<Callout type="tip">
+Partition evolution — ключевое преимущество Iceberg для растущих систем. В Delta Lake изменение партиционирования требует полной перезаписи таблицы (OPTIMIZE + ZORDER).
+</Callout>
+
+## Schema Evolution
+
+Iceberg отслеживает колонки по уникальным ID, а не по именам. Это даёт безопасную schema evolution:
+
+### Поддерживаемые операции
+
+```python
+table = catalog.load_table("analytics.events")
+
+with table.update_schema() as update:
+    # Добавление новой колонки
+    update.add_column("session_id", StringType())
+
+    # Переименование колонки — файлы не перезаписываются
+    update.rename_column("event_type", "action_type")
+
+    # Удаление колонки (мягкое — данные остаются в файлах)
+    update.delete_column("legacy_field")
+
+    # Изменение типа (только расширяющие: int → long, float → double)
+    update.update_column("event_id", LongType())
+```
+
+### Как это работает с DataFusion
+
+DataFusion получает текущую schema от `TableProvider` (Iceberg). При чтении старых файлов, где отсутствует новая колонка `session_id`, Iceberg автоматически подставляет `NULL`:
+
+```sql
+-- session_id добавлен вчера. Старые файлы не содержат эту колонку.
+SELECT event_id, session_id FROM events LIMIT 5;
+
+-- Результат:
+-- event_id | session_id
+-- 1        | NULL        ← старый файл, колонки нет → NULL
+-- 2        | NULL
+-- 3        | "abc-123"   ← новый файл, колонка заполнена
+```
+
+## Time Travel в Iceberg
+
+Как и Delta Lake, Iceberg поддерживает запросы к историческим версиям:
+
+```python
+# По snapshot ID
+table = catalog.load_table("analytics.events")
+scan = table.scan(snapshot_id=3051729675574597004)
+arrow_table = scan.to_arrow()
+
+# По timestamp
+from datetime import datetime
+scan = table.scan(
+    snapshot_id=table.snapshot_as_of_timestamp(
+        datetime(2024, 3, 15).timestamp() * 1000
+    ).snapshot_id
+)
+```
+
+### Snapshots vs Versions
+
+Iceberg использует snapshot ID (уникальный long), а Delta Lake — последовательный номер версии (0, 1, 2, ...). Snapshot ID не последователен, что затрудняет навигацию вручную, но даёт гарантию уникальности в распределённых системах.
+
+```python
+# Просмотр истории snapshots
+for snapshot in table.metadata.snapshots:
+    print(f"ID: {snapshot.snapshot_id}, "
+          f"Timestamp: {snapshot.timestamp_ms}, "
+          f"Operation: {snapshot.summary.operation}")
+```
+
+## Практический пример: аналитика с Iceberg + DataFusion
+
+```python
+import datafusion
+from pyiceberg.catalog import load_catalog
+
+def setup_iceberg_analytics():
+    """Настройка аналитического контекста с Iceberg."""
+    catalog = load_catalog(
+        "production",
+        **{
+            "type": "rest",
+            "uri": "http://iceberg-rest:8181",
+            "s3.endpoint": "http://minio:9000",
+            "s3.access-key-id": "admin",
+            "s3.secret-access-key": "password",
+        }
+    )
+
+    ctx = datafusion.SessionContext()
+
+    # Регистрация нескольких таблиц из каталога
+    for table_name in ["events", "users", "sessions"]:
+        table = catalog.load_table(f"analytics.{table_name}")
+        ctx.register_table_provider(table_name, table)
+
+    return ctx
+
+ctx = setup_iceberg_analytics()
+
+# JOIN между Iceberg-таблицами — DataFusion оптимизирует как обычно
+result = ctx.sql("""
+    SELECT
+        u.country,
+        count(DISTINCT e.user_id) as active_users,
+        count(*) as event_count
+    FROM events e
+    JOIN users u ON e.user_id = u.user_id
+    WHERE e.event_ts >= TIMESTAMP '2024-03-01 00:00:00'
+      AND e.event_ts < TIMESTAMP '2024-04-01 00:00:00'
+    GROUP BY u.country
+    ORDER BY active_users DESC
+    LIMIT 20
+""")
+result.show()
+```
+
+<Callout type="note">
+При JOIN между Iceberg-таблицами DataFusion применяет standard join optimization (hash join, predicate pushdown). Iceberg-провайдер делает file pruning до начала join — каждая таблица возвращает только нужные файлы.
+</Callout>
+
+## Сравнение с Delta Lake: когда выбрать Iceberg
+
+| Аспект | Выбрать Iceberg | Выбрать Delta Lake |
+|---|---|---|
+| **Партиционирование** | Нужна partition evolution или hidden partitioning | Фиксированная схема, простота |
+| **Multi-engine** | Spark + Flink + Trino + DataFusion | Databricks + DataFusion |
+| **Schema evolution** | Частые rename/drop колонок | Только add columns |
+| **Каталог** | Уже есть REST/Glue/Hive catalog | Нет каталога, работаем по путям |
+| **Файловая раскладка** | Очень много файлов (>100K) | Умеренное количество |
+| **Экосистема** | Multi-vendor стратегия | Databricks-стек |
+
+## Ключевые выводы
+
+1. **Iceberg** использует трёхуровневую архитектуру метаданных (metadata → manifest list → manifests), масштабируясь лучше Delta при большом количестве файлов
+2. **Каталог** обязателен — без него таблица недоступна. REST catalog для продакшена, SQL/File — для разработки
+3. **Hidden partitioning** — пользователь пишет WHERE по исходной колонке, движок автоматически применяет partition transform
+4. **Partition evolution** — изменение схемы партиционирования без перезаписи данных, уникальное преимущество Iceberg
+5. **Schema evolution** по column ID — безопасные rename и drop без перезаписи файлов
+6. **iceberg-rust** интегрируется с DataFusion через `TableProvider`, аналогично delta-rs

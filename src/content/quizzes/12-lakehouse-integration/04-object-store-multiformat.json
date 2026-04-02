@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "12-lakehouse-integration/04-object-store-multiformat",
+  "moduleId": "12-lakehouse-integration",
+  "_meta": {
+    "idPrefix": "df-m12-04"
+  },
+  "questions": [
+    {
+      "id": "df-m12-04-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion, delta-rs и iceberg-rust используют один и тот же crate для доступа к S3/GCS/Azure. Какой?",
+      "options": [
+        {
+          "id": "a",
+          "text": "aws-sdk-s3 — официальный AWS SDK для Rust"
+        },
+        {
+          "id": "b",
+          "text": "object_store — Apache Arrow crate с реализациями ObjectStore trait для S3, GCS, Azure и локальной ФС"
+        },
+        {
+          "id": "c",
+          "text": "reqwest — HTTP-клиент, каждый проект реализует свой S3-протокол"
+        },
+        {
+          "id": "d",
+          "text": "У каждого проекта свой I/O-слой — они не разделяют код"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Crate object_store — проект Apache Arrow, предоставляющий trait ObjectStore и реализации для AmazonS3, GoogleCloudStorage, MicrosoftAzure и LocalFileSystem. DataFusion, delta-rs и iceberg-rust все зависят от одного и того же crate, что обеспечивает единообразное конфигурирование credentials и совместимость.",
+      "bloomLevel": "conceptual",
+      "studyHint": "object_store crate = единый I/O слой для DataFusion + delta-rs + iceberg-rust."
+    },
+    {
+      "id": "df-m12-04-q2",
+      "type": "multiple-choice",
+      "question": "DataFusion Python подключается к MinIO (S3-compatible storage). Запрос register_parquet('t', 's3://bucket/data/') возвращает ошибку 'Connection refused'. Какая конфигурация отсутствует?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нужно заменить s3:// на minio:// в URL"
+        },
+        {
+          "id": "b",
+          "text": "Нужно вызвать register_object_store('s3://bucket', options={'endpoint': 'http://localhost:9000', 'allow_http': 'true'}) — без endpoint DataFusion обращается к AWS S3"
+        },
+        {
+          "id": "c",
+          "text": "MinIO не совместим с DataFusion — нужно использовать AWS S3"
+        },
+        {
+          "id": "d",
+          "text": "Нужно установить пакет minio-python"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Без явного endpoint DataFusion (через object_store crate) обращается к реальному AWS S3. Для S3-compatible storage нужно указать endpoint (URL MinIO) и allow_http=true (если MinIO работает на HTTP). region также обязателен, даже для MinIO — object_store валидирует его наличие.",
+      "bloomLevel": "applied",
+      "studyHint": "S3-compatible: endpoint + allow_http + region обязательны. Без endpoint → обращение к AWS S3."
+    },
+    {
+      "id": "df-m12-04-q3",
+      "type": "multiple-choice",
+      "question": "DataFusion выполняет SQL JOIN между Delta-таблицей на S3, Iceberg-таблицей в GCS и локальным CSV. Как оптимизатор обрабатывает такой мультиформатный запрос?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion не поддерживает JOIN между разными форматами — нужно сначала выгрузить всё в один формат"
+        },
+        {
+          "id": "b",
+          "text": "Стандартная оптимизация: predicate pushdown в каждый TableProvider, join reordering по statistics от каждого формата, hash join для execution"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion копирует все данные в локальную память перед JOIN — без оптимизации"
+        },
+        {
+          "id": "d",
+          "text": "Работает только если все таблицы на одном object store"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion работает с абстракцией TableProvider. Неважно, что за источник — Delta, Iceberg, Parquet или CSV. Оптимизатор применяет те же правила: predicate pushdown (каждый провайдер фильтрует свои файлы), join reordering (по statistics от каждого TableProvider), выбор join strategy (hash/merge). Мультиформатность прозрачна для оптимизатора.",
+      "bloomLevel": "analytical",
+      "studyHint": "TableProvider — единая абстракция. Оптимизатор не знает формат — видит schema + stats + file pruning."
+    },
+    {
+      "id": "df-m12-04-q4",
+      "type": "multiple-choice",
+      "question": "Аналитическая таблица на S3 содержит 10 000 файлов по 500 KB каждый (общий объём ~5 GB). Запросы выполняются медленно. Какая основная причина?",
+      "options": [
+        {
+          "id": "a",
+          "text": "5 GB — слишком большой объём для DataFusion"
+        },
+        {
+          "id": "b",
+          "text": "10 000 мелких файлов × ~50ms латентности S3 на запрос = ~500 секунд только на метаданные. Оптимальный размер файла: 128-256 MB"
+        },
+        {
+          "id": "c",
+          "text": "S3 ограничивает количество файлов в директории"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не умеет читать файлы параллельно"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Object store (S3) имеет высокую латентность на каждый HTTP-запрос (~50ms). При 10 000 файлов даже параллельное чтение с target_partitions=16 — это 10000/16 × 50ms ≈ 31 секунда на footer reads. С файлами по 128-256 MB: ~5 GB / 256 MB = 20 файлов × 50ms = 1 секунда. Решение: OPTIMIZE compact (Delta) или rewrite (Parquet).",
+      "bloomLevel": "analytical",
+      "studyHint": "Мелкие файлы + object store = I/O bottleneck. Оптимум: 128-256 MB на файл."
+    },
+    {
+      "id": "df-m12-04-q5",
+      "type": "multiple-choice",
+      "question": "Команда мигрирует таблицу с 2 TB raw Parquet на Delta Lake. Код использует result.to_arrow_table() для конвертации. Почему это проблематично?",
+      "options": [
+        {
+          "id": "a",
+          "text": "to_arrow_table() не поддерживает Delta-формат"
+        },
+        {
+          "id": "b",
+          "text": "to_arrow_table() загружает всю таблицу (2 TB) в RAM. Для больших таблиц нужен batch processing — читать и записывать по partition за раз"
+        },
+        {
+          "id": "c",
+          "text": "Arrow Table несовместим с Delta Lake"
+        },
+        {
+          "id": "d",
+          "text": "Нет проблемы — to_arrow_table() использует streaming и не загружает всё в RAM"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "to_arrow_table() материализует весь результат запроса в памяти как Arrow Table. Для 2 TB данных это требует 2+ TB RAM. Для больших миграций нужен batch подход: разбить на партиции, читать и записывать каждую отдельно. Или использовать streaming write API, который обрабатывает данные batch за batch.",
+      "bloomLevel": "applied",
+      "studyHint": "to_arrow_table() = всё в RAM. Большие таблицы → batch по partition или streaming write."
+    }
+  ]
+}

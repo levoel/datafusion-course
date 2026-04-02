@@ -200,7 +200,7 @@ AggregateExec: mode=Partial
 FilterExec: status = 'completed'
   metrics=[output_rows=487329, elapsed_compute=12.3ms]
 
-ParquetExec: file_groups={16 groups}
+DataSourceExec: file_groups={16 groups}, format=parquet
   metrics=[
     output_rows=1000000,
     elapsed_compute=89.4ms,
@@ -218,7 +218,7 @@ ParquetExec: file_groups={16 groups}
 | `output_rows` | Все | Строк на выходе — главный индикатор эффективности фильтрации |
 | `elapsed_compute` | Все | CPU-время оператора — находит bottleneck |
 | `bytes_scanned` | Scan | Прочитано байт с диска — эффективность projection/predicate pushdown |
-| `row_groups_pruned` | ParquetExec | Пропущенные row groups — эффективность min/max pruning |
+| `row_groups_pruned` | DataSourceExec | Пропущенные row groups — эффективность min/max pruning |
 | `spill_count` | Sort, Aggregate | Количество spill-to-disk — нехватка памяти |
 | `spill_bytes` | Sort, Aggregate | Байт записано на диск при spill |
 | `repart_time` | RepartitionExec | Время перераспределения — сетевой/memory bottleneck |

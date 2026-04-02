@@ -1,0 +1,416 @@
+---
+title: "Управление памятью в DataFusion: MemoryPool, spill и мониторинг"
+description: "MemoryPool trait, MemoryReservation, GreedyMemoryPool vs FairSpillPool, spill-to-disk через DiskManager, TrackConsumersPool и реализация кастомного пула"
+order: 7
+difficulty: "advanced"
+estimatedTime: 14
+topics: ["MemoryPool", "MemoryReservation", "MemoryConsumer", "GreedyMemoryPool", "FairSpillPool", "DiskManager", "Spill-to-Disk", "TrackConsumersPool"]
+---
+
+# Управление памятью в DataFusion
+
+В уроке 05 мы видели, что `RuntimeEnv` принимает пул памяти. Теперь разберём подсистему управления памятью целиком: какие операторы регистрируются в пуле, как работает spill-to-disk, и как мониторить потребление.
+
+## Философия: streaming vs buffering
+
+DataFusion делит операторы на две категории по потреблению памяти:
+
+<DiagramContainer title="Категории операторов по потреблению памяти" className="my-6">
+  <FlowRow className="gap-6 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Потребляют O(1) памяти — обрабатывают по одному batch за раз, не накапливают данные">Streaming-операторы</FlowNode>
+      <DataBox label="Примеры" className="border-emerald-500/30 w-56">
+        <div className="text-xs font-mono">FilterExec, ProjectionExec, CoalesceBatchesExec</div>
+      </DataBox>
+      <DataBox label="Память" className="border-emerald-500/30 w-56">
+        <div className="text-xs">Не регистрируются в MemoryPool — потребление фиксировано и мало</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="output" tooltip="Потребляют O(N) памяти — накапливают данные перед выдачей результата">Buffering-операторы</FlowNode>
+      <DataBox label="Примеры" className="border-orange-500/30 w-56">
+        <div className="text-xs font-mono">SortExec, HashJoinExec, AggregateExec</div>
+      </DataBox>
+      <DataBox label="Память" className="border-orange-500/30 w-56">
+        <div className="text-xs">Регистрируются в MemoryPool — потребление пропорционально входным данным</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+Это прагматичный подход: отслеживать каждый байт дорого, а streaming-операторы потребляют фиксированное количество памяти (один-два batch). Нет смысла добавлять overhead учёта для них.
+
+<Callout type="tip">
+Планируя memory_limit, зарезервируйте ~10% сверх расчётного — на неотслеживаемые аллокации streaming-операторов, буферы Arrow и служебные структуры DataFusion.
+</Callout>
+
+## MemoryPool trait
+
+Все buffering-операторы взаимодействуют с памятью через единый trait:
+
+```rust
+pub trait MemoryPool: Send + Sync + std::fmt::Debug {
+    /// Регистрирует новый MemoryConsumer
+    fn register(&self, consumer: &MemoryConsumer);
+
+    /// Отменяет регистрацию consumer-а
+    fn unregister(&self, consumer: &MemoryConsumer);
+
+    /// Увеличивает резервацию. Возвращает ошибку при нехватке памяти.
+    fn grow(&self, reservation: &MemoryReservation, additional: usize);
+
+    /// Уменьшает резервацию, возвращая память в пул
+    fn shrink(&self, reservation: &MemoryReservation, shrink: usize);
+
+    /// Пытается увеличить резервацию без ошибки — возвращает фактически выделенное
+    fn try_grow(&self, reservation: &MemoryReservation, additional: usize)
+        -> Result<usize>;
+
+    /// Суммарное зарезервированное количество байт
+    fn reserved(&self) -> usize;
+}
+```
+
+Операторы не вызывают `grow`/`shrink` напрямую — они работают через `MemoryReservation`.
+
+## MemoryReservation и MemoryConsumer
+
+`MemoryConsumer` — именованная сущность, регистрирующаяся в пуле (например, "HashJoinStream[0]"). `MemoryReservation` — RAII-обёртка, которая при `drop()` автоматически освобождает память:
+
+<DiagramContainer title="MemoryConsumer → MemoryReservation → MemoryPool" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="process" tooltip="Физический оператор — SortExec, HashJoinExec, AggregateExec">Оператор (SortExec)</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" label="создаёт" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="process" tooltip="Именованный потребитель: содержит имя и ссылку на пул">MemoryConsumer(&quot;SortExec[partition=2]&quot;)</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" label="register() → reservation" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="process" tooltip="RAII-обёртка: grow()/shrink() при накоплении данных, drop() возвращает всё в пул">MemoryReservation {'{ size: 0 }'}</FlowNode>
+    </FlowRow>
+    <Arrow direction="down" label="grow() / shrink()" />
+    <FlowRow className="gap-4 justify-center flex-wrap">
+      <FlowNode variant="input" tooltip="Глобальный пул: отслеживает суммарное потребление, применяет лимит">MemoryPool (FairSpillPool / GreedyMemoryPool)</FlowNode>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+```rust
+use datafusion::execution::memory_pool::{MemoryConsumer, MemoryPool, MemoryReservation};
+
+// Оператор создаёт consumer
+let consumer = MemoryConsumer::new("MyOperator[partition=0]");
+
+// Регистрирует и получает резервацию
+let mut reservation = consumer.register(pool.as_ref());
+
+// При получении каждого batch — grow
+reservation.try_grow(batch_size_in_bytes)?;
+
+// При обработке batch — shrink
+reservation.shrink(freed_bytes);
+
+// При drop() MemoryReservation — вся оставшаяся память возвращается в пул
+drop(reservation);
+```
+
+<Callout type="warning">
+Не вызывайте `grow()` если не готовы к ошибке `ResourcesExhausted`. Для graceful degradation используйте `try_grow()` — он возвращает `Result`, позволяя оператору решить что делать (spill на диск, уменьшить batch size, вернуть частичный результат).
+</Callout>
+
+## Встроенные пулы
+
+DataFusion предоставляет четыре реализации MemoryPool:
+
+### UnboundedMemoryPool
+
+Пул по умолчанию — не ограничивает память. Все вызовы `grow()` успешны. Используется, когда контроль памяти не нужен (разработка, тесты):
+
+```rust
+use datafusion::execution::memory_pool::UnboundedMemoryPool;
+
+let pool = Arc::new(UnboundedMemoryPool::default());
+```
+
+### GreedyMemoryPool
+
+First-come-first-serve: первый оператор, запросивший память, получает всё до лимита. Остальные получают `ResourcesExhausted`:
+
+```rust
+use datafusion::execution::memory_pool::GreedyMemoryPool;
+
+// Лимит 2 GB
+let pool = Arc::new(GreedyMemoryPool::new(2 * 1024 * 1024 * 1024));
+```
+
+Характеристики:
+- Простая реализация, минимальный overhead
+- **Не поддерживает spill**: при превышении лимита возвращает ошибку, а не сигнал к spill
+- Подходит для workloads с предсказуемым потреблением
+
+### FairSpillPool
+
+Равномерное распределение: делит доступную память между всеми активными spillable-резервациями. Когда одна резервация запрашивает слишком много, пул сигнализирует другим spillable-резервациям освободить память:
+
+```rust
+use datafusion::execution::memory_pool::FairSpillPool;
+
+// Лимит 4 GB
+let pool = Arc::new(FairSpillPool::new(4 * 1024 * 1024 * 1024));
+```
+
+Характеристики:
+- Поддерживает spill-to-disk — операторы с поддержкой spill получают сигнал сбросить данные на диск
+- Равномерное распределение предотвращает ситуацию, когда один тяжёлый оператор захватывает всю память
+- Рекомендуется для продакшен-нагрузок с несколькими concurrent запросами
+
+### TrackConsumersPool
+
+Не самостоятельный пул, а **обёртка** над любым другим пулом, добавляющая мониторинг. Об этом — в разделе о мониторинге ниже.
+
+### Сравнение пулов
+
+| Свойство | UnboundedMemoryPool | GreedyMemoryPool | FairSpillPool |
+|----------|-------------------|-----------------|---------------|
+| Лимит памяти | Нет | Да | Да |
+| Поддержка spill | Нет | Нет | Да |
+| Стратегия при нехватке | — | Ошибка | Spill + равномерное перераспределение |
+| Overhead | Нулевой | Минимальный | Умеренный |
+| Продакшен | ❌ | Простые случаи | ✅ Рекомендуется |
+
+<Callout type="note">
+FairSpillPool делит память между **spillable-резервациями**. Если оператор не поддерживает spill (CrossJoin, NestedLoopJoin), его резервация считается non-spillable — пул не будет просить его сбросить данные на диск.
+</Callout>
+
+## Spill-to-disk
+
+Когда FairSpillPool сигнализирует оператору сбросить данные, оператор использует `DiskManager` для создания временных файлов:
+
+<DiagramContainer title="Механизм spill-to-disk" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="process" tooltip="FairSpillPool определяет, что consumer превысил fair-share">FairSpillPool: reservation.grow() → need_spill</FlowNode>
+    <Arrow direction="down" label="сигнал к spill" />
+    <FlowNode variant="process" tooltip="Оператор сериализует накопленные данные в Arrow IPC формат">Оператор: serialize batches → Arrow IPC</FlowNode>
+    <Arrow direction="down" label="create_tmp_file()" />
+    <FlowNode variant="process" tooltip="DiskManager создаёт временный файл, RefCountedTempFile удалит его при drop">DiskManager → RefCountedTempFile</FlowNode>
+    <Arrow direction="down" label="write + shrink reservation" />
+    <FlowNode variant="input" tooltip="Данные на диске, память освобождена. При необходимости — read back">Данные на диске (Arrow IPC), память возвращена в пул</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+### Какие операторы поддерживают spill
+
+| Оператор | Spill | Примечание |
+|----------|-------|-----------|
+| SortExec | ✅ | Внешняя сортировка: сортирует chunks, сбрасывает на диск, merge при чтении |
+| AggregateExec (hash) | ✅ | Сбрасывает hash-таблицу, перечитывает при merge |
+| HashJoinExec | ✅ | Сбрасывает build-сторону |
+| SymmetricHashJoinExec | ✅ | Сбрасывает обе стороны |
+| CrossJoinExec | ❌ | Нет поддержки spill — при нехватке памяти возвращает ошибку |
+| NestedLoopJoinExec | ❌ | Нет поддержки spill — при нехватке памяти возвращает ошибку |
+
+<Callout type="danger">
+CrossJoin и NestedLoopJoin не поддерживают spill. Если данные не помещаются в память — запрос завершится с ошибкой `ResourcesExhausted`. Для больших данных замените CROSS JOIN на INNER JOIN с условием, или увеличьте memory_limit.
+</Callout>
+
+### Формат spill-файлов
+
+Данные сбрасываются в формате Arrow IPC (Feather v2). Это нативный бинарный формат Arrow — десериализация не требует конвертации типов, что делает read-back быстрым. `DiskManager` создаёт файлы через `RefCountedTempFile`, который автоматически удаляет файл при `drop()`.
+
+## Конфигурация
+
+### Через RuntimeEnvBuilder (Rust API)
+
+```rust
+use std::sync::Arc;
+use datafusion::execution::runtime_env::RuntimeEnvBuilder;
+use datafusion::execution::memory_pool::FairSpillPool;
+use datafusion::execution::disk_manager::DiskManagerConfig;
+use datafusion::prelude::SessionContext;
+
+// Пул с лимитом 4 GB + DiskManager для spill
+let runtime_env = RuntimeEnvBuilder::new()
+    .with_memory_pool(Arc::new(FairSpillPool::new(4_000_000_000)))
+    .with_disk_manager(DiskManagerConfig::NewOs)  // OS temp directory
+    .build_arc()?;
+
+let ctx = SessionContext::new_with_config_rt(
+    Default::default(),
+    runtime_env,
+);
+```
+
+`DiskManagerConfig` варианты:
+- `NewOs` — временные файлы в системной temp-директории
+- `NewSpecified(paths)` — конкретные директории для spill (полезно для выделенного SSD)
+- `Disabled` — spill запрещён, при нехватке памяти всегда ошибка
+
+### Через SQL SET
+
+```sql
+-- Установить лимит памяти для текущей сессии
+SET datafusion.execution.memory_limit = '4GB';
+
+-- Настроить количество партиций (влияет на распределение памяти в FairSpillPool)
+SET datafusion.execution.target_partitions = 4;
+
+-- Уменьшить batch size для снижения пикового потребления
+SET datafusion.execution.batch_size = 1024;
+```
+
+<Callout type="tip">
+При использовании FairSpillPool, память делится между партициями. Чем больше `target_partitions`, тем меньше памяти на каждую партицию, и тем чаще будет происходить spill. Найдите баланс: больше партиций = больше параллелизма, но меньше памяти на каждую.
+</Callout>
+
+## Мониторинг: TrackConsumersPool
+
+`TrackConsumersPool` — обёртка, которая записывает, какой consumer сколько памяти потребляет. При ошибке `ResourcesExhausted` включает в сообщение об ошибке информацию о top-потребителях:
+
+```rust
+use std::sync::Arc;
+use datafusion::execution::memory_pool::{FairSpillPool, TrackConsumersPool};
+use datafusion::execution::runtime_env::RuntimeEnvBuilder;
+
+let inner_pool = FairSpillPool::new(4_000_000_000);
+let tracking_pool = TrackConsumersPool::new(inner_pool, /* top_n */ 5);
+
+let runtime_env = RuntimeEnvBuilder::new()
+    .with_memory_pool(Arc::new(tracking_pool))
+    .build_arc()?;
+```
+
+Когда запрос превышает лимит, ошибка содержит диагностику:
+
+```
+Resources exhausted: Failed to allocate 256.0 MB for HashJoinStream[1].
+Top memory consumers:
+  1. HashJoinStream[0]: 1.2 GB
+  2. SortExec[partition=3]: 800 MB
+  3. AggregateExec[partition=0]: 600 MB
+  4. HashJoinStream[1]: 400 MB
+  5. SortExec[partition=1]: 350 MB
+```
+
+Это ключевой инструмент диагностики: вместо загадочной "out of memory" вы видите, какой оператор и какая партиция потребляет больше всего.
+
+## Реализация кастомного MemoryPool
+
+Для нестандартных требований (внешний оркестратор, per-query лимиты, метрики в Prometheus) можно реализовать свой пул:
+
+```rust
+use datafusion::execution::memory_pool::{
+    MemoryPool, MemoryConsumer, MemoryReservation,
+};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+#[derive(Debug)]
+struct MetricsPool {
+    limit: usize,
+    used: AtomicUsize,
+}
+
+impl MetricsPool {
+    fn new(limit: usize) -> Self {
+        Self {
+            limit,
+            used: AtomicUsize::new(0),
+        }
+    }
+}
+
+impl MemoryPool for MetricsPool {
+    fn register(&self, _consumer: &MemoryConsumer) {
+        // Можно отправить метрику о новом consumer
+    }
+
+    fn unregister(&self, _consumer: &MemoryConsumer) {
+        // Можно отправить метрику об удалении consumer
+    }
+
+    fn grow(
+        &self,
+        _reservation: &MemoryReservation,
+        additional: usize,
+    ) {
+        let new_total = self.used.fetch_add(additional, Ordering::Relaxed)
+            + additional;
+        if new_total > self.limit {
+            self.used.fetch_sub(additional, Ordering::Relaxed);
+            // В реальном коде — вернуть DataFusionError::ResourcesExhausted
+        }
+        // Отправить метрику: gauge "datafusion_memory_used" = new_total
+    }
+
+    fn shrink(
+        &self,
+        _reservation: &MemoryReservation,
+        shrink: usize,
+    ) {
+        self.used.fetch_sub(shrink, Ordering::Relaxed);
+    }
+
+    fn try_grow(
+        &self,
+        reservation: &MemoryReservation,
+        additional: usize,
+    ) -> datafusion::common::Result<usize> {
+        let current = self.used.load(Ordering::Relaxed);
+        let available = self.limit.saturating_sub(current);
+        let granted = additional.min(available);
+        if granted > 0 {
+            self.grow(reservation, granted);
+        }
+        Ok(granted)
+    }
+
+    fn reserved(&self) -> usize {
+        self.used.load(Ordering::Relaxed)
+    }
+}
+```
+
+<Callout type="note">
+В production-реализации кастомного пула обязательно обрабатывайте race conditions при concurrent grow/shrink — используйте `compare_exchange` вместо `fetch_add`, если нужна точная проверка лимита.
+</Callout>
+
+## Практические рекомендации
+
+### Выбор пула
+
+1. **Разработка и тесты** → `UnboundedMemoryPool` (по умолчанию)
+2. **Продакшен, один запрос** → `GreedyMemoryPool` — простой лимит
+3. **Продакшен, concurrent запросы** → `FairSpillPool` — справедливое распределение + spill
+4. **Диагностика** → `TrackConsumersPool` обёртка вокруг любого пула
+
+### Расчёт memory_limit
+
+```
+memory_limit = available_ram
+    - OS overhead (~1-2 GB)
+    - other processes
+    - 10% reserve (untracked DataFusion allocations)
+```
+
+Для сервера с 32 GB RAM и dedicated DataFusion:
+```
+memory_limit = 32 GB - 2 GB (OS) - 3 GB (10% reserve) ≈ 27 GB
+```
+
+### Оптимизация spill-производительности
+
+- Используйте SSD для директории spill — Arrow IPC файлы генерируют значительный I/O
+- Настройте `DiskManagerConfig::NewSpecified` с путём к быстрому диску
+- Уменьшите `target_partitions` если spill происходит слишком часто
+- Увеличьте `batch_size` если spill слишком частый и мелкий (больше данных за один spill)
+
+## Итоги
+
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Streaming-операторы (Filter, Projection) не регистрируются в MemoryPool — их потребление фиксировано
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Buffering-операторы (Sort, HashJoin, Aggregate) отслеживают память через MemoryConsumer → MemoryReservation
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> GreedyMemoryPool — простой лимит, FairSpillPool — равномерное распределение + spill-to-disk
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> CrossJoin и NestedLoopJoin не поддерживают spill — при нехватке памяти ошибка
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> DiskManager сбрасывает данные в Arrow IPC, файлы удаляются автоматически
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> TrackConsumersPool — обёртка для диагностики top-потребителей памяти
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> Зарезервируйте ~10% памяти сверх лимита на неотслеживаемые аллокации

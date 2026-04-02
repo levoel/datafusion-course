@@ -1,0 +1,16 @@
+# DataFusion Lakehouse Integration Lab
+# Среда для экспериментов с Delta Lake и форматами данных
+
+services:
+  lab:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: datafusion-lakehouse
+    volumes:
+      - ./exercises:/app/exercises
+      - ./data:/app/data
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    command: bash

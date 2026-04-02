@@ -1,0 +1,868 @@
+{
+  "categories": [
+    {
+      "id": "arrow",
+      "name": "Apache Arrow",
+      "terms": [
+        {
+          "term": "RecordBatch",
+          "termEn": "Record Batch",
+          "definition": "Основная единица данных в Apache Arrow — набор столбцов одинаковой длины, объединённых общей схемой. RecordBatch хранит данные в колоночном формате для эффективной SIMD-обработки. В DataFusion все промежуточные результаты передаются как поток RecordBatch-ей.",
+          "example": "use arrow::array::Int32Array;\nuse arrow::record_batch::RecordBatch;\nuse arrow::datatypes::{Schema, Field, DataType};\nuse std::sync::Arc;\n\nlet schema = Arc::new(Schema::new(vec![\n    Field::new(\"id\", DataType::Int32, false),\n]));\nlet batch = RecordBatch::try_new(\n    schema,\n    vec![Arc::new(Int32Array::from(vec![1, 2, 3]))],\n)?;",
+          "relatedLessons": [
+            {
+              "title": "Колоночный формат данных",
+              "slug": "01-arrow-foundation/01-columnar-format"
+            },
+            {
+              "title": "Устройство памяти Arrow",
+              "slug": "01-arrow-foundation/02-arrow-memory-layout"
+            },
+            {
+              "title": "Arrow в DataFusion",
+              "slug": "01-arrow-foundation/06-arrow-in-datafusion"
+            }
+          ]
+        },
+        {
+          "term": "Array",
+          "termEn": "Arrow Array",
+          "definition": "Иммутабельная колоночная коллекция значений одного типа в Apache Arrow. Каждый Array содержит буфер данных, буфер validity (для NULL-значений) и опциональные offset-буферы для строк и списков. DataFusion использует Arrow Arrays для всех вычислений на столбцах.",
+          "example": "use arrow::array::{StringArray, Int64Array, Float64Array};\n\nlet strings = StringArray::from(vec![\"hello\", \"world\"]);\nlet ints = Int64Array::from(vec![10, 20, 30]);\nlet floats = Float64Array::from(vec![Some(1.5), None, Some(3.0)]);\n// None -> NULL в Arrow",
+          "relatedLessons": [
+            {
+              "title": "Устройство памяти Arrow",
+              "slug": "01-arrow-foundation/02-arrow-memory-layout"
+            },
+            {
+              "title": "Система типов Arrow",
+              "slug": "01-arrow-foundation/03-arrow-type-system"
+            }
+          ]
+        },
+        {
+          "term": "Schema",
+          "termEn": "Arrow Schema",
+          "definition": "Описание структуры данных — упорядоченный набор полей (Field), каждое из которых содержит имя, тип данных (DataType) и флаг nullable. Schema определяет формат RecordBatch и используется для валидации данных при чтении, записи и трансформациях.",
+          "example": "use arrow::datatypes::{Schema, Field, DataType};\n\nlet schema = Schema::new(vec![\n    Field::new(\"name\", DataType::Utf8, false),\n    Field::new(\"age\", DataType::Int32, true),\n    Field::new(\"score\", DataType::Float64, true),\n]);\nprintln!(\"Полей: {}\", schema.fields().len());",
+          "relatedLessons": [
+            {
+              "title": "Система типов Arrow",
+              "slug": "01-arrow-foundation/03-arrow-type-system"
+            },
+            {
+              "title": "Колоночный формат данных",
+              "slug": "01-arrow-foundation/01-columnar-format"
+            }
+          ]
+        },
+        {
+          "term": "DataType",
+          "termEn": "Arrow Data Type",
+          "definition": "Перечисление (enum) всех поддерживаемых типов данных в Arrow — от примитивных (Int8–Int64, Float16–Float64, Boolean) до вложенных (List, Struct, Map, Union). DataType определяет формат хранения в памяти и набор доступных операций над столбцом.",
+          "example": "use arrow::datatypes::DataType;\n\n// Примитивные типы\nlet int_type = DataType::Int64;\nlet str_type = DataType::Utf8;\n\n// Вложенные типы\nlet list_type = DataType::List(\n    Arc::new(Field::new(\"item\", DataType::Int32, true))\n);\nlet ts_type = DataType::Timestamp(\n    TimeUnit::Microsecond, Some(\"UTC\".into())\n);",
+          "relatedLessons": [
+            {
+              "title": "Система типов Arrow",
+              "slug": "01-arrow-foundation/03-arrow-type-system"
+            },
+            {
+              "title": "Arrow в DataFusion",
+              "slug": "01-arrow-foundation/06-arrow-in-datafusion"
+            }
+          ]
+        },
+        {
+          "term": "IPC",
+          "termEn": "Inter-Process Communication",
+          "definition": "Формат сериализации Arrow для обмена данными между процессами с нулевым копированием (zero-copy). Arrow IPC позволяет передавать RecordBatch между процессами и языками без десериализации — данные в памяти уже в нужном формате. Используется в Arrow Flight и при кешировании.",
+          "example": "use arrow::ipc::writer::FileWriter;\nuse arrow::ipc::reader::FileReader;\nuse std::fs::File;\n\n// Запись в IPC файл\nlet file = File::create(\"data.arrow\")?;\nlet mut writer = FileWriter::try_new(file, &schema)?;\nwriter.write(&batch)?;\nwriter.finish()?;\n\n// Чтение из IPC файла\nlet file = File::open(\"data.arrow\")?;\nlet reader = FileReader::try_new(file, None)?;",
+          "relatedLessons": [
+            {
+              "title": "IPC и Flight",
+              "slug": "01-arrow-foundation/04-ipc-and-flight"
+            },
+            {
+              "title": "Экосистема Arrow",
+              "slug": "01-arrow-foundation/05-arrow-ecosystem"
+            }
+          ]
+        },
+        {
+          "term": "Arrow Flight",
+          "termEn": "Apache Arrow Flight",
+          "definition": "Высокопроизводительный RPC-протокол на основе gRPC для передачи данных в формате Arrow. Flight оптимизирован для потоковой передачи больших датасетов без сериализации/десериализации. В DataFusion используется в Ballista для распределённого выполнения запросов между узлами.",
+          "example": "// Ballista использует Flight для передачи данных\n// между scheduler и executor узлами\nuse ballista::prelude::*;\n\nlet ctx = BallistaContext::remote(\n    \"localhost\", 50050, &config\n).await?;\n// Данные передаются через Arrow Flight\nlet df = ctx.sql(\"SELECT * FROM t\").await?;",
+          "relatedLessons": [
+            {
+              "title": "IPC и Flight",
+              "slug": "01-arrow-foundation/04-ipc-and-flight"
+            },
+            {
+              "title": "Архитектура Ballista",
+              "slug": "08-distributed-execution/02-ballista-architecture"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "architecture",
+      "name": "Архитектура",
+      "terms": [
+        {
+          "term": "SessionContext",
+          "termEn": "Session Context",
+          "definition": "Главная точка входа в DataFusion — объект, через который выполняются SQL-запросы, регистрируются таблицы и UDF, настраиваются параметры выполнения. SessionContext владеет каталогом, оптимизатором и runtime-конфигурацией. Каждый контекст изолирован — идеально для мультитенантных сценариев.",
+          "example": "use datafusion::prelude::*;\n\nlet ctx = SessionContext::new();\n\n// Регистрация CSV как таблицы\nctx.register_csv(\"users\", \"data/users.csv\",\n    CsvReadOptions::default()\n).await?;\n\n// Выполнение SQL\nlet df = ctx.sql(\n    \"SELECT name, age FROM users WHERE age > 30\"\n).await?;\ndf.show().await?;",
+          "relatedLessons": [
+            {
+              "title": "SessionContext",
+              "slug": "02-architecture/05-session-context"
+            },
+            {
+              "title": "Каталог и источники данных",
+              "slug": "02-architecture/04-catalog-and-datasources"
+            },
+            {
+              "title": "Мультитенантное выполнение",
+              "slug": "13-real-world-patterns/02-multi-tenant-execution"
+            }
+          ]
+        },
+        {
+          "term": "LogicalPlan",
+          "termEn": "Logical Plan",
+          "definition": "Декларативное дерево операций, описывающее «что» нужно сделать — без указания «как». LogicalPlan содержит узлы: Scan, Filter, Projection, Aggregate, Join, Sort, Limit. Оптимизатор трансформирует LogicalPlan перед преобразованием в PhysicalPlan.",
+          "example": "-- Просмотр логического плана\nEXPLAIN\nSELECT name, COUNT(*)\nFROM users\nWHERE active = true\nGROUP BY name\nORDER BY COUNT(*) DESC;\n\n-- Результат:\n-- Sort: COUNT(*) DESC\n--   Aggregate: groupBy=[name], aggr=[COUNT(*)]\n--     Filter: active = true\n--       TableScan: users",
+          "relatedLessons": [
+            {
+              "title": "Логический план",
+              "slug": "02-architecture/02-logical-plan"
+            },
+            {
+              "title": "Конвейер выполнения запроса",
+              "slug": "02-architecture/01-query-pipeline"
+            }
+          ]
+        },
+        {
+          "term": "PhysicalPlan",
+          "termEn": "Physical Plan",
+          "definition": "Исполняемое дерево операторов, определяющее конкретный способ выполнения запроса — стратегии join (HashJoin, SortMergeJoin), режимы сканирования (параллельный, с pruning), способы агрегации. PhysicalPlan создаётся из LogicalPlan с учётом статистик и настроек runtime.",
+          "example": "-- Просмотр физического плана с метриками\nEXPLAIN ANALYZE\nSELECT u.name, COUNT(o.id)\nFROM users u JOIN orders o ON u.id = o.user_id\nGROUP BY u.name;\n\n-- Результат покажет:\n-- HashJoinExec: mode=Partitioned\n--   AggregateExec: groupBy=[name]\n--   CoalesceBatchesExec\n--     RepartitionExec: Hash([user_id])",
+          "relatedLessons": [
+            {
+              "title": "Физический план",
+              "slug": "02-architecture/03-physical-plan"
+            },
+            {
+              "title": "EXPLAIN и отладка",
+              "slug": "03-sql-dataframe-api/05-explain-and-debugging"
+            }
+          ]
+        },
+        {
+          "term": "ExecutionPlan",
+          "termEn": "Execution Plan (trait)",
+          "definition": "Trait в DataFusion, который реализует каждый физический оператор. Метод execute() возвращает SendableRecordBatchStream — асинхронный поток RecordBatch-ей. Все встроенные операторы (FilterExec, HashJoinExec, SortExec) и пользовательские расширения реализуют ExecutionPlan.",
+          "example": "use datafusion::physical_plan::ExecutionPlan;\nuse datafusion::physical_plan::SendableRecordBatchStream;\n\n#[async_trait]\nimpl ExecutionPlan for MyCustomScan {\n    fn execute(\n        &self,\n        partition: usize,\n        context: Arc<TaskContext>,\n    ) -> Result<SendableRecordBatchStream> {\n        // возврат потока данных\n    }\n    fn schema(&self) -> SchemaRef { ... }\n    fn children(&self) -> Vec<&Arc<dyn ExecutionPlan>> { ... }\n}",
+          "relatedLessons": [
+            {
+              "title": "Физический план",
+              "slug": "02-architecture/03-physical-plan"
+            },
+            {
+              "title": "TableProvider",
+              "slug": "05-extensibility/03-table-provider"
+            }
+          ]
+        },
+        {
+          "term": "Catalog",
+          "termEn": "Catalog System",
+          "definition": "Трёхуровневая система метаданных в DataFusion: Catalog → Schema → Table. По умолчанию используется MemoryCatalogProvider, но можно реализовать CatalogProvider для подключения внешних хранилищ метаданных (Hive Metastore, Glue, Unity Catalog). Каталог отвечает за разрешение имён таблиц в SQL-запросах.",
+          "example": "use datafusion::catalog::CatalogProvider;\n\n// Регистрация нового каталога\nctx.register_catalog(\n    \"production\",\n    Arc::new(MyHiveCatalog::new(metastore_url)),\n);\n\n// Использование в SQL\nlet df = ctx.sql(\n    \"SELECT * FROM production.analytics.events\"\n).await?;",
+          "relatedLessons": [
+            {
+              "title": "Каталог и источники данных",
+              "slug": "02-architecture/04-catalog-and-datasources"
+            },
+            {
+              "title": "Система каталогов",
+              "slug": "05-extensibility/04-catalog-system"
+            }
+          ]
+        },
+        {
+          "term": "TableProvider",
+          "termEn": "Table Provider (trait)",
+          "definition": "Trait, определяющий источник данных для DataFusion. TableProvider описывает схему таблицы и создаёт ExecutionPlan для сканирования. Реализации включают: MemTable (в памяти), ListingTable (файлы), DeltaTable (Delta Lake), и пользовательские провайдеры для любых внешних источников.",
+          "example": "use datafusion::datasource::TableProvider;\n\n#[async_trait]\nimpl TableProvider for MyApiTable {\n    fn schema(&self) -> SchemaRef {\n        Arc::new(Schema::new(vec![\n            Field::new(\"id\", DataType::Int64, false),\n            Field::new(\"data\", DataType::Utf8, true),\n        ]))\n    }\n    async fn scan(\n        &self,\n        state: &dyn Session,\n        projection: Option<&Vec<usize>>,\n        filters: &[Expr],\n        limit: Option<usize>,\n    ) -> Result<Arc<dyn ExecutionPlan>> {\n        // Создание ExecutionPlan для чтения из API\n    }\n}",
+          "relatedLessons": [
+            {
+              "title": "TableProvider",
+              "slug": "05-extensibility/03-table-provider"
+            },
+            {
+              "title": "Каталог и источники данных",
+              "slug": "02-architecture/04-catalog-and-datasources"
+            }
+          ]
+        },
+        {
+          "term": "Crate Architecture",
+          "termEn": "Архитектура крейтов DataFusion",
+          "definition": "DataFusion состоит из нескольких крейтов с чёткими зависимостями: datafusion-common (типы и ошибки), datafusion-expr (выражения и логический план), datafusion-sql (SQL-парсер), datafusion-optimizer (правила оптимизации), datafusion-physical-plan (физическое выполнение), datafusion (верхнеуровневый фасад). Модульность позволяет использовать только нужные части.",
+          "example": "# Cargo.toml — можно зависеть от конкретных крейтов\n[dependencies]\ndatafusion = \"44\"\n# Или отдельные компоненты:\ndatafusion-common = \"44\"\ndatafusion-expr = \"44\"\ndatafusion-sql = \"44\"\ndatafusion-optimizer = \"44\"\ndatafusion-physical-plan = \"44\"",
+          "relatedLessons": [
+            {
+              "title": "Архитектура крейтов",
+              "slug": "02-architecture/06-crate-architecture"
+            },
+            {
+              "title": "Конвейер выполнения запроса",
+              "slug": "02-architecture/01-query-pipeline"
+            }
+          ]
+        },
+        {
+          "term": "Memory Management",
+          "termEn": "Управление памятью",
+          "definition": "Система отслеживания и ограничения потребления оперативной памяти при выполнении запросов. DataFusion использует MemoryPool (GreedyMemoryPool, FairSpillPool, TrackConsumersPool) для контроля каждого оператора. При превышении лимита — автоматический spill на диск вместо OOM-краша.",
+          "example": "use datafusion::execution::memory_pool::FairSpillPool;\nuse datafusion::execution::runtime_env::RuntimeEnvBuilder;\n\n// Установка лимита 4 GB\nlet pool = FairSpillPool::new(4 * 1024 * 1024 * 1024);\nlet runtime = RuntimeEnvBuilder::new()\n    .with_memory_pool(Arc::new(pool))\n    .build()?;\n\nlet ctx = SessionContext::new_with_config_rt(\n    SessionConfig::new(), runtime\n);",
+          "relatedLessons": [
+            {
+              "title": "Управление памятью",
+              "slug": "02-architecture/07-memory-management"
+            },
+            {
+              "title": "Конфигурация runtime",
+              "slug": "11-performance-tuning/01-runtime-configuration"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "sql-dataframe",
+      "name": "SQL и DataFrame",
+      "terms": [
+        {
+          "term": "DataFrame",
+          "termEn": "DataFrame API",
+          "definition": "Fluent API для построения запросов без SQL-синтаксиса. DataFrame в DataFusion — это обёртка над LogicalPlan, предоставляющая методы filter(), select(), aggregate(), join(). Вызовы ленивые — выполнение происходит только при collect() или show(). Эквивалентен SQL по возможностям.",
+          "example": "use datafusion::prelude::*;\n\nlet df = ctx.read_csv(\"data.csv\", CsvReadOptions::default()).await?;\n\nlet result = df\n    .filter(col(\"age\").gt(lit(18)))?\n    .select(vec![col(\"name\"), col(\"age\")])?\n    .sort(vec![col(\"age\").sort(true, true)])?\n    .limit(0, Some(10))?;\n\nresult.show().await?;",
+          "relatedLessons": [
+            {
+              "title": "DataFrame API",
+              "slug": "03-sql-dataframe-api/04-dataframe-api"
+            },
+            {
+              "title": "SQL vs DataFrame",
+              "slug": "03-sql-dataframe-api/06-sql-vs-dataframe"
+            },
+            {
+              "title": "DataFrame в Python",
+              "slug": "04-datafusion-python/02-dataframe-in-python"
+            }
+          ]
+        },
+        {
+          "term": "Expr",
+          "termEn": "Expression",
+          "definition": "Enum, описывающий выражения в логическом плане: Column, Literal, BinaryExpr (сравнения, арифметика), AggregateFunction, ScalarFunction, WindowFunction, и другие. Expr — строительный блок для условий фильтрации, проекций и агрегаций как в SQL, так и в DataFrame API.",
+          "example": "use datafusion::prelude::*;\nuse datafusion::logical_expr::Expr;\n\n// Построение выражений\nlet filter = col(\"age\").gt(lit(18))\n    .and(col(\"status\").eq(lit(\"active\")));\n\n// Агрегация\nlet avg_age = avg(col(\"age\")).alias(\"avg_age\");\n\n// Window-выражение\nlet rank = Expr::WindowFunction(WindowFunction::new(\n    WindowFunctionDefinition::BuiltInWindowFunction(\n        BuiltInWindowFunction::RowNumber\n    ),\n    vec![],\n));",
+          "relatedLessons": [
+            {
+              "title": "DataFrame API",
+              "slug": "03-sql-dataframe-api/04-dataframe-api"
+            },
+            {
+              "title": "Логический план",
+              "slug": "02-architecture/02-logical-plan"
+            }
+          ]
+        },
+        {
+          "term": "EXPLAIN / EXPLAIN ANALYZE",
+          "termEn": "Query Explanation",
+          "definition": "SQL-команды для анализа планов выполнения. EXPLAIN показывает логический и физический план без выполнения запроса. EXPLAIN ANALYZE выполняет запрос и добавляет реальные метрики: время выполнения каждого оператора, количество обработанных строк, размер данных. Незаменимый инструмент для оптимизации.",
+          "example": "-- Логический + физический план\nEXPLAIN SELECT * FROM users WHERE age > 30;\n\n-- План с реальными метриками\nEXPLAIN ANALYZE\nSELECT department, AVG(salary)\nFROM employees\nGROUP BY department;\n\n-- Результат: elapsed_compute=12ms, output_rows=5\n--   HashAggregateExec: output_rows=5\n--     CoalesceBatchesExec: output_rows=1000\n--       FilterExec: output_rows=1000",
+          "relatedLessons": [
+            {
+              "title": "EXPLAIN и отладка",
+              "slug": "03-sql-dataframe-api/05-explain-and-debugging"
+            },
+            {
+              "title": "Анализ планов запросов",
+              "slug": "11-performance-tuning/04-query-plan-analysis"
+            }
+          ]
+        },
+        {
+          "term": "Window Function",
+          "termEn": "Оконная функция",
+          "definition": "Функции, которые вычисляют значение для каждой строки на основе «окна» — набора связанных строк. DataFusion поддерживает ROW_NUMBER, RANK, DENSE_RANK, LAG, LEAD, FIRST_VALUE, NTH_VALUE и пользовательские WindowUDF. Окно задаётся через PARTITION BY и ORDER BY.",
+          "example": "-- Ранжирование по зарплате в каждом отделе\nSELECT\n    name,\n    department,\n    salary,\n    RANK() OVER (\n        PARTITION BY department\n        ORDER BY salary DESC\n    ) AS salary_rank,\n    LAG(salary) OVER (\n        PARTITION BY department\n        ORDER BY salary\n    ) AS prev_salary\nFROM employees;",
+          "relatedLessons": [
+            {
+              "title": "Оконные функции",
+              "slug": "03-sql-dataframe-api/03-window-functions"
+            },
+            {
+              "title": "Агрегатные и оконные UDF",
+              "slug": "05-extensibility/02-aggregate-and-window-udf"
+            }
+          ]
+        },
+        {
+          "term": "CTE",
+          "termEn": "Common Table Expression",
+          "definition": "Именованные подзапросы (WITH ... AS), улучшающие читаемость сложных SQL. DataFusion поддерживает нерекурсивные CTE, которые разворачиваются в логический план как inline-подзапросы. CTE позволяют разбить сложный запрос на логические шаги.",
+          "example": "-- CTE для пошагового анализа\nWITH active_users AS (\n    SELECT user_id, name\n    FROM users\n    WHERE last_login > '2024-01-01'\n),\nuser_orders AS (\n    SELECT u.name, COUNT(*) as order_count\n    FROM active_users u\n    JOIN orders o ON u.user_id = o.user_id\n    GROUP BY u.name\n)\nSELECT name, order_count\nFROM user_orders\nWHERE order_count > 5\nORDER BY order_count DESC;",
+          "relatedLessons": [
+            {
+              "title": "SELECT и аналитика",
+              "slug": "03-sql-dataframe-api/02-select-and-analytics"
+            },
+            {
+              "title": "SQL-движок",
+              "slug": "03-sql-dataframe-api/01-sql-engine"
+            }
+          ]
+        },
+        {
+          "term": "SQL Engine",
+          "termEn": "SQL-движок DataFusion",
+          "definition": "Компонент DataFusion, отвечающий за парсинг SQL-текста в AST (на основе sqlparser-rs), трансформацию AST в LogicalPlan, валидацию типов и разрешение имён через каталог. Поддерживает диалект, совместимый с PostgreSQL, включая CREATE TABLE, INSERT, COPY, и множество функций.",
+          "example": "use datafusion::prelude::*;\n\nlet ctx = SessionContext::new();\n\n// CREATE TABLE\nctx.sql(\"\n    CREATE EXTERNAL TABLE logs (\n        timestamp TIMESTAMP,\n        level VARCHAR,\n        message VARCHAR\n    ) STORED AS PARQUET\n    LOCATION 'data/logs/'\n\").await?;\n\n// Запрос с агрегацией\nlet df = ctx.sql(\"\n    SELECT level, COUNT(*) as cnt\n    FROM logs\n    WHERE timestamp > '2024-01-01'\n    GROUP BY level\n\").await?;",
+          "relatedLessons": [
+            {
+              "title": "SQL-движок",
+              "slug": "03-sql-dataframe-api/01-sql-engine"
+            },
+            {
+              "title": "Конвейер выполнения запроса",
+              "slug": "02-architecture/01-query-pipeline"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "extensibility",
+      "name": "Расширяемость",
+      "terms": [
+        {
+          "term": "ScalarUDF",
+          "termEn": "Scalar User-Defined Function",
+          "definition": "Пользовательская скалярная функция, которая принимает один или несколько столбцов и возвращает столбец с результатом (по одному значению на строку). ScalarUDF регистрируется в SessionContext и вызывается в SQL как обычная функция. DataFusion автоматически применяет её к каждому RecordBatch.",
+          "example": "use datafusion::logical_expr::{create_udf, Volatility};\nuse datafusion::arrow::datatypes::DataType;\nuse datafusion::physical_plan::functions::make_scalar_function;\n\nlet udf = create_udf(\n    \"my_upper\",\n    vec![DataType::Utf8],      // входные типы\n    DataType::Utf8,             // тип результата\n    Volatility::Immutable,\n    make_scalar_function(|args| {\n        let input = as_string_array(&args[0])?;\n        let result: StringArray = input.iter()\n            .map(|s| s.map(|v| v.to_uppercase()))\n            .collect();\n        Ok(Arc::new(result) as ArrayRef)\n    }),\n);\nctx.register_udf(udf);",
+          "relatedLessons": [
+            {
+              "title": "Скалярные UDF",
+              "slug": "05-extensibility/01-scalar-udf"
+            },
+            {
+              "title": "UDF и UDAF в Python",
+              "slug": "04-datafusion-python/04-udf-and-udaf"
+            }
+          ]
+        },
+        {
+          "term": "AggregateUDF",
+          "termEn": "Aggregate User-Defined Function",
+          "definition": "Пользовательская агрегатная функция, которая принимает набор строк и возвращает одно значение (или одно значение на группу). AggregateUDF реализует trait Accumulator с методами update_batch(), merge(), evaluate(). Используется в GROUP BY и оконных выражениях.",
+          "example": "use datafusion::logical_expr::AggregateUDF;\n\n// Пример: геометрическое среднее\nstruct GeoMeanAccumulator {\n    product: f64,\n    count: u64,\n}\nimpl Accumulator for GeoMeanAccumulator {\n    fn update_batch(&mut self, values: &[ArrayRef]) -> Result<()> {\n        let arr = as_float64_array(&values[0])?;\n        for val in arr.iter().flatten() {\n            self.product *= val;\n            self.count += 1;\n        }\n        Ok(())\n    }\n    fn evaluate(&mut self) -> Result<ScalarValue> {\n        Ok(ScalarValue::Float64(Some(\n            self.product.powf(1.0 / self.count as f64)\n        )))\n    }\n}",
+          "relatedLessons": [
+            {
+              "title": "Агрегатные и оконные UDF",
+              "slug": "05-extensibility/02-aggregate-and-window-udf"
+            },
+            {
+              "title": "UDF и UDAF в Python",
+              "slug": "04-datafusion-python/04-udf-and-udaf"
+            }
+          ]
+        },
+        {
+          "term": "WindowUDF",
+          "termEn": "Window User-Defined Function",
+          "definition": "Пользовательская оконная функция, которая вычисляет значение для каждой строки на основе окна (OVER). В отличие от Aggregатных UDF, WindowUDF получает доступ ко всем строкам окна и может обращаться к соседним строкам (как LAG/LEAD). Реализует trait WindowUDFImpl.",
+          "example": "use datafusion::logical_expr::WindowUDF;\n\n// Регистрация оконной UDF\nctx.register_udwf(my_window_udf);\n\n// Использование в SQL\nlet df = ctx.sql(\"\n    SELECT\n        ts,\n        value,\n        MY_MOVING_AVG(value) OVER (\n            ORDER BY ts\n            ROWS BETWEEN 2 PRECEDING AND CURRENT ROW\n        ) as moving_avg\n    FROM metrics\n\").await?;",
+          "relatedLessons": [
+            {
+              "title": "Агрегатные и оконные UDF",
+              "slug": "05-extensibility/02-aggregate-and-window-udf"
+            },
+            {
+              "title": "Оконные функции",
+              "slug": "03-sql-dataframe-api/03-window-functions"
+            }
+          ]
+        },
+        {
+          "term": "OptimizerRule",
+          "termEn": "Optimizer Rule",
+          "definition": "Правило трансформации логического плана. OptimizerRule принимает LogicalPlan и возвращает эквивалентный, но более эффективный план. Встроенные правила: push-down предикатов/проекций, устранение подвыражений, свёртка констант. Можно добавить кастомные правила через SessionState.",
+          "example": "use datafusion::optimizer::OptimizerRule;\n\npub struct MyPruningRule;\n\nimpl OptimizerRule for MyPruningRule {\n    fn name(&self) -> &str { \"my_pruning_rule\" }\n\n    fn try_optimize(\n        &self,\n        plan: &LogicalPlan,\n        config: &dyn OptimizerConfig,\n    ) -> Result<Option<LogicalPlan>> {\n        // Анализ и трансформация плана\n        match plan {\n            LogicalPlan::Filter(filter) => { ... }\n            _ => Ok(None), // без изменений\n        }\n    }\n}",
+          "relatedLessons": [
+            {
+              "title": "Кастомные правила оптимизации",
+              "slug": "06-query-optimization/04-custom-optimizer-rules"
+            },
+            {
+              "title": "Архитектура оптимизатора",
+              "slug": "06-query-optimization/01-optimizer-architecture"
+            }
+          ]
+        },
+        {
+          "term": "AnalyzerRule",
+          "termEn": "Analyzer Rule",
+          "definition": "Правило анализа, выполняемое до оптимизации. AnalyzerRule валидирует и обогащает логический план: разрешает типы, проверяет корректность имён столбцов, встраивает значения по умолчанию. В отличие от OptimizerRule, AnalyzerRule может менять семантику (добавлять cast-ы, разрешать wildcard *).",
+          "example": "use datafusion::optimizer::AnalyzerRule;\n\npub struct TypeCoercionRule;\n\nimpl AnalyzerRule for TypeCoercionRule {\n    fn name(&self) -> &str { \"type_coercion\" }\n\n    fn analyze(\n        &self,\n        plan: LogicalPlan,\n        config: &ConfigOptions,\n    ) -> Result<LogicalPlan> {\n        // Добавление CAST там, где типы не совпадают\n        plan.transform_up(|node| {\n            // ... вставка приведений типов\n        })\n    }\n}",
+          "relatedLessons": [
+            {
+              "title": "Analyzer и физические правила",
+              "slug": "06-query-optimization/05-analyzer-and-physical-rules"
+            },
+            {
+              "title": "Архитектура оптимизатора",
+              "slug": "06-query-optimization/01-optimizer-architecture"
+            }
+          ]
+        },
+        {
+          "term": "DataFusionError",
+          "termEn": "DataFusion Error",
+          "definition": "Единый тип ошибки DataFusion, покрывающий все уровни: парсинг SQL, планирование, оптимизация, выполнение. Варианты: Plan, SQL, ArrowError, Execution, Internal, NotImplemented. Для UDF и расширений — создавайте ошибки через datafusion_common::DataFusionError для консистентной обработки.",
+          "example": "use datafusion_common::DataFusionError;\n\n// Ошибка планирования\nreturn Err(DataFusionError::Plan(\n    format!(\"Column '{}' not found in schema\", name)\n));\n\n// Ошибка выполнения\nreturn Err(DataFusionError::Execution(\n    \"Division by zero in UDF\".to_string()\n));\n\n// Конвертация из Arrow ошибки\nlet arrow_result = batch.column(0)\n    .as_any()\n    .downcast_ref::<Int64Array>()\n    .ok_or(DataFusionError::Internal(\n        \"Expected Int64Array\".to_string()\n    ))?;",
+          "relatedLessons": [
+            {
+              "title": "Обработка ошибок",
+              "slug": "05-extensibility/07-error-handling"
+            },
+            {
+              "title": "Паттерны расширяемости",
+              "slug": "05-extensibility/06-extensibility-patterns"
+            }
+          ]
+        },
+        {
+          "term": "sqllogictest",
+          "termEn": "SQL Logic Test",
+          "definition": "Фреймворк для тестирования SQL-движков, используемый в DataFusion. Тесты записываются как .slt файлы: SQL-запрос и ожидаемый результат в текстовом формате. Поддерживает statement ok, query, halt, include. DataFusion использует sqllogictest для регрессионного тестирования сотен SQL-сценариев.",
+          "example": "# Файл: my_tests.slt\n\n# Создание таблицы\nstatement ok\nCREATE TABLE t (a INT, b VARCHAR);\n\n# Вставка данных\nstatement ok\nINSERT INTO t VALUES (1, 'hello'), (2, 'world');\n\n# Проверка результата (I = Integer, T = Text)\nquery IT\nSELECT a, b FROM t ORDER BY a;\n----\n1 hello\n2 world",
+          "relatedLessons": [
+            {
+              "title": "Тестирование расширений",
+              "slug": "05-extensibility/08-testing-extensions"
+            },
+            {
+              "title": "Бенчмаркинг и профилирование",
+              "slug": "03-sql-dataframe-api/07-benchmarking-and-profiling"
+            }
+          ]
+        },
+        {
+          "term": "PhysicalPlanner",
+          "termEn": "Physical Planner",
+          "definition": "Компонент, преобразующий LogicalPlan в ExecutionPlan (физический план). PhysicalPlanner выбирает конкретные реализации операторов: HashJoin vs SortMergeJoin, одно- или двухфазная агрегация. Можно подменить DefaultPhysicalPlanner через SessionState для кастомного маппинга логических узлов в физические.",
+          "example": "use datafusion::physical_planner::PhysicalPlanner;\n\n// Кастомный physical planner для специализированных операторов\npub struct MyPlanner {\n    default: DefaultPhysicalPlanner,\n}\n\n#[async_trait]\nimpl PhysicalPlanner for MyPlanner {\n    async fn create_physical_plan(\n        &self,\n        logical_plan: &LogicalPlan,\n        session_state: &SessionState,\n    ) -> Result<Arc<dyn ExecutionPlan>> {\n        match logical_plan {\n            // Подмена scan-оператора для GPU\n            LogicalPlan::TableScan(scan)\n                if is_gpu_table(scan) => {\n                Ok(Arc::new(GpuScanExec::new(scan)))\n            }\n            _ => self.default.create_physical_plan(\n                logical_plan, session_state\n            ).await\n        }\n    }\n}",
+          "relatedLessons": [
+            {
+              "title": "Analyzer и физические правила",
+              "slug": "06-query-optimization/05-analyzer-and-physical-rules"
+            },
+            {
+              "title": "Продвинутые расширения",
+              "slug": "05-extensibility/05-advanced-extensions"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "optimization",
+      "name": "Оптимизация запросов",
+      "terms": [
+        {
+          "term": "Predicate Pushdown",
+          "termEn": "Проталкивание предикатов",
+          "definition": "Правило оптимизации, перемещающее фильтры (WHERE) как можно ближе к источнику данных. Если фильтр может применяться на уровне сканирования файлов, Parquet-ридер пропускает целые row group-ы, а CSV/JSON-ридеры отбрасывают строки раньше. Одна из самых эффективных оптимизаций.",
+          "example": "-- До оптимизации:\n-- Projection: [name]\n--   Filter: age > 30\n--     TableScan: users\n\n-- После Predicate Pushdown:\n-- Projection: [name]\n--   TableScan: users, filter=[age > 30]\n--   (фильтр применён на уровне scan —\n--    row groups с max(age) <= 30 пропущены)",
+          "relatedLessons": [
+            {
+              "title": "Правила логической оптимизации",
+              "slug": "06-query-optimization/02-logical-optimization-rules"
+            },
+            {
+              "title": "Архитектура оптимизатора",
+              "slug": "06-query-optimization/01-optimizer-architecture"
+            }
+          ]
+        },
+        {
+          "term": "Projection Pushdown",
+          "termEn": "Проталкивание проекций",
+          "definition": "Правило оптимизации, ограничивающее набор читаемых столбцов до реально используемых в запросе. Если из 100 столбцов Parquet-файла используются только 3, остальные 97 не будут десериализованы. Критично для колоночных форматов, где каждый столбец хранится отдельно.",
+          "example": "-- Запрос использует только name и age\nSELECT name FROM users WHERE age > 30;\n\n-- Без Projection Pushdown: читаются все столбцы\n-- С Projection Pushdown:\n-- TableScan: users, projection=[name, age]\n-- Parquet читает только 2 column chunk вместо всех",
+          "relatedLessons": [
+            {
+              "title": "Правила логической оптимизации",
+              "slug": "06-query-optimization/02-logical-optimization-rules"
+            },
+            {
+              "title": "Оптимизация файлового layout",
+              "slug": "11-performance-tuning/03-file-layout-optimization"
+            }
+          ]
+        },
+        {
+          "term": "Join Reorder",
+          "termEn": "Переупорядочивание JOIN-ов",
+          "definition": "Оптимизация, изменяющая порядок соединений таблиц для минимизации промежуточных результатов. DataFusion использует статистики таблиц (row count, distinct values) для выбора оптимального порядка. Ставит таблицу с меньшей кардинальностью как build-сторону HashJoin.",
+          "example": "-- Исходный запрос: 3 JOIN-а\nSELECT *\nFROM large_table l       -- 10M rows\nJOIN medium_table m      -- 100K rows\n  ON l.id = m.large_id\nJOIN small_table s       -- 1K rows\n  ON m.id = s.medium_id;\n\n-- После Join Reorder:\n-- small × medium × large\n-- (минимизация промежуточных данных)",
+          "relatedLessons": [
+            {
+              "title": "Оптимизация JOIN и подзапросов",
+              "slug": "06-query-optimization/03-join-and-subquery-optimization"
+            },
+            {
+              "title": "Статистики и стоимость",
+              "slug": "06-query-optimization/06-statistics-and-cost"
+            }
+          ]
+        },
+        {
+          "term": "Statistics",
+          "termEn": "Статистики таблиц",
+          "definition": "Метаданные о распределении данных: количество строк, min/max и distinct count для каждого столбца, размер в байтах. Parquet хранит статистики в footer-е каждого row group. DataFusion использует статистики для оптимизаций: pruning файлов, выбор порядка join, оценка стоимости планов.",
+          "example": "-- Просмотр статистик через EXPLAIN\nEXPLAIN SELECT * FROM parquet_table;\n-- TableScan: parquet_table\n--   statistics: rows=1000000\n--   column stats:\n--     id: min=1, max=1000000, distinct=1000000\n--     created: min=2020-01-01, max=2024-12-31\n\n-- Настройка сбора статистик\nSET datafusion.execution.collect_statistics = true;",
+          "relatedLessons": [
+            {
+              "title": "Статистики и стоимость",
+              "slug": "06-query-optimization/06-statistics-and-cost"
+            },
+            {
+              "title": "Оптимизация файлового layout",
+              "slug": "11-performance-tuning/03-file-layout-optimization"
+            }
+          ]
+        },
+        {
+          "term": "Cost-Based Optimization",
+          "termEn": "CBO — оптимизация на основе стоимости",
+          "definition": "Подход к оптимизации запросов, при котором оптимизатор оценивает «стоимость» (CPU, I/O, память) нескольких альтернативных планов и выбирает самый дешёвый. В DataFusion CBO используется для выбора порядка join-ов и стратегий агрегации на основе статистик таблиц.",
+          "example": "-- CBO влияет на выбор стратегии join:\n-- Если build-сторона помещается в память:\n--   → HashJoinExec (быстрый)\n-- Если данные уже отсортированы:\n--   → SortMergeJoinExec (без доп. памяти)\n-- Если одна сторона очень маленькая:\n--   → NestedLoopJoinExec с broadcast\n\n-- Включение CBO-оптимизаций\nSET datafusion.optimizer.prefer_hash_join = true;\nSET datafusion.optimizer.top_down_join_key_reordering = true;",
+          "relatedLessons": [
+            {
+              "title": "Статистики и стоимость",
+              "slug": "06-query-optimization/06-statistics-and-cost"
+            },
+            {
+              "title": "Оптимизация JOIN и подзапросов",
+              "slug": "06-query-optimization/03-join-and-subquery-optimization"
+            }
+          ]
+        },
+        {
+          "term": "Dynamic Filtering",
+          "termEn": "Динамическая фильтрация",
+          "definition": "Runtime-оптимизация, при которой результат одной стороны join используется для фильтрации другой стороны до передачи данных. Вместо чтения всех строк probe-стороны, DataFusion строит Bloom-фильтр или диапазон из build-стороны и применяет его к scan. Особенно эффективно для star-schema запросов.",
+          "example": "-- Пример: join большой fact-таблицы с малой dimension\nSELECT f.amount, d.category\nFROM fact_sales f\nJOIN dim_products d ON f.product_id = d.id\nWHERE d.category = 'electronics';\n\n-- Без dynamic filtering: scan всех 100M строк fact\n-- С dynamic filtering:\n--   1. Scan dim_products → product_ids для 'electronics'\n--   2. Bloom filter из этих id-шников\n--   3. Scan fact_sales с фильтром → пропуск row groups",
+          "relatedLessons": [
+            {
+              "title": "Оптимизация JOIN и подзапросов",
+              "slug": "06-query-optimization/03-join-and-subquery-optimization"
+            },
+            {
+              "title": "Правила логической оптимизации",
+              "slug": "06-query-optimization/02-logical-optimization-rules"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "distributed",
+      "name": "Распределённое выполнение",
+      "terms": [
+        {
+          "term": "Ballista",
+          "termEn": "Apache Ballista",
+          "definition": "Распределённый движок на базе DataFusion для выполнения запросов на кластере. Архитектура: Scheduler распределяет stage-и по Executor-ам, данные передаются через Arrow Flight. Ballista масштабирует DataFusion горизонтально, сохраняя совместимость с SQL и DataFrame API.",
+          "example": "use ballista::prelude::*;\n\n// Подключение к кластеру Ballista\nlet config = BallistaConfig::builder()\n    .set(\"ballista.shuffle.partitions\", \"16\")\n    .build()?;\n\nlet ctx = BallistaContext::remote(\n    \"scheduler-host\", 50050, &config\n).await?;\n\n// SQL выполняется распределённо\nlet df = ctx.sql(\"\n    SELECT region, SUM(amount)\n    FROM sales\n    GROUP BY region\n\").await?;",
+          "relatedLessons": [
+            {
+              "title": "Архитектура Ballista",
+              "slug": "08-distributed-execution/02-ballista-architecture"
+            },
+            {
+              "title": "Ballista на практике",
+              "slug": "08-distributed-execution/03-ballista-in-practice"
+            }
+          ]
+        },
+        {
+          "term": "DataFusion-Ray",
+          "termEn": "DataFusion on Ray",
+          "definition": "Интеграция DataFusion с Ray — распределённым фреймворком из Python-экосистемы. DataFusion-Ray использует Ray для распределения физических планов по узлам кластера. Преимущество перед Ballista: зрелая экосистема Ray (auto-scaling, GPU, ML), привычная Python-среда.",
+          "example": "import datafusion_ray\nimport ray\n\nray.init()\n\n# Создание контекста DataFusion на Ray\nctx = datafusion_ray.DatafusionRayContext(\n    num_workers=4\n)\n\n# SQL выполняется на Ray-кластере\ndf = ctx.sql(\"\n    SELECT date, SUM(revenue)\n    FROM sales_data\n    GROUP BY date\n\")\nresult = df.collect()",
+          "relatedLessons": [
+            {
+              "title": "DataFusion-Ray",
+              "slug": "08-distributed-execution/04-datafusion-ray"
+            },
+            {
+              "title": "Выбор стратегии",
+              "slug": "08-distributed-execution/05-choosing-strategy"
+            }
+          ]
+        },
+        {
+          "term": "Stage / Partition",
+          "termEn": "Стадия / Партиция",
+          "definition": "Stage — этап распределённого плана выполнения, ограниченный shuffle-границей (repartition). Каждый stage выполняется параллельно на нескольких partition-ах. Partition — единица параллелизма: один RecordBatch-поток на одном ядре. Количество партиций задаётся target_partitions.",
+          "example": "-- Физический план с 2 стадиями:\n-- Stage 1: Параллельный scan + фильтрация\n--   Partition 0: файлы 1-4\n--   Partition 1: файлы 5-8\n-- [Shuffle по hash(user_id)]\n-- Stage 2: Агрегация по user_id\n--   Partition 0: users A-M\n--   Partition 1: users N-Z\n\nSET datafusion.execution.target_partitions = 8;",
+          "relatedLessons": [
+            {
+              "title": "Основы распределённого выполнения",
+              "slug": "08-distributed-execution/01-distributed-foundations"
+            },
+            {
+              "title": "Партиции и параллелизм",
+              "slug": "11-performance-tuning/02-partition-and-parallelism"
+            }
+          ]
+        },
+        {
+          "term": "Comet",
+          "termEn": "Apache DataFusion Comet",
+          "definition": "Ускоритель Apache Spark, заменяющий Spark JVM-операторы на нативные DataFusion-операторы. Comet перехватывает физический план Spark и выполняет поддерживаемые операции (scan, filter, aggregate, join) через DataFusion, получая 2-5x ускорение без изменения Spark-кода.",
+          "example": "# Spark + Comet: нулевые изменения в коде\n# spark-defaults.conf:\nspark.plugins org.apache.spark.CometPlugin\nspark.comet.enabled true\nspark.comet.exec.enabled true\nspark.comet.exec.all.enabled true\n\n# Обычный PySpark-код ускоряется автоматически\ndf = spark.read.parquet(\"data/\")\nresult = df.groupBy(\"key\").agg(sum(\"value\"))\nresult.show()",
+          "relatedLessons": [
+            {
+              "title": "Обзор Comet",
+              "slug": "07-comet/01-comet-overview"
+            },
+            {
+              "title": "Трансляция планов",
+              "slug": "07-comet/02-plan-translation"
+            },
+            {
+              "title": "Comet vs альтернативы",
+              "slug": "07-comet/05-comet-vs-alternatives"
+            }
+          ]
+        },
+        {
+          "term": "FDAP Stack",
+          "termEn": "Flight, DataFusion, Arrow, Parquet",
+          "definition": "Стек технологий для построения аналитических систем: Parquet (хранение), Arrow (память), DataFusion (выполнение), Flight (транспорт). Все компоненты нативно совместимы — данные передаются между уровнями без сериализации. FDAP используется в InfluxDB, GlareDB, SeaFowl и десятках других проектов.",
+          "example": "// Типичный FDAP-стек:\n// 1. Parquet — данные на диске (S3, HDFS)\n// 2. Arrow — колоночный формат в памяти\n// 3. DataFusion — SQL/DataFrame выполнение\n// 4. Flight — передача клиенту\n\nlet ctx = SessionContext::new();\nctx.register_parquet(\"data\", \"s3://bucket/data/\",\n    ParquetReadOptions::default()\n).await?;\n\n// DataFusion читает Parquet → Arrow → результат\nlet df = ctx.sql(\"SELECT * FROM data\").await?;\n// Flight передаёт Arrow RecordBatch клиенту\ndf.collect().await?;",
+          "relatedLessons": [
+            {
+              "title": "FDAP-стек",
+              "slug": "09-ecosystem/01-fdap-stack"
+            },
+            {
+              "title": "Базы данных экосистемы",
+              "slug": "09-ecosystem/02-ecosystem-databases"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "performance",
+      "name": "Performance и Memory",
+      "terms": [
+        {
+          "term": "MemoryPool",
+          "termEn": "Memory Pool",
+          "definition": "Интерфейс управления памятью в DataFusion. MemoryPool отслеживает потребление памяти каждым оператором и принимает решение: продолжить выполнение или сбросить данные на диск (spill). Реализации: GreedyMemoryPool (первый забирает всё), FairSpillPool (справедливое распределение).",
+          "example": "use datafusion::execution::memory_pool::FairSpillPool;\nuse datafusion::execution::runtime_env::RuntimeEnvBuilder;\n\n// Ограничение памяти до 4 GB\nlet pool = FairSpillPool::new(4 * 1024 * 1024 * 1024);\n\nlet runtime = RuntimeEnvBuilder::new()\n    .with_memory_pool(Arc::new(pool))\n    .build()?;\n\nlet config = SessionConfig::new()\n    .with_target_partitions(8);\n\nlet ctx = SessionContext::new_with_config_rt(config, runtime);",
+          "relatedLessons": [
+            {
+              "title": "Управление памятью",
+              "slug": "02-architecture/07-memory-management"
+            },
+            {
+              "title": "Конфигурация runtime",
+              "slug": "11-performance-tuning/01-runtime-configuration"
+            }
+          ]
+        },
+        {
+          "term": "FairSpillPool",
+          "termEn": "Fair Spill Pool",
+          "definition": "Реализация MemoryPool, которая справедливо распределяет доступную память между всеми активными операторами. Когда общее потребление достигает лимита, FairSpillPool уведомляет оператора-потребителя о необходимости spill — сброса промежуточных данных на диск для освобождения RAM.",
+          "example": "use datafusion::execution::memory_pool::FairSpillPool;\n\n// 2 GB лимит, справедливое распределение\nlet pool = FairSpillPool::new(2 * 1024 * 1024 * 1024);\n\n// Если 4 оператора активны, каждый получит ~512 MB\n// При превышении — spill на диск\n// FairSpillPool выбирает оператора с наибольшим\n// потреблением для spill",
+          "relatedLessons": [
+            {
+              "title": "Управление памятью",
+              "slug": "02-architecture/07-memory-management"
+            },
+            {
+              "title": "Конфигурация runtime",
+              "slug": "11-performance-tuning/01-runtime-configuration"
+            }
+          ]
+        },
+        {
+          "term": "TrackConsumersPool",
+          "termEn": "Track Consumers Pool",
+          "definition": "Обёртка над другими MemoryPool, добавляющая отслеживание потребления памяти по каждому оператору. Когда лимит памяти превышен, TrackConsumersPool включает в сообщение об ошибке детальную информацию — какие операторы потребляют сколько. Критически полезно для отладки OOM-ситуаций.",
+          "example": "use datafusion::execution::memory_pool::{\n    TrackConsumersPool, FairSpillPool\n};\n\n// Обернуть FairSpillPool для отладки\nlet inner = FairSpillPool::new(2_000_000_000);\nlet pool = TrackConsumersPool::new(\n    inner,\n    NonZeroUsize::new(10).unwrap(), // top 10 consumers\n);\n\n// При OOM: \"Resources exhausted:\n//   HashJoinExec[0]: 1.2 GB\n//   SortExec[1]: 600 MB\n//   AggregateExec[2]: 200 MB\"",
+          "relatedLessons": [
+            {
+              "title": "Управление памятью",
+              "slug": "02-architecture/07-memory-management"
+            },
+            {
+              "title": "Observability в production",
+              "slug": "13-real-world-patterns/04-production-observability"
+            }
+          ]
+        },
+        {
+          "term": "target_partitions",
+          "termEn": "Target Partitions",
+          "definition": "Настройка DataFusion, определяющая степень параллелизма при выполнении запросов. По умолчанию равна количеству ядер CPU. Каждый partition обрабатывается отдельной Tokio-задачей. Увеличение target_partitions улучшает параллелизм, но увеличивает потребление памяти и overhead на координацию.",
+          "example": "-- SQL: установка партиций\nSET datafusion.execution.target_partitions = 16;\n\n-- Rust: через SessionConfig\nlet config = SessionConfig::new()\n    .with_target_partitions(16);\nlet ctx = SessionContext::new_with_config(config);\n\n-- Проверка: EXPLAIN покажет RepartitionExec\nEXPLAIN SELECT region, SUM(sales)\nFROM data GROUP BY region;\n-- RepartitionExec: partitioning=Hash([region], 16)",
+          "relatedLessons": [
+            {
+              "title": "Партиции и параллелизм",
+              "slug": "11-performance-tuning/02-partition-and-parallelism"
+            },
+            {
+              "title": "Конфигурация runtime",
+              "slug": "11-performance-tuning/01-runtime-configuration"
+            }
+          ]
+        },
+        {
+          "term": "Spill-to-Disk",
+          "termEn": "Сброс на диск",
+          "definition": "Механизм работы с данными, не помещающимися в оперативную память. Когда MemoryPool сигнализирует о превышении лимита, операторы (Sort, HashAggregate, HashJoin) сбрасывают промежуточные данные на диск и продолжают выполнение. Без spill — OOM и аварийное завершение запроса.",
+          "example": "-- Настройка директории для spill\nSET datafusion.execution.sort_spill_reservation_bytes = 10485760;\n\n-- В EXPLAIN ANALYZE видно spill-метрики:\nEXPLAIN ANALYZE\nSELECT * FROM large_table ORDER BY value;\n-- SortExec:\n--   elapsed_compute: 4.2s\n--   spill_count: 3\n--   spilled_bytes: 2147483648\n--   output_rows: 50000000",
+          "relatedLessons": [
+            {
+              "title": "Управление памятью",
+              "slug": "02-architecture/07-memory-management"
+            },
+            {
+              "title": "Анализ планов запросов",
+              "slug": "11-performance-tuning/04-query-plan-analysis"
+            }
+          ]
+        },
+        {
+          "term": "EXPLAIN FORMAT TREE",
+          "termEn": "Древовидный формат EXPLAIN",
+          "definition": "Расширенный формат вывода плана выполнения, показывающий дерево операторов с индентацией, метриками каждого узла и потоком данных. В отличие от обычного EXPLAIN, FORMAT TREE визуально структурирует сложные планы с множеством join-ов и подзапросов.",
+          "example": "-- Древовидный формат плана\nEXPLAIN FORMAT TREE\nSELECT u.name, COUNT(o.id)\nFROM users u\nJOIN orders o ON u.id = o.user_id\nGROUP BY u.name;\n\n-- Результат:\n-- AggregateExec [name, COUNT(o.id)]\n-- └─ HashJoinExec [u.id = o.user_id]\n--    ├─ DataSourceExec [users]\n--    └─ DataSourceExec [orders]",
+          "relatedLessons": [
+            {
+              "title": "Анализ планов запросов",
+              "slug": "11-performance-tuning/04-query-plan-analysis"
+            },
+            {
+              "title": "EXPLAIN и отладка",
+              "slug": "03-sql-dataframe-api/05-explain-and-debugging"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "lakehouse",
+      "name": "Lakehouse и интеграции",
+      "terms": [
+        {
+          "term": "Delta Lake",
+          "termEn": "Delta Lake",
+          "definition": "Открытый формат таблиц с ACID-транзакциями поверх объектного хранилища. DataFusion интегрируется с Delta Lake через крейт delta-rs, что даёт time travel, schema evolution, Z-ordering и MERGE. Delta Lake — один из ключевых Lakehouse-форматов, поддерживаемых DataFusion.",
+          "example": "use deltalake::DeltaTableBuilder;\nuse datafusion::prelude::*;\n\nlet ctx = SessionContext::new();\n\n// Регистрация Delta-таблицы\nlet table = DeltaTableBuilder::from_uri(\"s3://bucket/delta-table\")\n    .with_storage_options(storage_opts)\n    .load().await?;\n\nctx.register_table(\"events\", Arc::new(table))?;\n\n// Time travel: чтение версии 5\nlet df = ctx.sql(\"\n    SELECT * FROM events VERSION AS OF 5\n\").await?;",
+          "relatedLessons": [
+            {
+              "title": "Delta Lake",
+              "slug": "12-lakehouse-integration/02-delta-lake"
+            },
+            {
+              "title": "Архитектура Lakehouse",
+              "slug": "12-lakehouse-integration/01-lakehouse-architecture"
+            }
+          ]
+        },
+        {
+          "term": "Apache Iceberg",
+          "termEn": "Apache Iceberg",
+          "definition": "Формат таблиц для больших аналитических датасетов с поддержкой schema evolution, partition evolution и hidden partitioning. DataFusion интегрируется с Iceberg через iceberg-rust. Iceberg использует manifest-файлы для эффективного pruning — DataFusion пропускает ненужные data-файлы на основе статистик.",
+          "example": "use iceberg_datafusion::IcebergTableProvider;\nuse datafusion::prelude::*;\n\nlet ctx = SessionContext::new();\n\n// Подключение к Iceberg-каталогу\nlet provider = IcebergTableProvider::try_new(\n    catalog,\n    \"db.events\"\n).await?;\n\nctx.register_table(\"events\", Arc::new(provider))?;\n\n// Iceberg partition pruning работает автоматически\nlet df = ctx.sql(\"\n    SELECT event_type, COUNT(*)\n    FROM events\n    WHERE date = '2024-03-15'\n    GROUP BY event_type\n\").await?;",
+          "relatedLessons": [
+            {
+              "title": "Apache Iceberg",
+              "slug": "12-lakehouse-integration/03-apache-iceberg"
+            },
+            {
+              "title": "Архитектура Lakehouse",
+              "slug": "12-lakehouse-integration/01-lakehouse-architecture"
+            }
+          ]
+        },
+        {
+          "term": "ObjectStore",
+          "termEn": "Object Store",
+          "definition": "Абстракция в экосистеме Arrow для доступа к объектным хранилищам: S3, GCS, Azure Blob, HDFS и локальная файловая система. DataFusion использует object_store для чтения и записи данных. Поддерживает multipart upload, conditional put, range reads для эффективного доступа к Parquet column chunks.",
+          "example": "use object_store::aws::AmazonS3Builder;\nuse datafusion::prelude::*;\nuse url::Url;\n\nlet s3 = AmazonS3Builder::new()\n    .with_bucket_name(\"my-bucket\")\n    .with_region(\"us-east-1\")\n    .build()?;\n\nlet ctx = SessionContext::new();\nctx.register_object_store(\n    &Url::parse(\"s3://my-bucket\")?,\n    Arc::new(s3),\n);\n\n// Чтение напрямую из S3\nlet df = ctx.read_parquet(\n    \"s3://my-bucket/data/*.parquet\",\n    ParquetReadOptions::default(),\n).await?;",
+          "relatedLessons": [
+            {
+              "title": "ObjectStore и мультиформат",
+              "slug": "12-lakehouse-integration/04-object-store-multiformat"
+            },
+            {
+              "title": "Архитектура Lakehouse",
+              "slug": "12-lakehouse-integration/01-lakehouse-architecture"
+            }
+          ]
+        },
+        {
+          "term": "Parquet",
+          "termEn": "Apache Parquet",
+          "definition": "Колоночный формат хранения данных, оптимизированный для аналитических запросов. Parquet хранит данные по столбцам с компрессией (Snappy, Zstd, LZ4), содержит встроенные статистики (min/max, null count) для каждого row group. DataFusion нативно поддерживает Parquet с predicate pushdown и projection pushdown.",
+          "example": "use datafusion::prelude::*;\n\nlet ctx = SessionContext::new();\n\n// Чтение Parquet с автоматическим pruning\nctx.register_parquet(\n    \"logs\",\n    \"data/logs/*.parquet\",\n    ParquetReadOptions::default()\n        .parquet_pruning(true)     // row group pruning\n        .skip_metadata(false),     // читать footer\n).await?;\n\n// Запись результата в Parquet\nlet df = ctx.sql(\"SELECT * FROM logs WHERE level = 'ERROR'\").await?;\ndf.write_parquet(\n    \"output/errors.parquet\",\n    WriterProperties::builder()\n        .set_compression(Compression::ZSTD(ZstdLevel::default()))\n        .build(),\n    None,\n).await?;",
+          "relatedLessons": [
+            {
+              "title": "Оптимизация файлового layout",
+              "slug": "11-performance-tuning/03-file-layout-optimization"
+            },
+            {
+              "title": "Колоночный формат данных",
+              "slug": "01-arrow-foundation/01-columnar-format"
+            }
+          ]
+        },
+        {
+          "term": "Multi-Tenant Isolation",
+          "termEn": "Мультитенантная изоляция",
+          "definition": "Паттерн изоляции нескольких клиентов (tenant-ов) в одном экземпляре DataFusion. Каждый tenant получает собственный SessionContext с отдельным каталогом, MemoryPool-лимитами и правами доступа. Изоляция предотвращает утечки данных между tenant-ами и гарантирует справедливое распределение ресурсов.",
+          "example": "// Создание изолированного контекста для каждого tenant\nfn create_tenant_context(\n    tenant_id: &str,\n    memory_limit: usize,\n) -> SessionContext {\n    let pool = FairSpillPool::new(memory_limit);\n    let runtime = RuntimeEnvBuilder::new()\n        .with_memory_pool(Arc::new(pool))\n        .build().unwrap();\n\n    let config = SessionConfig::new()\n        .with_default_catalog_and_schema(\n            tenant_id, \"public\"\n        );\n\n    SessionContext::new_with_config_rt(config, runtime)\n}\n\n// Каждый tenant видит только свои таблицы\nlet ctx_a = create_tenant_context(\"tenant_a\", GB_2);\nlet ctx_b = create_tenant_context(\"tenant_b\", GB_4);",
+          "relatedLessons": [
+            {
+              "title": "Мультитенантное выполнение",
+              "slug": "13-real-world-patterns/02-multi-tenant-execution"
+            },
+            {
+              "title": "Аналитические движки",
+              "slug": "13-real-world-patterns/01-custom-analytics-engines"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

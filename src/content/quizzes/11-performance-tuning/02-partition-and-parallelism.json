@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "11-performance-tuning/02-partition-and-parallelism",
+  "moduleId": "11-performance-tuning",
+  "_meta": {
+    "idPrefix": "df-m11-02"
+  },
+  "questions": [
+    {
+      "id": "df-m11-02-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion выполняет GROUP BY region на данных из одного Parquet-файла при target_partitions = 8. Какие RepartitionExec появятся в физическом плане?",
+      "options": [
+        {
+          "id": "a",
+          "text": "RoundRobinBatch(8) после DataSourceExec — расширяет 1 партицию до 8, затем Hash([region], 8) перед FinalPartitioned aggregation — группирует по ключу"
+        },
+        {
+          "id": "b",
+          "text": "Только Hash([region], 8) — DataFusion не добавляет RoundRobin если источник один файл"
+        },
+        {
+          "id": "c",
+          "text": "Только RoundRobinBatch(8) — для GROUP BY не нужен Hash repartition"
+        },
+        {
+          "id": "d",
+          "text": "Ни одного — DataFusion выполняет GROUP BY в одном потоке для одного файла"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Двухфазная агрегация DataFusion: (1) RoundRobinBatch(8) расширяет 1 входную партицию до 8 для параллельного Partial aggregation; (2) Hash([region], 8) перегруппировывает partial-результаты по ключу region, чтобы все строки с одинаковым region попали в одну партицию для FinalPartitioned. Без RoundRobin все 8 партиций кроме одной были бы пустыми.",
+      "bloomLevel": "conceptual",
+      "studyHint": "1 файл → RoundRobin (расширяем параллелизм) → Partial Agg → Hash (группируем по ключу) → Final Agg."
+    },
+    {
+      "id": "df-m11-02-q2",
+      "type": "multiple-choice",
+      "question": "Таблица events хранится в Hive-partitioned формате: data/year=2024/month=01/, .../month=12/. Запрос: SELECT * FROM events WHERE year = 2024 AND month = 3. Что происходит при планировании?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion читает все 12 директорий и фильтрует строки на этапе FilterExec"
+        },
+        {
+          "id": "b",
+          "text": "Partition pruning: DataFusion перечисляет только data/year=2024/month=03/, остальные 11 директорий даже не сканируются"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion не поддерживает Hive-partitioned данные — нужен внешний каталог"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion перечисляет все директории, но читает файлы только из нужной — overhead на listing остаётся"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion поддерживает partition pruning для Hive-style layout. При указании partition columns через ListingOptions::with_table_partition_cols() и фильтре WHERE year = 2024 AND month = 3, DataFusion при планировании вычисляет, какие директории удовлетворяют предикату, и перечисляет файлы только в них. Это сокращает I/O на порядки — вместо listing и чтения 12 директорий работаем с одной.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Hive partitioning + WHERE по partition column = DataFusion сканирует только подходящие директории."
+    },
+    {
+      "id": "df-m11-02-q3",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает Hash repartition перед JOIN, но данные в обеих таблицах уже разложены по ключу join (pre-partitioned по customer_id). Как избежать лишнего repartition?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Установить SET datafusion.optimizer.repartition_joins = false — DataFusion не будет добавлять Hash repartition перед JOIN"
+        },
+        {
+          "id": "b",
+          "text": "Увеличить target_partitions — при большем параллелизме repartition пропускается"
+        },
+        {
+          "id": "c",
+          "text": "Использовать CROSS JOIN вместо INNER JOIN"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно — DataFusion всегда добавляет Hash repartition перед любым JOIN"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Если данные уже разложены по ключу join (каждый файл содержит только один диапазон customer_id), Hash repartition перемешивает данные заново — чистый overhead. SET datafusion.optimizer.repartition_joins = false отключает автоматическое добавление RepartitionExec перед HashJoin. DataFusion выполнит join с текущим распределением партиций.",
+      "bloomLevel": "applied",
+      "studyHint": "repartition_joins = false, когда данные уже разложены по ключу join. Проверяйте через EXPLAIN."
+    },
+    {
+      "id": "df-m11-02-q4",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает: Partition 0: output_rows=9_000_000, Partition 1-7: output_rows=100_000-200_000. Запрос группирует по region, 90% данных — region='US'. Какой подход уменьшит data skew?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить target_partitions до 64 — больше партиций, меньше skew"
+        },
+        {
+          "id": "b",
+          "text": "Salting: GROUP BY region, (id % 16) во внутреннем запросе, затем GROUP BY region во внешнем — распределяет US по 16 подгруппам"
+        },
+        {
+          "id": "c",
+          "text": "Переключить на SortMergeJoin — он не создаёт skew"
+        },
+        {
+          "id": "d",
+          "text": "Отключить repartition_aggregations — без Hash repartition нет skew"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Salting добавляет искусственный ключ (id % 16), разбивающий «горячий» region=US на 16 подгрупп. Внутренний GROUP BY region, (id % 16) выполняется параллельно с равномерной нагрузкой. Внешний GROUP BY region объединяет подгруппы. Увеличение target_partitions (вариант a) не поможет — Hash([region]) всё равно отправит все US в одну партицию. Отключение repartition (d) уберёт параллелизм.",
+      "bloomLevel": "applied",
+      "studyHint": "Data skew → salting: добавить (id % N) к ключу группировки, затем финальная агрегация без salt."
+    },
+    {
+      "id": "df-m11-02-q5",
+      "type": "multiple-choice",
+      "question": "Аналитический запрос с ORDER BY created_at выполняется при repartition_sorts = true. Какую стратегию использует DataFusion для параллельной сортировки?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Данные сортируются в одном потоке — параллельная сортировка невозможна"
+        },
+        {
+          "id": "b",
+          "text": "Hash repartition по created_at, затем сортировка в каждой партиции"
+        },
+        {
+          "id": "c",
+          "text": "RoundRobin repartition → параллельная SortExec в каждой партиции → SortPreservingMergeExec объединяет отсортированные потоки K-way merge"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion компилирует сортировку в SIMD-инструкции для параллельного выполнения на одном ядре"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "При repartition_sorts = true DataFusion: (1) RoundRobinBatch расширяет до target_partitions; (2) SortExec в каждой партиции сортирует свою порцию данных независимо; (3) SortPreservingMergeExec выполняет K-way merge K отсортированных потоков в один отсортированный поток. Сложность: O(N/K log(N/K)) для параллельной сортировки + O(N log K) для merge. При K = 8 это значительно быстрее O(N log N).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Параллельная сортировка: RoundRobin → SortExec (параллельно) → SortPreservingMergeExec (K-way merge)."
+    }
+  ]
+}

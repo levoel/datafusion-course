@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "03-sql-dataframe-api/07-benchmarking-and-profiling",
+  "moduleId": "03-sql-dataframe-api",
+  "_meta": {
+    "idPrefix": "df-m03-07"
+  },
+  "questions": [
+    {
+      "id": "df-m03-07-q1",
+      "type": "multiple-choice",
+      "question": "Какие метрики EXPLAIN ANALYZE показывает для каждого оператора физического плана?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только общее время выполнения запроса целиком"
+        },
+        {
+          "id": "b",
+          "text": "output_rows (число выданных строк) и elapsed_compute (время вычислений), плюс специфичные метрики: bytes_scanned для scan-операторов, spill_count/spilled_bytes для spill-операторов"
+        },
+        {
+          "id": "c",
+          "text": "Только число строк на входе и выходе"
+        },
+        {
+          "id": "d",
+          "text": "Только логический план без метрик выполнения"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "EXPLAIN ANALYZE выполняет запрос и собирает метрики каждого оператора. Общие метрики — output_rows и elapsed_compute — доступны для всех операторов. Scan-операторы дополнительно показывают bytes_scanned и row_groups_pruned, а операторы с поддержкой spill — spill_count и spilled_bytes.",
+      "bloomLevel": "conceptual",
+      "studyHint": "output_rows + elapsed_compute — у всех. bytes_scanned — у scan. spill_count — у sort/join/aggregate."
+    },
+    {
+      "id": "df-m03-07-q2",
+      "type": "multiple-choice",
+      "question": "На flamegraph DataFusion-приложения вы видите широкий блок в функции `hash_utils::create_hashes`, занимающий 40% CPU. Что это означает и как можно оптимизировать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Ошибка в хэш-функции — нужно заменить на другую реализацию"
+        },
+        {
+          "id": "b",
+          "text": "Построение хэш-таблицы для JOIN или GROUP BY занимает 40% времени — стоит уменьшить кардинальность группировки или предфильтровать данные до JOIN"
+        },
+        {
+          "id": "c",
+          "text": "Flamegraph сломан — ширина блока не связана с CPU-временем"
+        },
+        {
+          "id": "d",
+          "text": "Это нормально для любого запроса — хэширование всегда занимает большую часть времени"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Ширина блока на flamegraph пропорциональна доле CPU-времени. create_hashes строит хэш-таблицу для HashJoinExec или AggregateExec. 40% — значительная доля. Оптимизация: уменьшить число строк через фильтрацию до JOIN/GROUP BY, снизить кардинальность группировки, или проверить, нет ли ненужных колонок в GROUP BY.",
+      "bloomLevel": "applied",
+      "studyHint": "Ширина блока = доля CPU. create_hashes = hash join/aggregate. Оптимизация: фильтрация до JOIN, уменьшение кардинальности."
+    },
+    {
+      "id": "df-m03-07-q3",
+      "type": "multiple-choice",
+      "question": "Запрос на 10 GB данных периодически замедляется в production. EXPLAIN ANALYZE показывает spill_count > 0 у SortExec, а CPU-flamegraph не показывает явных горячих путей. Какой инструмент даст наибольше информации?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Запустить Criterion.rs бенчмарк для сравнения с baseline"
+        },
+        {
+          "id": "b",
+          "text": "TrackConsumersPool — покажет, какие операторы потребляют память и вызывают spill, позволяя точечно увеличить memory_limit или оптимизировать запрос"
+        },
+        {
+          "id": "c",
+          "text": "Запустить ClickBench для объективного сравнения"
+        },
+        {
+          "id": "d",
+          "text": "Перезапустить flamegraph с другими параметрами"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Spill-to-disk — это проблема памяти, не CPU. CPU-flamegraph не покажет, кто из операторов исчерпал memory pool. TrackConsumersPool оборачивает основной пул и записывает, сколько памяти потребляет каждый оператор. Это покажет, нужно ли увеличить лимит, или можно оптимизировать запрос, чтобы уменьшить потребление конкретного оператора.",
+      "bloomLevel": "analytical",
+      "studyHint": "spill_count > 0 → проблема памяти → TrackConsumersPool. Flamegraph — для CPU. Criterion — для регрессий."
+    },
+    {
+      "id": "df-m03-07-q4",
+      "type": "multiple-choice",
+      "question": "Чем отличается ClickBench от TPC-H как бенчмарк для DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ClickBench тестирует одну широкую таблицу без JOIN (43 запроса на scan/фильтрацию/агрегацию), а TPC-H — 8 таблиц с JOIN, подзапросами и оконными функциями (22 аналитических запроса)"
+        },
+        {
+          "id": "b",
+          "text": "ClickBench и TPC-H — один и тот же набор запросов с разными данными"
+        },
+        {
+          "id": "c",
+          "text": "ClickBench работает только с ClickHouse, а TPC-H — универсальный"
+        },
+        {
+          "id": "d",
+          "text": "TPC-H тестирует только чтение, а ClickBench — чтение и запись"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "ClickBench фокусируется на скорости сканирования и фильтрации одной широкой таблицы (~15 GB, 43 запроса без JOIN). TPC-H тестирует оптимизатор на реалистичных бизнес-запросах с 8 таблицами, JOIN, подзапросами и оконными функциями (22 запроса). ClickBench показывает raw scan performance, TPC-H — качество оптимизатора.",
+      "bloomLevel": "conceptual",
+      "studyHint": "ClickBench = 1 таблица, 43 запроса, scan-скорость. TPC-H = 8 таблиц, 22 запроса, JOIN + оптимизатор."
+    },
+    {
+      "id": "df-m03-07-q5",
+      "type": "multiple-choice",
+      "question": "Как правильно настроить Criterion.rs бенчмарк для кастомного UDF в DataFusion, чтобы замерять только время выполнения UDF, а не загрузку данных?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нет способа изолировать UDF от остального запроса в Criterion"
+        },
+        {
+          "id": "b",
+          "text": "Создать SessionContext и зарегистрировать UDF + данные в setup-фазе (до bench_function), а внутри замера выполнять только ctx.sql(...).collect() — загрузка Parquet и регистрация не войдут в измерение"
+        },
+        {
+          "id": "c",
+          "text": "Замерять общее время включая загрузку — Criterion сам вычтет overhead"
+        },
+        {
+          "id": "d",
+          "text": "Использовать только EXPLAIN ANALYZE вместо Criterion для UDF"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Criterion.rs замеряет только код внутри замыкания b.iter(). Если SessionContext, register_udf() и register_parquet() вынесены в setup-фазу, они выполняются один раз до начала замеров. Внутри iter() остаётся только выполнение запроса — это и есть время UDF + plan execution. Так изолируется то, что нужно измерить.",
+      "bloomLevel": "applied",
+      "studyHint": "Setup (контекст, данные, UDF) — до bench_function. Внутри iter() — только sql().collect(). Criterion замеряет только iter()."
+    }
+  ]
+}

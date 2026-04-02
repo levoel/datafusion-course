@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "13-real-world-patterns/02-multi-tenant-execution",
+  "moduleId": "13-real-world-patterns",
+  "_meta": {
+    "idPrefix": "df-m13-02"
+  },
+  "questions": [
+    {
+      "id": "df-m13-02-q1",
+      "type": "multiple-choice",
+      "question": "Какие три уровня изоляции нужны для мультитенантного DataFusion-сервиса?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CPU, диск, сеть — классическое разделение ресурсов"
+        },
+        {
+          "id": "b",
+          "text": "Каталог (видимость таблиц через CatalogProvider), память (per-tenant MemoryPool), время (таймауты и concurrent query limits)"
+        },
+        {
+          "id": "c",
+          "text": "Контейнер (Docker), сеть (VLAN), хранилище (отдельный S3 bucket)"
+        },
+        {
+          "id": "d",
+          "text": "Аутентификация, авторизация, шифрование — три столпа безопасности"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion изолирует tenants на трёх уровнях: каталог (per-tenant CatalogProvider/SchemaProvider — tenant видит только свои таблицы), память (per-tenant MemoryPool с индивидуальным лимитом — один tenant не съест всю RAM), время (tokio::time::timeout + Semaphore — ограничение длительности и числа concurrent запросов).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Три уровня: каталог (видимость), память (квота), время (timeout + concurrency)."
+    },
+    {
+      "id": "df-m13-02-q2",
+      "type": "multiple-choice",
+      "question": "SaaS-сервис использует один SessionContext с per-tenant схемами. Tenant выполняет SELECT * FROM information_schema.tables. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Запрос вернёт только таблицы текущей schema — information_schema фильтрует по search_path"
+        },
+        {
+          "id": "b",
+          "text": "Tenant увидит имена всех schema (включая чужие tenant-ы) — information_schema показывает весь каталог SessionContext"
+        },
+        {
+          "id": "c",
+          "text": "Запрос завершится ошибкой — information_schema отключена по умолчанию"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion автоматически фильтрует information_schema по текущему tenant-у"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При подходе shared SessionContext + per-tenant schemas, information_schema показывает метаданные всего каталога — включая имена чужих schema. Tenant не увидит данные, но увидит структуру (имена таблиц, колонок). Для строгой изоляции метаданных нужен отдельный SessionContext на каждого tenant-а.",
+      "bloomLevel": "analytical",
+      "studyHint": "Shared SessionContext = shared metadata. information_schema видит всё. Per-tenant SessionContext = полная изоляция."
+    },
+    {
+      "id": "df-m13-02-q3",
+      "type": "multiple-choice",
+      "question": "Enterprise tenant имеет квоту 16 GB, free-tier — 512 MB. Как реализовать per-tenant лимиты памяти?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Один FairSpillPool(16 GB) на всех — fair distribution решит проблему"
+        },
+        {
+          "id": "b",
+          "text": "Per-tenant RuntimeEnv с собственным MemoryPool: обёртка над FairSpillPool с индивидуальным лимитом, проверяющая grow() против квоты tenant-а"
+        },
+        {
+          "id": "c",
+          "text": "SET datafusion.execution.memory_limit в SQL перед каждым запросом"
+        },
+        {
+          "id": "d",
+          "text": "Linux cgroups — ограничить процесс по памяти на уровне OS"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Каждый tenant получает свой RuntimeEnv с кастомным TenantMemoryPool — обёрткой над FairSpillPool. При grow() обёртка проверяет суммарное потребление tenant-а против его квоты. FairSpillPool внутри обёртки обеспечивает fair distribution между запросами одного tenant-а и spill-поддержку. Один общий пул не разделяет квоты — enterprise tenant может вытеснить всех free-tier.",
+      "bloomLevel": "applied",
+      "studyHint": "Per-tenant RuntimeEnv + TenantMemoryPool(wrapper over FairSpillPool). grow() проверяет квоту."
+    },
+    {
+      "id": "df-m13-02-q4",
+      "type": "multiple-choice",
+      "question": "Tenant выполняет CROSS JOIN двух больших таблиц без условия. Без ограничений запрос потребит всю память и заблокирует сервис. Какие два механизма предотвращают это?",
+      "options": [
+        {
+          "id": "a",
+          "text": "MemoryPool лимит (ResourcesExhausted при превышении) + tokio::time::timeout (отмена по истечении deadline)"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion автоматически добавляет LIMIT к запросам без WHERE"
+        },
+        {
+          "id": "c",
+          "text": "OS OOM killer завершит процесс + systemd перезапустит сервис"
+        },
+        {
+          "id": "d",
+          "text": "SQL-валидатор запретит CROSS JOIN на уровне парсинга"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Два независимых механизма защиты: per-tenant MemoryPool возвращает ResourcesExhausted когда grow() превышает квоту (защита от чрезмерного потребления памяти), а tokio::time::timeout отменяет future по истечении deadline (защита от бесконечного выполнения). Вместе они гарантируют, что один запрос не заблокирует ресурсы навсегда.",
+      "bloomLevel": "analytical",
+      "studyHint": "Два барьера: MemoryPool (память) + timeout (время). Независимые, дополняют друг друга."
+    },
+    {
+      "id": "df-m13-02-q5",
+      "type": "multiple-choice",
+      "question": "Для billing SaaS-сервиса нужно отслеживать потребление каждого tenant-а. Какие метрики ключевые?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Только количество запросов — billing по query count"
+        },
+        {
+          "id": "b",
+          "text": "queries_total, bytes_scanned, peak_memory, total_query_time_ms — четыре метрики покрывают все модели billing (per-query, per-scan, per-compute)"
+        },
+        {
+          "id": "c",
+          "text": "CPU time и disk I/O — аналогично облачным провайдерам"
+        },
+        {
+          "id": "d",
+          "text": "Только row_count — billing по количеству обработанных строк"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Четыре per-tenant метрики покрывают основные billing-модели: queries_total (per-query billing), bytes_scanned (per-scan billing, как BigQuery), peak_memory (tier enforcement), total_query_time_ms (per-compute billing). Атомарные счётчики (AtomicU64) обеспечивают lock-free обновление. Экспорт через Prometheus с label tenant_id.",
+      "bloomLevel": "applied",
+      "studyHint": "4 метрики: queries, bytes_scanned, peak_memory, query_time. Покрывают per-query, per-scan, per-compute billing."
+    }
+  ]
+}

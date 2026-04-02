@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "02-architecture/07-memory-management",
+  "moduleId": "02-architecture",
+  "_meta": {
+    "idPrefix": "df-m02-07"
+  },
+  "questions": [
+    {
+      "id": "df-m02-07-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion делит операторы на streaming и buffering. Какие из этих операторов НЕ регистрируются в MemoryPool?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SortExec и HashJoinExec — они обрабатывают данные потоково"
+        },
+        {
+          "id": "b",
+          "text": "FilterExec и ProjectionExec — они потребляют фиксированное O(1) памяти"
+        },
+        {
+          "id": "c",
+          "text": "Все операторы обязаны регистрироваться — это требование MemoryPool trait"
+        },
+        {
+          "id": "d",
+          "text": "AggregateExec — агрегации не требуют промежуточного хранения"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Streaming-операторы (FilterExec, ProjectionExec, CoalesceBatchesExec) обрабатывают по одному batch за раз и потребляют фиксированное количество памяти. DataFusion не регистрирует их в MemoryPool, потому что overhead учёта превысил бы реальное потребление. Buffering-операторы (SortExec, HashJoinExec, AggregateExec) накапливают данные и регистрируются через MemoryConsumer → MemoryReservation.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Streaming = O(1) памяти, не отслеживаются. Buffering = O(N) памяти, регистрируются в пуле."
+    },
+    {
+      "id": "df-m02-07-q2",
+      "type": "multiple-choice",
+      "question": "Как настроить SessionContext с FairSpillPool на 4 GB и поддержкой spill-to-disk?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SessionContext::new() автоматически включает FairSpillPool с 4 GB"
+        },
+        {
+          "id": "b",
+          "text": "RuntimeEnvBuilder::new().with_memory_pool(Arc::new(FairSpillPool::new(4_000_000_000))).with_disk_manager(DiskManagerConfig::NewOs).build_arc() → SessionContext::new_with_config_rt()"
+        },
+        {
+          "id": "c",
+          "text": "SET datafusion.execution.memory_pool = 'FairSpillPool' — только через SQL"
+        },
+        {
+          "id": "d",
+          "text": "MemoryPool::set_limit(4_000_000_000) на дефолтном контексте"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "FairSpillPool создаётся через RuntimeEnvBuilder: with_memory_pool() задаёт пул, with_disk_manager(DiskManagerConfig::NewOs) включает spill в системную temp-директорию. Полученный RuntimeEnv передаётся в SessionContext::new_with_config_rt(). Без DiskManager spill физически невозможен — некуда писать файлы.",
+      "bloomLevel": "applied",
+      "studyHint": "RuntimeEnvBuilder собирает всё: пул памяти + disk manager. Без disk manager — нет spill."
+    },
+    {
+      "id": "df-m02-07-q3",
+      "type": "multiple-choice",
+      "question": "Сервер обрабатывает 20 concurrent аналитических запросов с JOIN и GROUP BY. Какой пул памяти оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "GreedyMemoryPool — простой и быстрый, первый запрос получит всю память"
+        },
+        {
+          "id": "b",
+          "text": "UnboundedMemoryPool — не ограничивать, пусть OS управляет через OOM killer"
+        },
+        {
+          "id": "c",
+          "text": "FairSpillPool — равномерно распределит память между запросами, тяжёлые операторы сбросят данные на диск вместо ошибки"
+        },
+        {
+          "id": "d",
+          "text": "Не имеет значения — все пулы работают одинаково при concurrent нагрузке"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "FairSpillPool — единственный встроенный пул, который и ограничивает память, и поддерживает spill. При 20 concurrent запросах GreedyMemoryPool позволил бы первым запросам захватить всю память, остальные получили бы ResourcesExhausted. FairSpillPool делит память равномерно между spillable-резервациями: когда один оператор превышает fair-share, другие сбрасывают данные на диск.",
+      "bloomLevel": "analytical",
+      "studyHint": "Concurrent нагрузка + JOIN/GROUP BY = нужен spill + fair distribution. Только FairSpillPool совмещает оба."
+    },
+    {
+      "id": "df-m02-07-q4",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT * FROM a CROSS JOIN b выполняется с FairSpillPool и memory_limit = 2 GB. Таблица b содержит 10 GB данных. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CrossJoinExec сбросит промежуточные данные на диск через DiskManager"
+        },
+        {
+          "id": "b",
+          "text": "FairSpillPool попросит CrossJoin сбросить данные, тот освободит память и продолжит"
+        },
+        {
+          "id": "c",
+          "text": "Запрос завершится с ошибкой ResourcesExhausted — CrossJoinExec не поддерживает spill"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion автоматически заменит CROSS JOIN на Hash Join"
+        }
+      ],
+      "correctAnswer": "c",
+      "explanation": "CrossJoinExec не поддерживает spill-to-disk. Его резервация помечена как non-spillable — FairSpillPool не будет просить его сбросить данные. Когда потребление превысит лимит, grow() вернёт ошибку ResourcesExhausted. Для больших данных нужно заменить CROSS JOIN на INNER JOIN с условием, или увеличить memory_limit.",
+      "bloomLevel": "conceptual",
+      "studyHint": "CrossJoin и NestedLoopJoin — единственные встроенные операторы без spill. Нет spill = ошибка при нехватке памяти."
+    },
+    {
+      "id": "df-m02-07-q5",
+      "type": "multiple-choice",
+      "question": "Запрос падает с ResourcesExhausted, но непонятно какой оператор потребляет больше всего. Какой инструмент DataFusion покажет top-потребителей?",
+      "options": [
+        {
+          "id": "a",
+          "text": "EXPLAIN ANALYZE — покажет потребление памяти каждого оператора"
+        },
+        {
+          "id": "b",
+          "text": "TrackConsumersPool — обёртка, которая включает в сообщение об ошибке список top-N потребителей с их размером"
+        },
+        {
+          "id": "c",
+          "text": "SET datafusion.execution.debug_memory = true"
+        },
+        {
+          "id": "d",
+          "text": "MemoryPool::reserved() — вернёт суммарное потребление по каждому оператору"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "TrackConsumersPool оборачивает любой другой пул (GreedyMemoryPool или FairSpillPool) и отслеживает, какой MemoryConsumer сколько памяти потребляет. При ошибке ResourcesExhausted включает в сообщение об ошибке список top-N потребителей с именами и размерами. MemoryPool::reserved() возвращает только суммарное число, а EXPLAIN ANALYZE не показывает детали потребления памяти по consumer.",
+      "bloomLevel": "applied",
+      "studyHint": "TrackConsumersPool(inner_pool, top_n) — оборачиваем любой пул, получаем диагностику в ошибках."
+    }
+  ]
+}

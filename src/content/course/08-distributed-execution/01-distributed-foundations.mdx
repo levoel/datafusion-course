@@ -78,15 +78,15 @@ let ctx = SessionContext::new_with_config(config);
 ```
 -- До EnforceDistribution
 HashJoinExec: join_expr=customer_id
-  ParquetExec: orders.parquet (8 партиций)
-  ParquetExec: customers.parquet (4 партиции)
+  DataSourceExec: orders.parquet, format=parquet (8 партиций)
+  DataSourceExec: customers.parquet, format=parquet (4 партиции)
 
 -- После EnforceDistribution
 HashJoinExec: join_expr=customer_id
   RepartitionExec: Hash([customer_id], 16)
-    ParquetExec: orders.parquet (8 партиций)
+    DataSourceExec: orders.parquet, format=parquet (8 партиций)
   RepartitionExec: Hash([id], 16)
-    ParquetExec: customers.parquet (4 партиции)
+    DataSourceExec: customers.parquet, format=parquet (4 партиции)
 ```
 
 Каждый `RepartitionExec` в распределённой системе становится **точкой сетевого shuffle** — вместо перемещения между потоками данные отправляются по сети между узлами.
@@ -159,13 +159,13 @@ HashJoinExec: join_expr=customer_id
 -- Физический план (HashJoin с двумя источниками)
 HashJoinExec: customer_id = id
 ├── RepartitionExec: Hash([customer_id], N)  ← граница stage
-│   └── ParquetExec: orders.parquet
+│   └── DataSourceExec: orders.parquet, format=parquet
 └── RepartitionExec: Hash([id], N)           ← граница stage
-    └── ParquetExec: customers.parquet
+    └── DataSourceExec: customers.parquet, format=parquet
 
 -- Разбивка на query stages
-Stage 1: ParquetExec(orders) → ShuffleWriter(customer_id)
-Stage 2: ParquetExec(customers) → ShuffleWriter(id)
+Stage 1: DataSourceExec(orders) → ShuffleWriter(customer_id)
+Stage 2: DataSourceExec(customers) → ShuffleWriter(id)
 Stage 3: ShuffleReader(orders) + ShuffleReader(customers) → HashJoinExec
 ```
 

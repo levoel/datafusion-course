@@ -1,0 +1,347 @@
+---
+title: "Анализ планов запросов: EXPLAIN ANALYZE deep patterns"
+description: "EXPLAIN ANALYZE deep patterns, идентификация bottlenecks по метрикам операторов, plan rewriting стратегии, DisplayableExecutionPlan и программный доступ к метрикам"
+order: 4
+difficulty: "advanced"
+estimatedTime: 16
+topics: ["EXPLAIN ANALYZE", "execution metrics", "bottleneck identification", "plan rewriting", "DisplayableExecutionPlan", "MetricValue", "operator metrics"]
+---
+
+# Анализ планов запросов: EXPLAIN ANALYZE deep patterns
+
+В модуле 03 мы познакомились с [EXPLAIN ANALYZE для бенчмаркинга](/course/03-sql-dataframe-api/07-benchmarking-and-profiling). Здесь идём глубже: систематический анализ метрик, идентификация bottlenecks и стратегии переписывания запросов.
+
+## Три формата EXPLAIN
+
+DataFusion поддерживает несколько форматов вывода планов:
+
+```sql
+-- Стандартный формат (по умолчанию)
+EXPLAIN SELECT region, SUM(amount) FROM orders GROUP BY region;
+
+-- Индентированный — удобнее для чтения
+EXPLAIN FORMAT INDENT SELECT region, SUM(amount) FROM orders GROUP BY region;
+
+-- С метриками выполнения
+EXPLAIN ANALYZE SELECT region, SUM(amount) FROM orders GROUP BY region;
+
+-- Индентированный ANALYZE
+EXPLAIN ANALYZE FORMAT INDENT SELECT region, SUM(amount) FROM orders GROUP BY region;
+```
+
+<Callout type="tip">
+`EXPLAIN FORMAT INDENT` визуально понятнее — используйте его для интерактивной работы. `EXPLAIN ANALYZE` добавляет реальные метрики выполнения. Комбинация `EXPLAIN ANALYZE FORMAT INDENT` — оптимальный выбор для диагностики.
+</Callout>
+
+## Метрики операторов: что и где смотреть
+
+Каждый оператор в плане EXPLAIN ANALYZE имеет метрики. Ключевые:
+
+<DiagramContainer title="Ключевые метрики операторов" className="my-6">
+  <FlowRow className="gap-4 p-4 justify-center flex-wrap">
+    <DataBox label="Общие метрики" className="border-blue-500/30 w-56">
+      <div className="text-xs font-mono">
+        output_rows — строки на выходе{'\n'}
+        elapsed_compute — время CPU{'\n'}
+        spill_count — кол-во spill{'\n'}
+        spilled_bytes — объём spill
+      </div>
+    </DataBox>
+    <DataBox label="DataSourceExec" className="border-emerald-500/30 w-56">
+      <div className="text-xs font-mono">
+        bytes_scanned — прочитано байт{'\n'}
+        row_groups_pruned_statistics{'\n'}
+        row_groups_pruned_bloom_filter{'\n'}
+        time_elapsed_scanning
+      </div>
+    </DataBox>
+    <DataBox label="HashJoinExec" className="border-amber-500/30 w-56">
+      <div className="text-xs font-mono">
+        build_input_rows — строк в build{'\n'}
+        build_mem_used — память build{'\n'}
+        probe_input_rows — строк probe{'\n'}
+        output_batches — выходных batch
+      </div>
+    </DataBox>
+  </FlowRow>
+</DiagramContainer>
+
+### Чтение метрик: пример
+
+```sql
+EXPLAIN ANALYZE
+SELECT c.name, SUM(o.amount) as total
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE o.status = 'completed'
+GROUP BY c.name
+ORDER BY total DESC
+LIMIT 10;
+```
+
+```
+SortPreservingMergeExec: [total@1 DESC], fetch=10
+  metrics=[output_rows=10, elapsed_compute=1.2ms]
+  SortExec: TopK(fetch=10), expr=[total@1 DESC]
+    metrics=[output_rows=10, elapsed_compute=5.4ms]
+    AggregateExec: mode=FinalPartitioned, gby=[name], aggr=[sum(amount)]
+      metrics=[output_rows=8543, elapsed_compute=120ms]
+      CoalesceBatchesExec: target_batch_size=8192
+        RepartitionExec: Hash([name@0], 8), input_partitions=8
+          AggregateExec: mode=Partial, gby=[name], aggr=[sum(amount)]
+            metrics=[output_rows=45000, elapsed_compute=340ms]   ← 340ms
+            HashJoinExec: mode=Partitioned, join_type=Inner
+              metrics=[output_rows=2800000, elapsed_compute=890ms,
+                       build_mem_used=45000000]                  ← 890ms, 45MB
+              Left:  DataSourceExec (customers)
+                metrics=[output_rows=50000, bytes_scanned=12000000]
+              Right: CoalesceBatchesExec
+                FilterExec: status = 'completed'
+                  DataSourceExec (orders)
+                    metrics=[output_rows=10000000, bytes_scanned=3200000000,
+                             row_groups_pruned_statistics=0]     ← 0 pruned!
+```
+
+## Паттерны идентификации Bottlenecks
+
+### Паттерн 1: Нет predicate pushdown (row_groups_pruned = 0)
+
+```
+DataSourceExec (orders)
+  row_groups_pruned_statistics=0    ← Ни один RG не пропущен
+  bytes_scanned=3_200_000_000       ← Прочитали 3.2 GB
+```
+
+**Диагноз:** Данные не отсортированы по колонке из WHERE, или WHERE колонки нет в min/max статистиках.
+
+**Решение:** Пересортируйте данные (см. [урок 03: файловая раскладка](/course/11-performance-tuning/03-file-layout-optimization)).
+
+### Паттерн 2: Избыточный Hash Join (build_mem_used слишком велик)
+
+```
+HashJoinExec: mode=Partitioned, join_type=Inner
+  build_mem_used=2_000_000_000    ← 2 GB на build-сторону!
+  build_input_rows=50_000_000     ← 50M строк в build
+```
+
+**Диагноз:** Build-сторона слишком большая. DataFusion выбирает меньшую таблицу для build, но если обе большие — нужна стратегия.
+
+**Решения:**
+```sql
+-- 1. Добавить фильтр, уменьшающий build-сторону
+SELECT ... FROM large_a JOIN large_b ON a.id = b.id
+WHERE a.date > '2024-01-01'  -- уменьшаем build
+
+-- 2. Если join по sorted key — SortMergeJoin вместо HashJoin
+SET datafusion.optimizer.prefer_hash_join = false;
+-- DataFusion выберет SortMergeJoin, который не буферизирует всю сторону
+```
+
+### Паттерн 3: Spill замедляет запрос
+
+```
+AggregateExec: mode=Partial
+  spill_count=47                   ← 47 spill операций!
+  spilled_bytes=890_000_000        ← 890 MB на диск
+  elapsed_compute=4500ms           ← 4.5 секунды
+```
+
+**Диагноз:** Не хватает памяти для buffering-оператора. Данные сбрасываются на диск и перечитываются.
+
+**Решения:**
+```sql
+-- 1. Увеличить memory_limit (если можно)
+-- В Rust: FairSpillPool::new(larger_limit)
+
+-- 2. Уменьшить target_partitions (больше памяти на партицию)
+SET datafusion.execution.target_partitions = 4;
+
+-- 3. Уменьшить batch_size (меньше пиковое потребление)
+SET datafusion.execution.batch_size = 2048;
+
+-- 4. Включить сжатие spill-файлов (меньше I/O)
+SET datafusion.execution.spill_compression = 'zstd';
+```
+
+### Паттерн 4: Bottleneck в одном операторе
+
+```
+SortExec: elapsed_compute=12000ms     ← 12 секунд!
+  AggregateExec: elapsed_compute=200ms ← 0.2 секунды
+    FilterExec: elapsed_compute=50ms
+      DataSourceExec: elapsed_compute=300ms
+```
+
+**Диагноз:** SortExec занимает 96% времени. Весь запрос привязан к сортировке.
+
+**Решения:**
+```sql
+-- 1. Если нужен только Top-N — DataFusion использует TopK автоматически
+SELECT * FROM orders ORDER BY amount DESC LIMIT 10;
+-- SortExec автоматически становится TopK(fetch=10) — O(N log K) вместо O(N log N)
+
+-- 2. Если данные уже отсортированы — указать output_ordering при регистрации
+-- DataFusion пропустит SortExec, если данные уже в нужном порядке
+```
+
+### Паттерн 5: Неравномерная загрузка партиций
+
+```
+RepartitionExec: Hash([region@0], 8)
+  Partition 0: output_rows=9_000_000  ← 90% данных!
+  Partition 1: output_rows=500_000
+  Partition 2: output_rows=300_000
+  ...
+```
+
+**Диагноз:** Data skew — один ключ доминирует. Одна партиция делает 90% работы.
+
+**Решение:** Salting (см. [урок 02: партиционирование](/course/11-performance-tuning/02-partition-and-parallelism)).
+
+## Программный доступ к метрикам
+
+### DisplayableExecutionPlan
+
+```rust
+use datafusion::physical_plan::DisplayableExecutionPlan;
+use datafusion::prelude::*;
+
+let ctx = SessionContext::new();
+let df = ctx.sql("SELECT region, SUM(amount) FROM orders GROUP BY region").await?;
+
+// Получаем физический план
+let plan = df.create_physical_plan().await?;
+
+// Вывод с отступами
+let displayable = DisplayableExecutionPlan::new(plan.as_ref());
+println!("{}", displayable.indent(true));
+
+// С метриками после выполнения
+let results = df.collect().await?;
+let displayable = DisplayableExecutionPlan::new(plan.as_ref());
+println!("{}", displayable.indent(true));  // теперь включает metrics
+```
+
+### Программное чтение метрик
+
+```rust
+use datafusion::physical_plan::metrics::MetricValue;
+use datafusion::physical_plan::ExecutionPlan;
+
+fn print_metrics(plan: &dyn ExecutionPlan, depth: usize) {
+    let indent = "  ".repeat(depth);
+    println!("{}{}", indent, plan.name());
+    
+    if let Some(metrics) = plan.metrics() {
+        for metric in metrics.iter() {
+            match metric.value() {
+                MetricValue::OutputRows(count) => {
+                    println!("{}  output_rows: {}", indent, count.value());
+                }
+                MetricValue::ElapsedCompute(time) => {
+                    println!("{}  elapsed_compute: {:?}", indent, time.value());
+                }
+                MetricValue::SpillCount(count) => {
+                    println!("{}  spill_count: {}", indent, count.value());
+                }
+                MetricValue::SpilledBytes(bytes) => {
+                    println!("{}  spilled_bytes: {}", indent, bytes.value());
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    for child in plan.children() {
+        print_metrics(child.as_ref(), depth + 1);
+    }
+}
+```
+
+<Callout type="note">
+Метрики доступны только после выполнения запроса (`collect()` или `show()`). До выполнения `plan.metrics()` возвращает пустой набор или None.
+</Callout>
+
+## Стратегии переписывания запросов
+
+### Pre-filtering: уменьшаем данные до тяжёлых операций
+
+```sql
+-- Плохо: фильтруем после JOIN (поздний фильтр)
+SELECT c.name, SUM(o.amount)
+FROM customers c
+JOIN orders o ON c.id = o.customer_id
+WHERE o.date > '2024-01-01' AND c.region = 'EU'
+GROUP BY c.name;
+
+-- DataFusion обычно сам pushdown'ит фильтры, но при сложных выражениях:
+-- Хорошо: CTE для ранней фильтрации
+WITH filtered_orders AS (
+    SELECT customer_id, amount FROM orders WHERE date > '2024-01-01'
+),
+eu_customers AS (
+    SELECT id, name FROM customers WHERE region = 'EU'
+)
+SELECT ec.name, SUM(fo.amount)
+FROM eu_customers ec
+JOIN filtered_orders fo ON ec.id = fo.customer_id
+GROUP BY ec.name;
+```
+
+### Материализация промежуточных результатов
+
+```sql
+-- Если один и тот же подзапрос используется многократно
+CREATE TABLE temp_active_users AS
+SELECT user_id, SUM(events) as total_events
+FROM user_activity
+WHERE date > '2024-01-01'
+GROUP BY user_id
+HAVING total_events > 100;
+
+-- Теперь два запроса работают с маленькой таблицей
+SELECT * FROM temp_active_users u JOIN orders o ON u.user_id = o.user_id;
+SELECT * FROM temp_active_users u JOIN sessions s ON u.user_id = s.user_id;
+```
+
+### Approximate-агрегации для больших данных
+
+```sql
+-- Точный COUNT(DISTINCT) — требует полную буферизацию
+SELECT COUNT(DISTINCT user_id) FROM events; -- может вызвать spill
+
+-- Приближённый подсчёт — O(1) памяти
+SELECT approx_distinct(user_id) FROM events;
+
+-- Приближённые перцентили
+SELECT approx_percentile_cont(latency, 0.99) FROM requests;
+```
+
+<Callout type="tip">
+`approx_distinct` использует HyperLogLog — гарантирует ошибку < 2% при O(1) памяти. Для дашбордов и мониторинга этой точности достаточно.
+</Callout>
+
+## Систематический workflow анализа
+
+<DiagramContainer title="Workflow: анализ производительности запроса" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowNode variant="input" tooltip="EXPLAIN ANALYZE FORMAT INDENT — первый шаг">1. EXPLAIN ANALYZE FORMAT INDENT</FlowNode>
+    <FlowNode variant="process" tooltip="Найти оператор с наибольшим elapsed_compute">2. Найти bottleneck: max(elapsed_compute)</FlowNode>
+    <FlowNode variant="process" tooltip="Проверить pruning, spill, skew в метриках bottleneck-оператора">3. Проверить метрики: pruning, spill, build_mem, skew</FlowNode>
+    <FlowNode variant="process" tooltip="Применить одну оптимизацию, перезапустить EXPLAIN ANALYZE">4. Применить оптимизацию → повторить EXPLAIN ANALYZE</FlowNode>
+    <FlowNode variant="output" tooltip="Сравнить elapsed_compute и bytes_scanned до/после">5. Сравнить метрики: elapsed_compute, bytes_scanned</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+**Правило: меняйте одно за раз.** Если одновременно изменить target_partitions и batch_size — не сможете понять, что помогло. Итеративный процесс: одно изменение → измерение → следующее изменение.
+
+## Итоги
+
+- `EXPLAIN ANALYZE FORMAT INDENT` — основной инструмент анализа производительности
+- **Bottleneck = оператор с максимальным elapsed_compute** — начинайте оптимизацию с него
+- **row_groups_pruned = 0** → данные не отсортированы → пересортируйте
+- **build_mem_used слишком велик** → добавьте pre-filter или переключите на SortMergeJoin
+- **spill_count > 0** → увеличьте память, уменьшите партиции, включите compression
+- **Неравномерная нагрузка** → data skew → salting
+- **Программный доступ:** `DisplayableExecutionPlan` для отображения, `plan.metrics()` для чтения
+- **Итеративный workflow:** одно изменение → EXPLAIN ANALYZE → сравнение

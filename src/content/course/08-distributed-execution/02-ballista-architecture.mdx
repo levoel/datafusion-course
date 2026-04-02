@@ -80,8 +80,8 @@ JOIN customers c ON o.customer_id = c.id
 GROUP BY c.name
 
 -- Execution Graph (3 stage)
-Stage 1: ParquetExec(orders) → ShuffleWriterExec(Hash(customer_id))
-Stage 2: ParquetExec(customers) → ShuffleWriterExec(Hash(id))
+Stage 1: DataSourceExec(orders) → ShuffleWriterExec(Hash(customer_id))
+Stage 2: DataSourceExec(customers) → ShuffleWriterExec(Hash(id))
 Stage 3: ShuffleReaderExec + ShuffleReaderExec
          → HashJoinExec(customer_id = id)
          → AggregateExec(GROUP BY name, SUM(amount))
@@ -149,17 +149,17 @@ Executor — рабочий процесс, выполняющий задачи.
 -- DataFusion (однопроцессный план)
 HashJoinExec
 ├── RepartitionExec: Hash([customer_id], 16)
-│   └── ParquetExec: orders
+│   └── DataSourceExec: orders, format=parquet
 └── RepartitionExec: Hash([id], 16)
-    └── ParquetExec: customers
+    └── DataSourceExec: customers, format=parquet
 
 -- Ballista (распределённый план)
 HashJoinExec
 ├── ShuffleReaderExec: [stage 1, partitions 0..16]
 └── ShuffleReaderExec: [stage 2, partitions 0..16]
 
-Stage 1: ParquetExec(orders) → ShuffleWriterExec(Hash(customer_id), 16)
-Stage 2: ParquetExec(customers) → ShuffleWriterExec(Hash(id), 16)
+Stage 1: DataSourceExec(orders) → ShuffleWriterExec(Hash(customer_id), 16)
+Stage 2: DataSourceExec(customers) → ShuffleWriterExec(Hash(id), 16)
 ```
 
 Каждый `ShuffleWriterExec` вычисляет хеш-партицию для каждой строки и записывает Arrow IPC файл для каждой целевой партиции. `ShuffleReaderExec` собирает файлы от всех writer-ов для своей партиции.

@@ -1,0 +1,290 @@
+---
+title: "Партиционирование и параллелизм"
+description: "Repartition-стратегии (RoundRobin, Hash, SortPreserving), partition pruning, target_partitions tuning, concurrent I/O с ObjectStore и DataSourceExec"
+order: 2
+difficulty: "advanced"
+estimatedTime: 15
+topics: ["RepartitionExec", "RoundRobinBatch", "HashRepartition", "SortPreservingRepartition", "partition pruning", "target_partitions", "DataSourceExec", "ObjectStore"]
+---
+
+# Партиционирование и параллелизм
+
+В [предыдущем уроке](/course/11-performance-tuning/01-runtime-configuration) мы настроили `target_partitions` и repartition-флаги. Теперь разберём, как DataFusion фактически распараллеливает выполнение: какие стратегии repartition существуют, когда они применяются, и как оптимизировать partition layout данных.
+
+## Модель параллелизма DataFusion
+
+DataFusion использует **partition-based параллелизм**: каждая партиция обрабатывается независимо в своём потоке Tokio. Физический план — это дерево операторов, где каждый оператор может иметь N выходных партиций.
+
+<DiagramContainer title="Partition-based параллелизм" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowNode variant="input" tooltip="Один файл Parquet → одна партиция на входе">DataSourceExec: 1 partition</FlowNode>
+    <FlowNode variant="process" tooltip="Физический планировщик добавляет RepartitionExec для расширения параллелизма">RepartitionExec: RoundRobinBatch(8)</FlowNode>
+    <FlowRow className="gap-2 justify-center flex-wrap">
+      <DataBox label="P0" className="border-blue-500/30 w-16"><div className="text-xs text-center">Thread 0</div></DataBox>
+      <DataBox label="P1" className="border-blue-500/30 w-16"><div className="text-xs text-center">Thread 1</div></DataBox>
+      <DataBox label="P2" className="border-blue-500/30 w-16"><div className="text-xs text-center">Thread 2</div></DataBox>
+      <DataBox label="..." className="border-blue-500/30 w-16"><div className="text-xs text-center">...</div></DataBox>
+      <DataBox label="P7" className="border-blue-500/30 w-16"><div className="text-xs text-center">Thread 7</div></DataBox>
+    </FlowRow>
+    <FlowNode variant="output" tooltip="8 параллельных потоков обрабатывают partial aggregation">AggregateExec: mode=Partial (8 partitions)</FlowNode>
+  </FlowColumn>
+</DiagramContainer>
+
+## Стратегии Repartition
+
+DataFusion использует три стратегии repartitioning, каждая с конкретным назначением:
+
+### RoundRobinBatch — расширение параллелизма
+
+**Когда:** Входных партиций меньше, чем `target_partitions`. Типично: один Parquet-файл → 1 партиция.
+
+```sql
+-- Один файл → RoundRobin расширяет до target_partitions
+EXPLAIN FORMAT INDENT 
+SELECT region, SUM(amount) 
+FROM 'orders.parquet' 
+GROUP BY region;
+```
+
+```
+DataSourceExec: partitions=1
+  RepartitionExec: RoundRobinBatch(8)    ← расширение с 1 до 8
+    AggregateExec: mode=Partial
+      ...
+```
+
+**Как работает:** Batches распределяются по партициям по кругу: batch 0 → P0, batch 1 → P1, ..., batch 8 → P0. Без перемешивания строк внутри batch — просто чередование целых RecordBatch.
+
+### Hash Repartition — перегруппировка по ключу
+
+**Когда:** Операция требует, чтобы все строки с одним ключом были в одной партиции (JOIN, GROUP BY, WINDOW PARTITION BY).
+
+```sql
+-- Hash repartition перед FinalPartitioned aggregation
+EXPLAIN FORMAT INDENT 
+SELECT region, SUM(amount) 
+FROM orders 
+GROUP BY region;
+```
+
+```
+AggregateExec: mode=Partial, gby=[region]
+  CoalesceBatchesExec: target_batch_size=8192
+    RepartitionExec: Hash([region@0], 8)    ← все "EU" → P3, все "US" → P1
+      AggregateExec: mode=FinalPartitioned
+```
+
+<DiagramContainer title="Hash Repartition для GROUP BY" className="my-6">
+  <FlowColumn className="gap-3 p-4 items-center">
+    <FlowRow className="gap-4 justify-center">
+      <DataBox label="Partial P0" className="border-blue-500/30 w-40">
+        <div className="text-xs font-mono">EU: 100, US: 200</div>
+      </DataBox>
+      <DataBox label="Partial P1" className="border-blue-500/30 w-40">
+        <div className="text-xs font-mono">EU: 150, US: 300</div>
+      </DataBox>
+    </FlowRow>
+    <FlowNode variant="process" tooltip="hash(region) % 8 определяет целевую партицию">Hash([region], 8)</FlowNode>
+    <FlowRow className="gap-4 justify-center">
+      <DataBox label="Final P1 (US)" className="border-emerald-500/30 w-40">
+        <div className="text-xs font-mono">US: 200 + 300 = 500</div>
+      </DataBox>
+      <DataBox label="Final P3 (EU)" className="border-emerald-500/30 w-40">
+        <div className="text-xs font-mono">EU: 100 + 150 = 250</div>
+      </DataBox>
+    </FlowRow>
+  </FlowColumn>
+</DiagramContainer>
+
+<Callout type="note">
+Hash repartition — самая дорогая стратегия: данные сериализуются, передаются через канал, десериализуются в целевой партиции. Если данные уже разложены по нужному ключу, отключите: `SET datafusion.optimizer.repartition_aggregations = false`.
+</Callout>
+
+### SortPreserving Repartition — параллельная сортировка
+
+**Когда:** Данные уже отсортированы (или будут сортироваться), и нужно разделить на партиции с сохранением порядка.
+
+```sql
+-- При repartition_sorts = true
+EXPLAIN FORMAT INDENT
+SELECT * FROM orders ORDER BY created_at;
+```
+
+```
+SortPreservingMergeExec: [created_at@0 ASC]
+  SortExec: [created_at@0 ASC]           ← параллельная сортировка
+    RepartitionExec: RoundRobinBatch(8)   ← каждая партиция сортируется отдельно
+      DataSourceExec: partitions=1
+```
+
+**Как работает:** SortPreservingMergeExec на финальном этапе выполняет K-way merge отсортированных потоков. Это O(N log K) вместо O(N log N) — значительное ускорение при большом N.
+
+## Partition Pruning: пропуск ненужных партиций
+
+Если данные организованы по партициям (Hive-стиль: `data/year=2024/month=01/`), DataFusion может пропускать целые партиции на этапе планирования:
+
+```sql
+-- При Hive-partitioned данных DataFusion читает только нужные директории
+SELECT * FROM events WHERE year = 2024 AND month = 3;
+-- DataSourceExec: partitions=1 (только data/year=2024/month=03/)
+-- вместо partitions=36 (все месяцы за 3 года)
+```
+
+### Настройка Hive-partitioned чтения
+
+```rust
+use datafusion::prelude::*;
+use datafusion::datasource::listing::{ListingOptions, ListingTable, ListingTableConfig};
+use datafusion::datasource::file_format::parquet::ParquetFormat;
+use std::sync::Arc;
+
+let format = Arc::new(ParquetFormat::default());
+
+let options = ListingOptions::new(format)
+    .with_table_partition_cols(vec![
+        ("year".to_string(), datafusion::arrow::datatypes::DataType::Int32),
+        ("month".to_string(), datafusion::arrow::datatypes::DataType::Int32),
+    ]);
+```
+
+<Callout type="tip">
+Partition pruning — одна из самых эффективных оптимизаций. Для таблиц с временными данными разбивайте по `year/month` или `date`. Это сокращает объём I/O на порядки — DataFusion даже не перечисляет файлы в ненужных директориях.
+</Callout>
+
+## DataSourceExec и concurrent I/O
+
+DataSourceExec — оператор чтения данных. Его поведение зависит от количества и размера файлов:
+
+<DiagramContainer title="DataSourceExec: стратегии чтения" className="my-6">
+  <FlowRow className="gap-6 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Много мелких файлов — каждый файл = партиция, параллельное чтение">Много файлов (> target_partitions)</FlowNode>
+      <DataBox label="Поведение" className="border-blue-500/30 w-56">
+        <div className="text-xs">Файлы группируются в file groups по target_partitions. Каждая группа — одна партиция</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Один крупный файл — DataFusion разбивает на range-запросы, если repartition_file_scans = true">Один крупный файл</FlowNode>
+      <DataBox label="Поведение" className="border-blue-500/30 w-56">
+        <div className="text-xs">С repartition_file_scans=true: файл разбивается на row groups, каждый RowGroup читается как отдельная партиция</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+### ObjectStore и параллельный I/O
+
+DataFusion читает файлы через ObjectStore trait, который поддерживает range-based чтение:
+
+```rust
+use datafusion::datasource::object_store::ObjectStoreUrl;
+use object_store::aws::AmazonS3Builder;
+use std::sync::Arc;
+
+// Регистрация S3 object store
+let s3 = AmazonS3Builder::from_env()
+    .with_bucket_name("my-data-lake")
+    .with_region("eu-west-1")
+    .build()?;
+
+ctx.register_object_store(
+    &ObjectStoreUrl::parse("s3://my-data-lake")?,
+    Arc::new(s3),
+);
+
+// DataFusion параллельно читает row groups из S3
+let df = ctx.read_parquet("s3://my-data-lake/orders/", Default::default()).await?;
+```
+
+<Callout type="warning">
+При чтении из S3/GCS каждый row group — отдельный HTTP GET request. Если файлы содержат 100+ мелких row groups (по 1-5 MB), overhead от HTTP-запросов может превысить время чтения данных. Оптимальный размер row group для облачного хранилища: 64-256 MB.
+</Callout>
+
+## Оптимизация target_partitions
+
+### Диагностика: определяем текущий параллелизм
+
+```sql
+EXPLAIN ANALYZE
+SELECT region, SUM(amount) FROM orders GROUP BY region;
+```
+
+Ищите в выводе:
+- `partitions=N` в DataSourceExec — сколько файлов/групп на входе
+- `input_partitions=N` в RepartitionExec — откуда расширяем
+- `output_rows` на каждом уровне — равномерно ли распределены данные
+
+### Когда уменьшать target_partitions
+
+```sql
+-- Если видите:
+-- AggregateExec: mode=Partial, output_rows=10 across 16 partitions
+-- → каждая партиция обрабатывает < 1 строку — overhead > полезная работа
+
+SET datafusion.execution.target_partitions = 4;
+-- Теперь: каждая партиция обрабатывает 2-3 строки — лучше амортизация
+```
+
+**Правило:** Если `output_rows / target_partitions < 1000`, партиций слишком много.
+
+### Когда увеличивать target_partitions
+
+```sql
+-- Если видите:
+-- DataSourceExec: partitions=1, bytes_scanned=50_000_000_000
+-- AggregateExec: elapsed_compute=120s
+-- → один поток обрабатывает 50 GB, другие ядра простаивают
+
+SET datafusion.execution.target_partitions = 16;
+-- DataFusion добавит RepartitionExec для параллелизации
+```
+
+## Data skew и борьба с ним
+
+Неравномерное распределение данных по ключу (data skew) — частая проблема при Hash repartitioning:
+
+<DiagramContainer title="Data skew при Hash Repartition" className="my-6">
+  <FlowRow className="gap-4 p-4 justify-center flex-wrap">
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="output" tooltip="90% данных попадают в одну партицию">Skewed</FlowNode>
+      <DataBox label="P0 (US)" className="border-red-500/30 w-32">
+        <div className="text-xs text-center">9M строк</div>
+      </DataBox>
+      <DataBox label="P1 (EU)" className="border-blue-500/30 w-32">
+        <div className="text-xs text-center">500K</div>
+      </DataBox>
+      <DataBox label="P2 (Asia)" className="border-blue-500/30 w-32">
+        <div className="text-xs text-center">300K</div>
+      </DataBox>
+    </FlowColumn>
+    <FlowColumn className="gap-2 items-center">
+      <FlowNode variant="input" tooltip="Добавляем salt-column для равномерного распределения">Решение: Salting</FlowNode>
+      <DataBox label="Подход" className="border-emerald-500/30 w-48">
+        <div className="text-xs">Добавить random salt к ключу: hash(region || salt) распределяет US по нескольким партициям. Финальная агрегация убирает salt</div>
+      </DataBox>
+    </FlowColumn>
+  </FlowRow>
+</DiagramContainer>
+
+```sql
+-- Workaround для data skew:
+-- Разбиваем "горячий" регион на подгруппы
+SELECT region, SUM(sub_total) as total
+FROM (
+    SELECT region, SUM(amount) as sub_total
+    FROM orders
+    GROUP BY region, (id % 16)  -- salt: делим каждый region на 16 групп
+) sub
+GROUP BY region;
+```
+
+## Итоги
+
+- DataFusion параллелизирует работу через **партиции** — каждая партиция выполняется в отдельном потоке
+- **RoundRobinBatch** — расширение параллелизма для одиночных источников
+- **Hash Repartition** — перегруппировка по ключу для JOIN/GROUP BY/WINDOW
+- **SortPreserving Repartition** — параллельная сортировка с K-way merge
+- **Partition Pruning** — пропуск ненужных Hive-партиций (одна из самых эффективных оптимизаций)
+- **target_partitions** оптимален при `≈ num_cores` — больше не значит быстрее
+- **Data skew** решается через salting или предварительное разбиение данных
+- Следующий урок: [оптимизация файловой раскладки](/course/11-performance-tuning/03-file-layout-optimization) — как layout Parquet-файлов влияет на производительность запросов

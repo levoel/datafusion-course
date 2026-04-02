@@ -1,0 +1,335 @@
+{
+  "lessonSlug": "11-performance-tuning/_exam",
+  "moduleId": "11-performance-tuning",
+  "examTitle": "Экзамен: Performance Tuning",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "df-m11-exam"
+  },
+  "questions": [
+    {
+      "id": "df-m11-exam-q1",
+      "type": "multiple-choice",
+      "question": "Аналитический сервер (32 GB RAM, 16 ядер) обрабатывает ad-hoc запросы с JOIN и GROUP BY. Какая конфигурация RuntimeEnv + SessionConfig оптимальна?",
+      "options": [
+        {
+          "id": "a",
+          "text": "FairSpillPool(24 GB), DiskManager(/data/spill), target_partitions=16, batch_size=8192, spill_compression=Zstd"
+        },
+        {
+          "id": "b",
+          "text": "UnboundedMemoryPool, без DiskManager, target_partitions=128, batch_size=65536"
+        },
+        {
+          "id": "c",
+          "text": "GreedyMemoryPool(32 GB), DiskManager::Disabled, target_partitions=32, batch_size=8192"
+        },
+        {
+          "id": "d",
+          "text": "FairSpillPool(32 GB), DiskManager::NewOs, target_partitions=1, batch_size=256"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "FairSpillPool(24 GB) — ~75% RAM, оставляя 8 GB для OS и overhead. DiskManager с конкретным путём — контроль spill-директории на быстром SSD. target_partitions=16 = num_cores. batch_size=8192 — дефолт, оптимален для аналитики. Zstd — баланс ratio/speed для spill. Вариант (b): UnboundedMemoryPool → OOM. Вариант (c): 32 GB = 100% RAM, нет DiskManager. Вариант (d): 1 партиция — нет параллелизма.",
+      "studyHint": "Формула: FairSpillPool(75% RAM) + DiskManager(path) + target_partitions=num_cores + batch_size=8192.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m11-exam-q2",
+      "type": "multiple-choice",
+      "question": "DataFusion читает таблицу orders из одного файла Parquet (10 GB). EXPLAIN FORMAT INDENT показывает DataSourceExec: partitions=1. Как DataFusion увеличит параллелизм?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion не может параллелизировать чтение одного файла"
+        },
+        {
+          "id": "b",
+          "text": "С repartition_file_scans=true DataFusion разбивает файл на row groups, каждый читается как отдельная партиция. Без этого флага — RoundRobinBatch после DataSourceExec расширяет stream до target_partitions"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion автоматически копирует файл на разные диски для параллельного чтения"
+        },
+        {
+          "id": "d",
+          "text": "Нужно вручную разбить файл на target_partitions частей перед загрузкой"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Два механизма: (1) repartition_file_scans=true — DataFusion при планировании разбивает один файл на row groups, назначая каждый row group отдельной партиции для параллельного I/O; (2) если файл уже прочитан одной партицией, RoundRobinBatch расширяет stream — batches чередуются между target_partitions потоками. Первый вариант эффективнее, так как параллелизирует и I/O, и compute.",
+      "studyHint": "repartition_file_scans=true → параллельный I/O. RoundRobin → параллельный compute на уже прочитанных данных.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m11-exam-q3",
+      "type": "multiple-choice",
+      "question": "Таблица хранит 200M строк в Parquet на S3. Самый частый запрос: WHERE date BETWEEN '2024-03-01' AND '2024-03-31'. Какая комбинация оптимизаций файловой раскладки наиболее эффективна?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Hive-partitioning по date + сортировка внутри партиций по date + row groups 128-256 MB"
+        },
+        {
+          "id": "b",
+          "text": "Один файл 50 GB с bloom filter на date"
+        },
+        {
+          "id": "c",
+          "text": "5000 файлов по 2 MB без сортировки"
+        },
+        {
+          "id": "d",
+          "text": "Сортировка по user_id + row groups 1 MB для максимального pruning"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Комбинация: (1) Hive partitioning по year/month — partition pruning на уровне директорий: DataFusion читает только data/year=2024/month=03/; (2) сортировка внутри партиций — min/max statistics каждого RG покрывают узкий диапазон date → predicate pushdown пропускает лишние RG; (3) 128-256 MB row groups — оптимально для S3 (один HTTP GET на RG). Bloom filter (b) — для equality, не range. 5000 файлов (c) — overhead на listing/open.",
+      "studyHint": "Range → сортировка + Hive partitioning. Equality → bloom filter. S3 → 128-256 MB row groups.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m11-exam-q4",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает: HashJoinExec build_mem_used=3 GB при memory_limit=4 GB. Spill_count=0, но AggregateExec после JOIN показывает spill_count=23. Что происходит?",
+      "options": [
+        {
+          "id": "a",
+          "text": "HashJoin потребляет 3 GB из 4 GB. FairSpillPool вычитает это из доступной памяти → AggregateExec получает ~1 GB, чего недостаточно → Aggregate сбрасывает данные на диск"
+        },
+        {
+          "id": "b",
+          "text": "HashJoin и Aggregate считают память отдельно — spill в Aggregate не связан с Join"
+        },
+        {
+          "id": "c",
+          "text": "HashJoin всегда потребляет всю доступную память"
+        },
+        {
+          "id": "d",
+          "text": "Это баг — spill_count=0 у Join означает, что Join не использует память"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "FairSpillPool управляет общим бюджетом памяти. HashJoin (build-сторона) резервирует 3 GB через MemoryReservation и не освобождает до завершения probe-фазы. AggregateExec запрашивает память для hash table — доступно только ~1 GB из 4 GB. Когда Aggregate превышает 1 GB, FairSpillPool сигнализирует spill. Решение: уменьшить build-сторону Join (pre-filter) или увеличить memory_limit.",
+      "studyHint": "FairSpillPool — общий бюджет. Крупный HashJoin «съедает» память → downstream операторы spill'ят.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m11-exam-q5",
+      "type": "multiple-choice",
+      "question": "Какой формат EXPLAIN в DataFusion показывает реальные метрики выполнения (elapsed_compute, output_rows, bytes_scanned)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "EXPLAIN — показывает план без метрик"
+        },
+        {
+          "id": "b",
+          "text": "EXPLAIN ANALYZE — выполняет запрос и показывает план с реальными метриками"
+        },
+        {
+          "id": "c",
+          "text": "EXPLAIN VERBOSE — расширенный вывод с метриками"
+        },
+        {
+          "id": "d",
+          "text": "EXPLAIN PROFILE — специальный формат для профилирования"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "EXPLAIN показывает планы (логический + физический) без выполнения запроса — оценочные метрики. EXPLAIN ANALYZE фактически выполняет запрос и собирает реальные метрики: elapsed_compute, output_rows, bytes_scanned, spill_count и др. EXPLAIN ANALYZE FORMAT INDENT — рекомендуемый формат для диагностики с наглядным отображением.",
+      "studyHint": "EXPLAIN = план без выполнения. EXPLAIN ANALYZE = выполнение + реальные метрики.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m11-exam-q6",
+      "type": "multiple-choice",
+      "question": "Запрос на дашборде: SELECT approx_distinct(user_id), approx_percentile_cont(latency, 0.99) FROM requests. Почему это предпочтительнее точных аналогов для дашборда?",
+      "options": [
+        {
+          "id": "a",
+          "text": "approx-функции не выполняются — возвращают кешированные результаты"
+        },
+        {
+          "id": "b",
+          "text": "approx_distinct (HyperLogLog) и approx_percentile_cont (T-Digest) используют O(1) памяти вне зависимости от объёма данных, не вызывают spill, с ошибкой < 2-3% — приемлемо для мониторинга"
+        },
+        {
+          "id": "c",
+          "text": "approx-функции параллелизируются лучше, чем точные"
+        },
+        {
+          "id": "d",
+          "text": "Для дашбордов точность не важна — можно возвращать случайные числа"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Точный COUNT(DISTINCT) требует hash set на все уникальные ключи — O(N) памяти, вызывает spill на больших данных. approx_distinct использует HyperLogLog — 16 KB памяти для ошибки < 2%. Точный PERCENTILE требует сортировки всех значений — O(N) памяти и O(N log N) времени. approx_percentile_cont использует T-Digest — фиксированная память ~10 KB для ошибки < 1% на хвостах. Для дашбордов с обновлением каждые 30 секунд эта точность избыточна.",
+      "studyHint": "approx_distinct = HyperLogLog (16 KB). approx_percentile = T-Digest (10 KB). O(1) память, < 2-3% ошибки.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m11-exam-q7",
+      "type": "multiple-choice",
+      "question": "При записи Parquet-файлов для DataFusion включён bloom_filter_on_write = true с bloom_filter_fpp = 0.01 для колонки user_id. Как это влияет на запросы WHERE user_id = 'abc123'?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Bloom filter точно определяет, в каком row group находится user_id = 'abc123'"
+        },
+        {
+          "id": "b",
+          "text": "Bloom filter для каждого RG проверяет «точно нет»: если 'abc123' отсутствует — RG пропускается. Если «возможно да» — RG читается и фильтруется. При fpp=0.01 ложноположительные в 1% случаев"
+        },
+        {
+          "id": "c",
+          "text": "Bloom filter заменяет min/max статистики для строковых колонок"
+        },
+        {
+          "id": "d",
+          "text": "Bloom filter работает только для числовых колонок"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Bloom filter — вероятностная структура данных с двумя ответами: «точно нет» (100% корректно) и «возможно да» (ложноположительные с вероятностью fpp). При fpp=0.01 и 100 row groups: ~99 RG получают «точно нет» → пропускаются. ~1 RG может быть ложноположительным — читается и фильтруется. Bloom filter не знает позицию — только принадлежность к множеству.",
+      "studyHint": "Bloom filter: «точно нет» (пропускаем RG) или «возможно да» (читаем). fpp = вероятность «возможно да» при отсутствии.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m11-exam-q8",
+      "type": "multiple-choice",
+      "question": "Два запроса выполняются конкурентно на сервере с FairSpillPool(8 GB). Запрос A: крупный HashJoin (build 6 GB). Запрос B: GROUP BY с 3 GB partial aggregation. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Оба запроса получат по 4 GB каждый — FairSpillPool делит поровну"
+        },
+        {
+          "id": "b",
+          "text": "FairSpillPool распределит бюджет fair-share: каждый запрос может использовать до 4 GB (8/2). Когда суммарное потребление превысит 8 GB, один или оба spillable-оператора сбросят данные на диск"
+        },
+        {
+          "id": "c",
+          "text": "Первый запрос получит все 8 GB, второй ждёт завершения первого"
+        },
+        {
+          "id": "d",
+          "text": "Оба запроса упадут с ResourcesExhausted — суммарное потребление 9 GB > 8 GB"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "FairSpillPool при 2 concurrent запросах: fair-share ≈ 4 GB на запрос. Когда HashJoin запроса A достигает 4 GB — FairSpillPool проверяет spillable-резервации. Если HashJoin spillable — он сбрасывает часть данных. Aggregate запроса B тоже spillable — при превышении fair-share сбрасывает на диск. Оба запроса продолжат выполнение, но с degraded performance из-за spill I/O.",
+      "studyHint": "FairSpillPool: fair-share = limit / num_consumers. Превышение → spill для spillable операторов.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m11-exam-q9",
+      "type": "multiple-choice",
+      "question": "Инженер хочет программно получить количество output_rows из HashJoinExec после выполнения запроса в Rust. Какой API использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "plan.statistics() — возвращает предварительную оценку до выполнения"
+        },
+        {
+          "id": "b",
+          "text": "plan.metrics() после collect() — возвращает MetricSet с реальными метриками. Перебираем MetricValue::OutputRows для нужного оператора"
+        },
+        {
+          "id": "c",
+          "text": "EXPLAIN ANALYZE через SQL — программный доступ к метрикам невозможен"
+        },
+        {
+          "id": "d",
+          "text": "plan.output_rows() — прямой метод на ExecutionPlan"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "После df.collect() физический план содержит реальные метрики в каждом операторе. plan.metrics() возвращает Option<MetricsSet>. Перебор: for metric in metrics.iter() → match metric.value() → MetricValue::OutputRows(count) → count.value(). Для визуализации: DisplayableExecutionPlan::new(plan.as_ref()).indent(true) включает метрики в текстовый вывод.",
+      "studyHint": "plan.metrics() после collect() → MetricValue::OutputRows, ::ElapsedCompute, ::SpillCount.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m11-exam-q10",
+      "type": "multiple-choice",
+      "question": "Сервер обрабатывает 100 concurrent запросов. Инженер создаёт новый RuntimeEnv на каждый запрос. Почему это антипаттерн?",
+      "options": [
+        {
+          "id": "a",
+          "text": "RuntimeEnv не thread-safe — нельзя использовать из нескольких потоков"
+        },
+        {
+          "id": "b",
+          "text": "Каждый RuntimeEnv создаёт свой MemoryPool, DiskManager, ObjectStoreRegistry. 100 независимых пулов = нет общего контроля памяти, потеря кешей ObjectStore, overhead на инициализацию"
+        },
+        {
+          "id": "c",
+          "text": "RuntimeEnv потребляет 1 GB памяти при создании"
+        },
+        {
+          "id": "d",
+          "text": "Это не антипаттерн — каждый запрос должен иметь изолированный RuntimeEnv"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "RuntimeEnv разделяется между SessionContext. При пересоздании на каждый запрос: (1) 100 независимых MemoryPool = суммарный лимит 100 × memory_limit → невозможно контролировать общее потребление; (2) ObjectStoreRegistry кеширует подключения к S3/GCS — при пересоздании кеш теряется, каждый запрос заново создаёт HTTP-клиенты; (3) DiskManager инициализирует temp-директории. Правильно: один RuntimeEnv → много SessionContext.",
+      "studyHint": "1 RuntimeEnv → N SessionContext. RuntimeEnv = общая инфраструктура. SessionConfig = per-query настройки.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m11-exam-q11",
+      "type": "multiple-choice",
+      "question": "Мультитенантная аналитическая платформа хранит данные в Parquet. Самые частые запросы: WHERE tenant_id = 'X' AND date BETWEEN ... . По какой колонке нужно сортировать данные в первую очередь?",
+      "options": [
+        {
+          "id": "a",
+          "text": "По date — временные данные всегда сортируют по времени"
+        },
+        {
+          "id": "b",
+          "text": "По tenant_id (primary), затем по date (secondary) — predicate pushdown пропускает row groups чужих tenant'ов, затем фильтрует по дате внутри tenant'а"
+        },
+        {
+          "id": "c",
+          "text": "Не сортировать — DataFusion сам выберет оптимальный порядок"
+        },
+        {
+          "id": "d",
+          "text": "По amount DESC — чаще всего нужны крупные транзакции"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При сортировке tenant_id, date: row groups содержат данные одного (или нескольких смежных) tenant'ов. WHERE tenant_id = 'X' пропускает все RG других tenant'ов через min/max(tenant_id). Внутри tenant'а date-сортировка обеспечивает predicate pushdown по дате. Если сортировать только по date — каждый RG содержит все tenant'ы → min(tenant_id)='A', max(tenant_id)='Z' → pruning по tenant невозможен.",
+      "studyHint": "Мультитенант: ORDER BY tenant_id, date. Primary sort = самый избирательный фильтр.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m11-exam-q12",
+      "type": "multiple-choice",
+      "question": "Инженер оптимизирует запрос итеративно: шаг 1 — добавил сортировку данных (row_groups_pruned 0→15), шаг 2 — уменьшил target_partitions 16→4 (spill_count 47→3), шаг 3 — включил spill_compression (elapsed_compute 45s→38s). Суммарное ускорение: 120s→38s. Какой принцип performance tuning демонстрирует этот workflow?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Всегда начинать с уменьшения target_partitions"
+        },
+        {
+          "id": "b",
+          "text": "Итеративная оптимизация: одно изменение → измерение через EXPLAIN ANALYZE → следующее изменение. Позволяет атрибутировать каждое улучшение конкретному изменению"
+        },
+        {
+          "id": "c",
+          "text": "Оптимизировать нужно в фиксированном порядке: файлы → партиции → сжатие"
+        },
+        {
+          "id": "d",
+          "text": "Достаточно применить все оптимизации одновременно — порядок не важен"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Итеративный workflow: (1) замерить baseline; (2) одно изменение; (3) замерить через EXPLAIN ANALYZE; (4) повторить. Это позволяет: понять, какие оптимизации дают наибольший эффект (сортировка: 120s→~70s = 42%), какие — умеренный (partitions: ~70s→~45s = 36%), какие — минимальный (compression: 45s→38s = 16%). При одновременном применении невозможно определить вклад каждой.",
+      "studyHint": "Итеративно: baseline → одно изменение → EXPLAIN ANALYZE → атрибуция → следующее.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

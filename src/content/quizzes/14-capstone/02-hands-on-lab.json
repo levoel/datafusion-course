@@ -1,12 +1,12 @@
 {
-  "lessonSlug": "10-capstone/02-hands-on-lab",
-  "moduleId": "10-capstone",
+  "lessonSlug": "14-capstone/02-hands-on-lab",
+  "moduleId": "14-capstone",
   "_meta": {
-    "idPrefix": "df-m10-02"
+    "idPrefix": "df-m14-02"
   },
   "questions": [
     {
-      "id": "df-m10-02-q1",
+      "id": "df-m14-02-q1",
       "type": "multiple-choice",
       "question": "UDF classify_amount в лабораторной принимает pa.Array и возвращает pa.Array. Почему DataFusion передаёт в UDF массив значений, а не отдельные скаляры?",
       "options": [
@@ -33,7 +33,7 @@
       "studyHint": "Vectorized UDF: один вызов на batch (8192 строк) → минимальный Python-overhead. pa.Array вход/выход = Arrow columnar format."
     },
     {
-      "id": "df-m10-02-q2",
+      "id": "df-m14-02-q2",
       "type": "multiple-choice",
       "question": "При создании UDF через udf() четвёртый аргумент — volatility ('immutable', 'stable', 'volatile'). Для classify_amount указан 'immutable'. Какое практическое следствие этого выбора?",
       "options": [
@@ -60,7 +60,7 @@
       "studyHint": "immutable → constant folding, кеширование. stable → стабильно в рамках запроса. volatile → без оптимизаций. Влияет на optimizer rules."
     },
     {
-      "id": "df-m10-02-q3",
+      "id": "df-m14-02-q3",
       "type": "multiple-choice",
       "question": "WeightedAvg UDAF хранит два значения: _sum_vw (сумма взвешенных значений) и _sum_w (сумма весов). Метод state() возвращает оба как список скаляров. Зачем оптимизатору знать промежуточное состояние UDAF?",
       "options": [
@@ -87,7 +87,7 @@
       "studyHint": "state() = контракт промежуточного состояния для Partial → Final. Сериализуется между партициями. WeightedAvg: [sum_vw, sum_w]."
     },
     {
-      "id": "df-m10-02-q4",
+      "id": "df-m14-02-q4",
       "type": "multiple-choice",
       "question": "В упражнении 3 класс AnalyticsEngine вызывает ctx.sql() для аналитических запросов и df.write_parquet() для сохранения отчётов. Что произойдёт, если вызвать ctx.sql() без предварительного register_parquet()?",
       "options": [
@@ -114,7 +114,7 @@
       "studyHint": "Ошибка 'table not found' → этап логического планирования, не выполнения. CatalogProvider разрешает имена при построении LogicalPlan."
     },
     {
-      "id": "df-m10-02-q5",
+      "id": "df-m14-02-q5",
       "type": "multiple-choice",
       "question": "Docker-среда лабораторной монтирует exercises/ как volume. Зачем это нужно для workflow разработки?",
       "options": [

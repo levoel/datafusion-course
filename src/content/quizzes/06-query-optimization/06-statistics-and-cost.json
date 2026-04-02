@@ -62,7 +62,7 @@
     {
       "id": "df-m06-06-q3",
       "type": "multiple-choice",
-      "question": "EXPLAIN ANALYZE показывает row_groups_pruned=3, row_groups_matched=13 для ParquetExec с фильтром age > 30. Что означает pruned=3?",
+      "question": "EXPLAIN ANALYZE показывает row_groups_pruned=3, row_groups_matched=13 для DataSourceExec с фильтром age > 30. Что означает pruned=3?",
       "options": [
         {
           "id": "a",

@@ -1,0 +1,335 @@
+{
+  "lessonSlug": "13-real-world-patterns/_exam",
+  "moduleId": "13-real-world-patterns",
+  "examTitle": "Экзамен: Real-World Patterns",
+  "passThreshold": 70,
+  "_meta": {
+    "idPrefix": "df-m13-exam"
+  },
+  "questions": [
+    {
+      "id": "df-m13-exam-q1",
+      "type": "multiple-choice",
+      "question": "Аналитический SaaS-сервис на DataFusion принимает SQL от клиентов. Клиент отправляет DROP TABLE important_data. Какой механизм защиты наиболее надёжен?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Regex-проверка: отклонять SQL, содержащий DROP, DELETE, ALTER"
+        },
+        {
+          "id": "b",
+          "text": "DFParser::parse_sql() → проверить тип каждого Statement → whitelist только Query и Explain"
+        },
+        {
+          "id": "c",
+          "text": "Создать read-only пользователя в DataFusion"
+        },
+        {
+          "id": "d",
+          "text": "Не регистрировать таблицы с правами на DDL"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DFParser::parse_sql() парсит SQL в AST. Проверка типа Statement (whitelist Query и Explain) корректно обрабатывает комментарии (/* DROP TABLE */), строковые литералы ('DROP'), CTE, подзапросы и DataFusion-специфичные команды (COPY, CREATE EXTERNAL TABLE). Regex обходится тривиально: SELECT 1; DROP TABLE x или SQL в комментариях.",
+      "studyHint": "Парсер > regex. Whitelist типов Statement, а не blacklist ключевых слов.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m13-exam-q2",
+      "type": "multiple-choice",
+      "question": "BI-инструмент (Tableau) подключается к DataFusion-сервису. JSON REST API имеет overhead 3-10× на сериализацию. Какой протокол оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Arrow Flight SQL — нативный Arrow IPC формат, zero-copy, стандартные JDBC/ODBC драйверы"
+        },
+        {
+          "id": "b",
+          "text": "WebSocket с MessagePack — бинарный формат снизит overhead"
+        },
+        {
+          "id": "c",
+          "text": "gRPC с Protobuf — эффективнее JSON"
+        },
+        {
+          "id": "d",
+          "text": "REST с gzip-компрессией — сжатие уменьшит размер передачи"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Arrow Flight SQL передаёт RecordBatch в нативном Arrow IPC формате — нет сериализации/десериализации (JSON: O(rows × cols), Flight: O(num_buffers)). BI-инструменты (DBeaver, Tableau) подключаются через стандартные JDBC/ODBC Flight SQL драйверы без кастомного кода. gzip REST снижает размер, но не устраняет cost парсинга JSON.",
+      "studyHint": "Arrow Flight SQL: zero-copy + JDBC/ODBC support. JSON → Arrow IPC = 3-10× reduction.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m13-exam-q3",
+      "type": "multiple-choice",
+      "question": "Multi-tenant сервис использует shared SessionContext с per-tenant SchemaProvider. Tenant A выполняет SELECT * FROM information_schema.schemata. Почему это проблема?",
+      "options": [
+        {
+          "id": "a",
+          "text": "information_schema недоступна в DataFusion"
+        },
+        {
+          "id": "b",
+          "text": "Tenant A увидит имена schema всех tenant-ов — metadata leak, потому что information_schema показывает весь каталог shared SessionContext"
+        },
+        {
+          "id": "c",
+          "text": "Запрос исчерпает memory pool"
+        },
+        {
+          "id": "d",
+          "text": "Проблемы нет — DataFusion фильтрует information_schema по текущей schema"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При shared SessionContext information_schema видит весь каталог — все schema, все таблицы всех tenant-ов. Tenant A не получит данные других tenant-ов, но увидит структуру (имена schema, таблиц, колонок). Для строгой изоляции метаданных нужен per-tenant SessionContext.",
+      "studyHint": "Shared SessionContext = shared metadata. information_schema не фильтрует по tenant.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m13-exam-q4",
+      "type": "multiple-choice",
+      "question": "Enterprise tenant: 16 GB quota, 50 concurrent queries. Free tier: 512 MB quota, 2 concurrent queries. Какая архитектура реализует эти ограничения?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Per-tenant RuntimeEnv с TenantMemoryPool (обёртка FairSpillPool с индивидуальным лимитом) + per-tenant Semaphore с capacity = max_concurrent_queries"
+        },
+        {
+          "id": "b",
+          "text": "Один FairSpillPool(16 GB) + global Semaphore(50) для всех"
+        },
+        {
+          "id": "c",
+          "text": "Kubernetes pod per tenant с resource limits"
+        },
+        {
+          "id": "d",
+          "text": "Linux cgroups per tenant + iptables rate limiting"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Per-tenant RuntimeEnv содержит TenantMemoryPool — обёртку над FairSpillPool с индивидуальным лимитом (16 GB / 512 MB). grow() проверяет суммарное потребление tenant-а. Semaphore с per-tenant capacity ограничивает concurrent queries (50 / 2). Оба механизма работают на уровне DataFusion — без OS-level изоляции.",
+      "studyHint": "TenantMemoryPool(FairSpillPool, limit) + Semaphore(max_concurrent). Per-tenant RuntimeEnv.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m13-exam-q5",
+      "type": "multiple-choice",
+      "question": "DataFusion StreamingTable с unbounded источником. Какие SQL-операторы НЕ будут работать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SELECT, WHERE, GROUP BY — все работают с unbounded данными"
+        },
+        {
+          "id": "b",
+          "text": "ORDER BY (полная сортировка), full Hash JOIN (build side), DISTINCT — требуют конечного входа, физический план не будет сгенерирован"
+        },
+        {
+          "id": "c",
+          "text": "Только JOIN — остальные операторы streaming-совместимы"
+        },
+        {
+          "id": "d",
+          "text": "Все работают — DataFusion автоматически адаптирует операторы для streaming"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Buffering-операторы (SortExec, HashJoinExec build side, DISTINCT) ждут все данные перед выдачей результата. С unbounded источником это невозможно — они никогда не завершатся. DataFusion обнаруживает конфликт при физическом планировании и отклоняет план. Streaming-совместимые: Filter, Projection, partial Aggregate, LIMIT.",
+      "studyHint": "Sort, full Hash JOIN, DISTINCT = buffering = нужен конечный вход. DataFusion отклоняет plan.",
+      "bloomLevel": "conceptual"
+    },
+    {
+      "id": "df-m13-exam-q6",
+      "type": "multiple-choice",
+      "question": "Аналитическая платформа обрабатывает потоковые данные с задержкой 30 секунд допустима. Нужен полный SQL (JOIN, ORDER BY, оконные функции). Какой подход для DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "StreamingTable с continuous query — полный SQL на unbounded"
+        },
+        {
+          "id": "b",
+          "text": "Micro-batch: каждые 30s читать новые данные → MemTable → полный batch SQL → emit → cleanup"
+        },
+        {
+          "id": "c",
+          "text": "Перейти на Apache Flink — DataFusion не подходит для streaming"
+        },
+        {
+          "id": "d",
+          "text": "Polling: каждые 30s выполнять SELECT * FROM source WHERE ts > last_processed"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Micro-batch — прагматичный компромисс: данные конечны в каждом batch, поэтому все SQL-операторы работают (JOIN, ORDER BY, оконные функции). Задержка = batch_interval (30s), что соответствует SLA. StreamingTable не поддерживает Sort и full JOIN. Flink — overengineering для задачи с допустимой задержкой 30s.",
+      "studyHint": "Micro-batch: full SQL + configurable latency. StreamingTable: limited SQL + ms latency.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m13-exam-q7",
+      "type": "multiple-choice",
+      "question": "DataFusion-сервис использует tracing crate. Фильтр: info,datafusion=warn. Запрос работает медленно, нужно диагностировать оптимизатор. Что сделать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Временно изменить фильтр на datafusion=debug — увидите каждый шаг оптимизатора и executor-а для этого запроса"
+        },
+        {
+          "id": "b",
+          "text": "Добавить println! в код DataFusion"
+        },
+        {
+          "id": "c",
+          "text": "Использовать strace — системные вызовы покажут bottleneck"
+        },
+        {
+          "id": "d",
+          "text": "Увеличить batch_size — это ускорит оптимизатор"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion использует tracing crate для внутреннего логирования. На уровне debug он логирует каждый шаг: парсинг SQL, каждое правило оптимизатора (predicate pushdown, projection pruning), создание физических операторов. Временное изменение фильтра на datafusion=debug покажет всю цепочку оптимизации для медленного запроса.",
+      "studyHint": "datafusion=debug для диагностики. datafusion=warn для production. Временно переключайте.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m13-exam-q8",
+      "type": "multiple-choice",
+      "question": "Production-сервис: EXPLAIN ANALYZE вызывается для каждого запроса, чтобы собирать execution stats. QPS = 1000. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Метрики будут точными — EXPLAIN ANALYZE не добавляет overhead"
+        },
+        {
+          "id": "b",
+          "text": "Нагрузка удвоится: EXPLAIN ANALYZE реально выполняет запрос для сбора статистики. При 1000 QPS это 2000 реальных выполнений. Вместо этого используйте Prometheus-метрики для каждого запроса, EXPLAIN ANALYZE — только для диагностики медленных"
+        },
+        {
+          "id": "c",
+          "text": "Результаты будут неточными — EXPLAIN ANALYZE работает только для простых запросов"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion кеширует результаты EXPLAIN ANALYZE"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "EXPLAIN ANALYZE выполняет запрос реально, собирая per-operator метрики (output_rows, elapsed_compute, spill_count, spilled_bytes). Вызов для каждого запроса удваивает compute-нагрузку. При 1000 QPS это неприемлемо. Prometheus histogram/counter/gauge собирают агрегированные метрики без дополнительного выполнения. EXPLAIN ANALYZE — инструмент диагностики, не мониторинга.",
+      "studyHint": "EXPLAIN ANALYZE = real execution. Prometheus = zero overhead aggregated metrics.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m13-exam-q9",
+      "type": "multiple-choice",
+      "question": "Для Prometheus-мониторинга DataFusion создаётся HistogramVec с label tenant. 10 000 tenant-ов в SaaS. Какой риск?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Нет риска — Prometheus масштабируется линейно"
+        },
+        {
+          "id": "b",
+          "text": "High cardinality: 10 000 tenant × N метрик × buckets = миллионы time series. Prometheus замедлится, memory вырастет. Решение: агрегировать по tier (enterprise/pro/free), а не по tenant_id"
+        },
+        {
+          "id": "c",
+          "text": "Label tenant не поддерживается в Prometheus"
+        },
+        {
+          "id": "d",
+          "text": "Риск только если tenant_id содержит спецсимволы"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "High cardinality labels — главный антипаттерн Prometheus. 10 000 tenant × histogram (12 buckets + sum + count) × 5 метрик = 700 000 time series. Prometheus хранит все серии в памяти, scrape замедляется. Решение: label tier (enterprise/pro/free) вместо tenant_id. Per-tenant метрики — в отдельной time-series DB или через exemplars.",
+      "studyHint": "High cardinality label = Prometheus OOM. Агрегируйте по tier, не по tenant_id.",
+      "bloomLevel": "analytical"
+    },
+    {
+      "id": "df-m13-exam-q10",
+      "type": "multiple-choice",
+      "question": "DataFusion-сервис одновременно обрабатывает lookup-запросы (< 100ms) и тяжёлую аналитику (> 30s). Как маршрутизировать запросы?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Один SessionContext с target_partitions=16 для всех — DataFusion сам оптимизирует"
+        },
+        {
+          "id": "b",
+          "text": "classify_query(LogicalPlan) → Fast Lane (GreedyPool 512MB, timeout 5s, partitions=2) / Heavy Lane (FairSpillPool 8GB, timeout 300s, partitions=16)"
+        },
+        {
+          "id": "c",
+          "text": "Клиент выбирает lane в HTTP-заголовке"
+        },
+        {
+          "id": "d",
+          "text": "Round-robin между двумя SessionContext"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Query routing: анализируем LogicalPlan (наличие Join, Aggregate, отсутствие Limit). Fast Lane: GreedyMemoryPool(512MB), short timeout, минимум partitions — для lookup. Heavy Lane: FairSpillPool(8GB), long timeout, max partitions — для analytics. Каждый lane — отдельный SessionContext с соответствующей конфигурацией. Тяжёлый запрос не блокирует лёгкие.",
+      "studyHint": "Classify by plan → route to lane. Fast: low memory, short timeout. Heavy: FairSpill, long timeout.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m13-exam-q11",
+      "type": "multiple-choice",
+      "question": "Graceful shutdown DataFusion-сервиса: получен SIGTERM, 5 запросов выполняются. DiskManager активен (spill-файлы на диске). Что нужно сделать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Немедленно kill -9 — OS очистит ресурсы"
+        },
+        {
+          "id": "b",
+          "text": "CancellationToken::cancel() → дождаться завершения активных запросов (drain) → cleanup spill-директории → exit"
+        },
+        {
+          "id": "c",
+          "text": "Остановить приём новых запросов и ждать бесконечно"
+        },
+        {
+          "id": "d",
+          "text": "Записать checkpoint в WAL и перезапуститься"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Graceful shutdown: CancellationToken сигнализирует всем handler-ам о завершении. Активные запросы получают QueryCancelled через tokio::select!. После drain — cleanup spill-файлов, которые DiskManager мог оставить на диске. Без drain: обрыв активных запросов на полпути. Без cleanup: spill-файлы остаются как мусор.",
+      "studyHint": "CancellationToken → drain active queries → cleanup spill files → exit.",
+      "bloomLevel": "applied"
+    },
+    {
+      "id": "df-m13-exam-q12",
+      "type": "multiple-choice",
+      "question": "DataFusion не имеет встроенной поддержки watermark для streaming. Архитектор предлагает реализовать event-time windowing с exactly-once semantics поверх StreamingTable. Оцените решение.",
+      "options": [
+        {
+          "id": "a",
+          "text": "Хорошее решение — DataFusion достаточно гибок для реализации любого streaming-паттерна"
+        },
+        {
+          "id": "b",
+          "text": "Overengineering: watermark и exactly-once поверх batch engine — это фактически реализация Flink внутри DataFusion. Для сложного stream processing используйте Flink или Arroyo (который сам использует DataFusion внутри)"
+        },
+        {
+          "id": "c",
+          "text": "Невозможно — StreamingTable не поддерживает кастомную логику"
+        },
+        {
+          "id": "d",
+          "text": "Разумно, если добавить Kafka Streams как co-processor"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion — batch engine с streaming-расширениями. Реализация event-time windowing, watermark tracking, out-of-order handling и exactly-once semantics — это фактически написание stream processing engine с нуля. Arroyo уже сделал это: stream engine, использующий DataFusion как execution layer. Для сложного streaming — Flink или Arroyo. DataFusion — для micro-batch и simple continuous queries.",
+      "studyHint": "DataFusion = batch engine. Сложный streaming = Flink/Arroyo. Micro-batch = sweet spot для DataFusion.",
+      "bloomLevel": "analytical"
+    }
+  ]
+}

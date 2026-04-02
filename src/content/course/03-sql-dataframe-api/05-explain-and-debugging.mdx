@@ -63,12 +63,12 @@ GlobalLimitExec: skip=0, fetch=5
             AggregateExec: mode=Partial, gby=[region@0 as region], aggr=[SUM(orders.amount)]
               CoalesceBatchesExec: target_batch_size=8192
                 FilterExec: status@2 = completed
-                  ParquetExec: file_groups={16 groups}, projection=[region, amount, status], predicate=status@2 = completed
+                  DataSourceExec: file_groups={16 groups}, format=parquet, projection=[region, amount, status], predicate=status@2 = completed
 ```
 
 Физический план конкретнее логического:
 
-- **ParquetExec** вместо абстрактного TableScan — DataFusion знает формат файла
+- **DataSourceExec** вместо абстрактного TableScan — DataFusion использует унифицированный оператор с указанием формата (format=parquet)
 - **AggregateExec** появляется дважды: Partial (на каждой партиции) и FinalPartitioned (объединение)
 - **RepartitionExec** — Hash-перераспределение по region для параллельной агрегации
 - **CoalesceBatchesExec** — объединение мелких RecordBatch до target_batch_size
@@ -97,7 +97,7 @@ GlobalLimitExec: skip=0, fetch=5, metrics=[output_rows=5, elapsed_compute=1.2µs
         RepartitionExec: partitioning=Hash([region@0], 16), metrics=[output_rows=192, repart_time=1.2ms, send_time=0.8ms]
           AggregateExec: mode=Partial, metrics=[output_rows=192, elapsed_compute=45.2ms]
             FilterExec: status@2 = completed, metrics=[output_rows=487329, elapsed_compute=12.3ms]
-              ParquetExec: file_groups={16 groups}, metrics=[output_rows=1000000, elapsed_compute=89.4ms, bytes_scanned=45.2MB, predicate_evaluation_errors=0, row_groups_pruned=3]
+              DataSourceExec: file_groups={16 groups}, format=parquet, metrics=[output_rows=1000000, elapsed_compute=89.4ms, bytes_scanned=45.2MB, predicate_evaluation_errors=0, row_groups_pruned=3]
 ```
 
 ### Ключевые метрики
@@ -114,11 +114,52 @@ GlobalLimitExec: skip=0, fetch=5, metrics=[output_rows=5, elapsed_compute=1.2µs
 ### Чтение метрик: на что смотреть
 
 ```
-ParquetExec: output_rows=1000000, bytes_scanned=45.2MB
+DataSourceExec: output_rows=1000000, bytes_scanned=45.2MB
 FilterExec:  output_rows=487329
 ```
 
 Фильтр пропустил ~49% строк. Если фильтр по колонке с низкой кардинальностью (status), а row_groups_pruned = 3, можно улучшить: пересортировать Parquet по status, чтобы row group pruning был эффективнее.
+
+## EXPLAIN FORMAT TREE: древовидный вывод плана
+
+Начиная с DataFusion v47, доступен древовидный формат вывода плана — `EXPLAIN FORMAT TREE`. Он отображает те же данные, что и обычный EXPLAIN, но в визуально структурированном виде с ASCII-деревом, что упрощает чтение сложных планов с множеством вложенных операторов:
+
+```sql
+EXPLAIN FORMAT TREE
+SELECT region, SUM(amount) AS total
+FROM orders
+WHERE status = 'completed'
+GROUP BY region
+ORDER BY total DESC
+LIMIT 5;
+```
+
+Результат показывает план в формате дерева с отступами и ASCII-символами для связей:
+
+```
+GlobalLimitExec
+├── skip: 0
+├── fetch: 5
+└── SortExec
+    ├── expr: [total@1 DESC]
+    └── AggregateExec
+        ├── mode: FinalPartitioned
+        ├── gby: [region@0]
+        ├── aggr: [SUM(orders.amount)]
+        └── RepartitionExec
+            └── AggregateExec
+                ├── mode: Partial
+                └── DataSourceExec
+                    ├── file_groups: {16 groups}
+                    ├── format: parquet
+                    └── projection: [region, amount, status]
+```
+
+`EXPLAIN ANALYZE FORMAT TREE` также поддерживается — метрики выполнения отображаются рядом с каждым узлом в том же древовидном формате.
+
+<Callout type="tip">
+`FORMAT TREE` особенно полезен для планов с множественными JOIN и подзапросами, где стандартный текстовый вывод с отступами становится трудночитаемым.
+</Callout>
 
 ## EXPLAIN через DataFrame API
 

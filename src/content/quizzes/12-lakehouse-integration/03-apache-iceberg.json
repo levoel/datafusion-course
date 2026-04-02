@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "12-lakehouse-integration/03-apache-iceberg",
+  "moduleId": "12-lakehouse-integration",
+  "_meta": {
+    "idPrefix": "df-m12-03"
+  },
+  "questions": [
+    {
+      "id": "df-m12-03-q1",
+      "type": "multiple-choice",
+      "question": "Чем архитектура метаданных Iceberg (metadata → manifest list → manifest files) отличается от Delta Lake (JSON commits + checkpoint)?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Iceberg хранит все метаданные в одном файле — это быстрее для маленьких таблиц"
+        },
+        {
+          "id": "b",
+          "text": "Iceberg распределяет per-file statistics по manifest-файлам (~1000 файлов каждый), что масштабируется лучше при 100K+ файлов. Delta хранит все stats в одном checkpoint"
+        },
+        {
+          "id": "c",
+          "text": "Нет существенной разницы — оба формата хранят метаданные одинаково"
+        },
+        {
+          "id": "d",
+          "text": "Delta использует трёхуровневую архитектуру, а Iceberg — двухуровневую"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Iceberg распределяет statistics по manifest-файлам: каждый manifest отвечает за ~1000 data files. При 500K файлов — 500 manifests по 1000 записей. DataFusion может читать только нужные manifests (по partition range). Delta хранит все stats в одном checkpoint Parquet — при 500K файлов он может быть сотни MB.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Delta: один checkpoint со всеми stats. Iceberg: много manifests, каждый с частью stats → лучше масштабируется."
+    },
+    {
+      "id": "df-m12-03-q2",
+      "type": "multiple-choice",
+      "question": "Iceberg-таблица партиционирована по month(event_ts). Какой SQL-запрос корректно использует hidden partitioning?",
+      "options": [
+        {
+          "id": "a",
+          "text": "WHERE event_month = '2024-03' — явное указание partition column"
+        },
+        {
+          "id": "b",
+          "text": "WHERE event_ts >= TIMESTAMP '2024-03-01 00:00:00' AND event_ts < TIMESTAMP '2024-04-01 00:00:00' — движок автоматически применяет month() transform к предикату"
+        },
+        {
+          "id": "c",
+          "text": "WHERE PARTITION('event_month') = '2024-03' — специальный синтаксис Iceberg"
+        },
+        {
+          "id": "d",
+          "text": "Hidden partitioning не работает в DataFusion — нужно явно указать partition column"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Hidden partitioning — ключевая концепция Iceberg. Пользователь пишет WHERE по исходной колонке (event_ts), а движок знает из partition spec, что таблица партиционирована по month(event_ts). Он автоматически вычисляет month() от предиката и пропускает ненужные партиции. Колонки event_month не существует в schema — она скрыта.",
+      "bloomLevel": "applied",
+      "studyHint": "Hidden partitioning: пишем WHERE по исходной колонке → движок применяет transform автоматически."
+    },
+    {
+      "id": "df-m12-03-q3",
+      "type": "multiple-choice",
+      "question": "Таблица создана с partition spec month(event_ts). Через полгода нагрузка выросла и нужно партиционирование по дням. Как изменить схему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Перезаписать все данные с новой схемой партиционирования — как в Delta Lake"
+        },
+        {
+          "id": "b",
+          "text": "update_spec(): удалить month, добавить day. Старые файлы остаются в месячных партициях, новые пишутся в дневные. Iceberg прозрачно читает обе схемы"
+        },
+        {
+          "id": "c",
+          "text": "Создать новую таблицу с дневным партиционированием и мигрировать данные"
+        },
+        {
+          "id": "d",
+          "text": "Partition evolution невозможна — это ограничение формата"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Partition evolution — уникальная возможность Iceberg. При вызове update_spec() Iceberg создаёт новый partition spec. Старые файлы ассоциированы со spec #0 (month), новые — со spec #1 (day). При запросе Iceberg проверяет оба spec и правильно фильтрует файлы для каждого. Данные не перезаписываются.",
+      "bloomLevel": "applied",
+      "studyHint": "Partition evolution: update_spec() → новый spec ID. Старые файлы = старый spec, новые = новый spec."
+    },
+    {
+      "id": "df-m12-03-q4",
+      "type": "multiple-choice",
+      "question": "В чём принципиальное отличие Iceberg от Delta Lake при подключении к DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Delta подключается по пути к директории (path-based), Iceberg требует каталог (catalog) — реестр таблиц с указателем на текущий metadata file"
+        },
+        {
+          "id": "b",
+          "text": "Iceberg использует Arrow вместо Parquet для хранения данных"
+        },
+        {
+          "id": "c",
+          "text": "Delta поддерживает SQL, а Iceberg — только DataFrame API"
+        },
+        {
+          "id": "d",
+          "text": "Нет принципиальной разницы — оба подключаются через register_table_provider()"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "Delta Lake работает path-based: DeltaTable('./path') или DeltaTable('s3://bucket/path'). Iceberg требует каталог (REST, Hive Metastore, Glue, SQL): load_catalog() → catalog.load_table('db.table'). Каталог хранит указатель на текущий metadata file для каждой таблицы. Оба используют register_table_provider(), но источник объекта разный.",
+      "bloomLevel": "conceptual",
+      "studyHint": "Delta = DeltaTable(path). Iceberg = load_catalog() → catalog.load_table(name). Каталог обязателен."
+    },
+    {
+      "id": "df-m12-03-q5",
+      "type": "multiple-choice",
+      "question": "Iceberg-таблица имеет schema: event_id (long), event_type (string), legacy_field (string). Колонку legacy_field нужно удалить, а event_type переименовать в action_type. Что произойдёт со старыми Parquet-файлами?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Все файлы будут перезаписаны с новой schema"
+        },
+        {
+          "id": "b",
+          "text": "Файлы не меняются. Iceberg отслеживает колонки по column ID, не по имени. При чтении старых файлов: legacy_field игнорируется, event_type читается как action_type"
+        },
+        {
+          "id": "c",
+          "text": "Старые файлы станут нечитаемыми — нужна миграция"
+        },
+        {
+          "id": "d",
+          "text": "Schema evolution в Iceberg не поддерживает rename и drop одновременно"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Iceberg ассоциирует каждую колонку с уникальным column ID (не именем). При rename event_type → action_type column ID не меняется — старые файлы читаются корректно. При drop legacy_field — column ID помечается как deleted, данные в старых файлах пропускаются. Перезапись файлов не нужна.",
+      "bloomLevel": "analytical",
+      "studyHint": "Column ID — ключ. Rename = тот же ID, новое имя. Drop = ID помечен deleted. Файлы не перезаписываются."
+    }
+  ]
+}

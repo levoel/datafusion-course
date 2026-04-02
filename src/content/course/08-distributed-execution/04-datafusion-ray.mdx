@@ -89,7 +89,7 @@ DataFusion Ray заменяет `RepartitionExec` на пару кастомны
 ```
 ShuffleWriterExec(partition_count=16)
 └── FilterExec(amount > 100)
-    └── ParquetExec(orders.parquet)
+    └── DataSourceExec(orders.parquet, format=parquet)
 
 -- Результат: 16 файлов на shared filesystem
 /shuffle/stage-1/part-0.arrow

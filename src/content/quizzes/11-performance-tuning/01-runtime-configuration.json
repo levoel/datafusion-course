@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "11-performance-tuning/01-runtime-configuration",
+  "moduleId": "11-performance-tuning",
+  "_meta": {
+    "idPrefix": "df-m11-01"
+  },
+  "questions": [
+    {
+      "id": "df-m11-01-q1",
+      "type": "multiple-choice",
+      "question": "В чём принципиальная разница между SessionConfig и RuntimeEnv при настройке DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SessionConfig — параметры запросов (batch_size, target_partitions), меняется дёшево на каждый контекст. RuntimeEnv — инфраструктура (MemoryPool, DiskManager), создаётся один раз и разделяется между контекстами"
+        },
+        {
+          "id": "b",
+          "text": "SessionConfig хранит SQL-диалект, RuntimeEnv хранит всё остальное. Оба пересоздаются на каждый запрос"
+        },
+        {
+          "id": "c",
+          "text": "RuntimeEnv — обёртка над SessionConfig для многопоточных сценариев. В однопоточном режиме достаточно SessionConfig"
+        },
+        {
+          "id": "d",
+          "text": "SessionConfig и RuntimeEnv взаимозаменяемы — все параметры можно задать через любой из них"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "SessionConfig содержит «лёгкие» параметры: batch_size, target_partitions, repartition-флаги, настройки оптимизатора. Каждый SessionContext получает свой экземпляр, и его можно менять между запросами. RuntimeEnv содержит «тяжёлую» инфраструктуру: MemoryPool, DiskManager, ObjectStoreRegistry. Он создаётся один раз через RuntimeEnvBuilder и разделяется между несколькими SessionContext. Пересоздание RuntimeEnv теряет кеши ObjectStore.",
+      "bloomLevel": "conceptual",
+      "studyHint": "SessionConfig = дешёвая перенастройка. RuntimeEnv = дорогая инфраструктура. Не пересоздавайте RuntimeEnv на каждый запрос."
+    },
+    {
+      "id": "df-m11-01-q2",
+      "type": "multiple-choice",
+      "question": "Контейнер с лимитом 2 GB RAM запускает DataFusion для аналитических запросов с JOIN и GROUP BY. Какой набор параметров оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "batch_size=8192, target_partitions=32, FairSpillPool(2_000_000_000), без DiskManager"
+        },
+        {
+          "id": "b",
+          "text": "batch_size=1024, target_partitions=4, FairSpillPool(1_500_000_000), DiskManagerConfig::NewOs, spill_compression=Zstd"
+        },
+        {
+          "id": "c",
+          "text": "batch_size=65536, target_partitions=2, GreedyMemoryPool(1_800_000_000)"
+        },
+        {
+          "id": "d",
+          "text": "Дефолтные значения подходят для любого контейнера — DataFusion автоматически определяет лимиты"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Для контейнера с 2 GB: (1) FairSpillPool на ~75% RAM = 1.5 GB — оставляем 500 MB для OS и overhead; (2) DiskManager обязателен для spill — без него FairSpillPool выбросит ResourcesExhausted; (3) batch_size=1024 уменьшает пиковое потребление; (4) target_partitions=4 даёт ~375 MB на партицию; (5) Zstd compression уменьшает I/O при spill. Вариант (a) использует 100% RAM и 32 партиции — по 62 MB на каждую, слишком мало для JOIN.",
+      "bloomLevel": "applied",
+      "studyHint": "Memory_limit ≈ 75% контейнера. target_partitions × overhead < memory_limit. DiskManager обязателен при FairSpillPool."
+    },
+    {
+      "id": "df-m11-01-q3",
+      "type": "multiple-choice",
+      "question": "Инженер установил target_partitions = 128 на 8-ядерной машине, ожидая ускорения. EXPLAIN ANALYZE показывает, что запрос стал медленнее. Почему?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion не поддерживает более 64 партиций"
+        },
+        {
+          "id": "b",
+          "text": "128 задач конкурируют за 8 ядер — overhead на scheduling, context switching, и каждая партиция получает меньше памяти для буферизации"
+        },
+        {
+          "id": "c",
+          "text": "target_partitions влияет только на вывод, не на производительность"
+        },
+        {
+          "id": "d",
+          "text": "Это нормально — нужно перезапустить SessionContext для применения изменений"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "target_partitions определяет количество параллельных задач. При 128 задачах на 8 ядрах: (1) 16 задач на ядро → постоянный context switching; (2) memory_limit / 128 — каждая партиция получает гораздо меньше памяти, вызывая ранний spill; (3) больше промежуточных буферов для Hash/Sort → больше allocations. Оптимально: target_partitions ≈ num_cores (8) или num_cores × 2 (16).",
+      "bloomLevel": "analytical",
+      "studyHint": "target_partitions ≈ num_cores. Больше партиций = больше overhead + меньше памяти на каждую."
+    },
+    {
+      "id": "df-m11-01-q4",
+      "type": "multiple-choice",
+      "question": "Какой алгоритм сжатия spill-файлов выбрать для CPU-bound аналитической нагрузки, где время запроса критично?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Zstd — лучший compression ratio, экономит больше I/O"
+        },
+        {
+          "id": "b",
+          "text": "LZ4 — быстрее сжатие и разжатие, чем Zstd, при приемлемом ratio. Для CPU-bound нагрузки минимизируем CPU-overhead на compression"
+        },
+        {
+          "id": "c",
+          "text": "Без сжатия — любое сжатие добавляет CPU-overhead"
+        },
+        {
+          "id": "d",
+          "text": "Не имеет значения — сжатие spill-файлов не влияет на время запроса"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "При CPU-bound нагрузке каждый цикл CPU ценен. LZ4 тратит значительно меньше CPU на сжатие/разжатие, чем Zstd, при этом уменьшает I/O примерно в 2 раза (ratio ~2:1 vs ~3:1 у Zstd). Без сжатия (вариант c) I/O-overhead может превысить экономию CPU — особенно на HDD или сетевых дисках. Zstd (вариант a) лучше для I/O-bound нагрузок, где CPU свободен.",
+      "bloomLevel": "analytical",
+      "studyHint": "CPU-bound → LZ4 (быстрый). I/O-bound → Zstd (лучше ratio). RAM-disk → None."
+    },
+    {
+      "id": "df-m11-01-q5",
+      "type": "multiple-choice",
+      "question": "Как посмотреть текущее значение batch_size в интерактивной SQL-сессии DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "SELECT @@batch_size"
+        },
+        {
+          "id": "b",
+          "text": "SHOW datafusion.execution.batch_size"
+        },
+        {
+          "id": "c",
+          "text": "DESCRIBE SETTINGS"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно — batch_size доступен только программно через SessionConfig::batch_size()"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion поддерживает SHOW для просмотра параметров: SHOW datafusion.execution.batch_size возвращает текущее значение. SHOW ALL показывает все параметры. SHOW ALL LIKE '%batch%' — фильтрация по шаблону. Все параметры SessionConfig доступны как через SQL (SET/SHOW), так и программно.",
+      "bloomLevel": "conceptual",
+      "studyHint": "SHOW param — текущее значение. SET param = value — изменить. SHOW ALL — все параметры."
+    }
+  ]
+}

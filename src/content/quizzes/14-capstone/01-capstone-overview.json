@@ -1,12 +1,12 @@
 {
-  "lessonSlug": "10-capstone/01-capstone-overview",
-  "moduleId": "10-capstone",
+  "lessonSlug": "14-capstone/01-capstone-overview",
+  "moduleId": "14-capstone",
   "_meta": {
-    "idPrefix": "df-m10-01"
+    "idPrefix": "df-m14-01"
   },
   "questions": [
     {
-      "id": "df-m10-01-q1",
+      "id": "df-m14-01-q1",
       "type": "multiple-choice",
       "question": "Архитектура мини аналитического движка состоит из четырёх слоёв: DataLoader, UDF Registry, Query Layer и Report Generator. Какой слой отвечает за то, что SQL и DataFrame API генерируют одинаковый план выполнения?",
       "options": [
@@ -33,7 +33,7 @@
       "studyHint": "SQL и DataFrame → один LogicalPlan → общий оптимизатор → общий executor. Это Query Layer в capstone-архитектуре."
     },
     {
-      "id": "df-m10-01-q2",
+      "id": "df-m14-01-q2",
       "type": "multiple-choice",
       "question": "Capstone-проект использует DataFusion Python вместо Rust API. Почему производительность Python-версии сопоставима с нативным DataFusion?",
       "options": [
@@ -60,7 +60,7 @@
       "studyHint": "PyO3: Python → Rust без копирования данных (Arrow zero-copy). Python = тонкий интерфейс, Rust = выполнение."
     },
     {
-      "id": "df-m10-01-q3",
+      "id": "df-m14-01-q3",
       "type": "multiple-choice",
       "question": "Слой DataLoader в capstone регистрирует Parquet-файлы как таблицы через register_parquet. Какой компонент DataFusion стоит за этой операцией?",
       "options": [
@@ -87,7 +87,7 @@
       "studyHint": "register_parquet → ParquetTableProvider → CatalogProvider. Каталог = реестр таблиц, TableProvider = как читать данные."
     },
     {
-      "id": "df-m10-01-q4",
+      "id": "df-m14-01-q4",
       "type": "multiple-choice",
       "question": "Функциональное требование FR-3 предусматривает UDAF для средневзвешенного значения. Какие четыре метода Accumulator необходимо реализовать и почему merge() критичен для корректности?",
       "options": [
@@ -114,7 +114,7 @@
       "studyHint": "Accumulator: state/update/merge/evaluate. Partial Aggregate по партициям → merge → Final Aggregate. merge() нужен всегда, не только для distributed."
     },
     {
-      "id": "df-m10-01-q5",
+      "id": "df-m14-01-q5",
       "type": "multiple-choice",
       "question": "Report Generator в capstone-архитектуре сохраняет результаты в Parquet. В production-системе этот слой отправлял бы данные в объектное хранилище или Flight-сервис. Какое преимущество Parquet перед CSV для аналитических отчётов?",
       "options": [

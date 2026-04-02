@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "13-real-world-patterns/04-production-observability",
+  "moduleId": "13-real-world-patterns",
+  "_meta": {
+    "idPrefix": "df-m13-04"
+  },
+  "questions": [
+    {
+      "id": "df-m13-04-q1",
+      "type": "multiple-choice",
+      "question": "Какие три столпа observability используются для мониторинга DataFusion-сервиса в production?",
+      "options": [
+        {
+          "id": "a",
+          "text": "CPU профилирование, memory profiling, disk I/O — системные метрики"
+        },
+        {
+          "id": "b",
+          "text": "Structured logging (tracing crate + JSON), метрики (Prometheus histograms/counters/gauges), distributed tracing (OpenTelemetry spans)"
+        },
+        {
+          "id": "c",
+          "text": "Unit tests, integration tests, load tests — тестирование покрывает всё"
+        },
+        {
+          "id": "d",
+          "text": "EXPLAIN ANALYZE, pg_stat_statements, slow query log — как в PostgreSQL"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Три столпа: логи (tracing crate с JSON-форматом, per-request spans со structured полями — tenant_id, duration, plan), метрики (Prometheus — QPS, p50/p95/p99 latency histogram, memory gauge, error counter), трейсы (OpenTelemetry через tracing-opentelemetry — span-иерархия от HTTP request до execute).",
+      "bloomLevel": "conceptual",
+      "studyHint": "Три столпа: логи (tracing), метрики (Prometheus), трейсы (OpenTelemetry). Начните с логов + метрик."
+    },
+    {
+      "id": "df-m13-04-q2",
+      "type": "multiple-choice",
+      "question": "В tracing-subscriber установлен фильтр datafusion=warn. Зачем?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion генерирует много debug/info логов при выполнении запросов (каждый шаг оптимизатора и executor-а) — фильтр подавляет их в production, оставляя только предупреждения"
+        },
+        {
+          "id": "b",
+          "text": "DataFusion логирует SQL запросы в открытом виде — warn-фильтр скрывает их для безопасности"
+        },
+        {
+          "id": "c",
+          "text": "Это ошибка — нужно datafusion=info для production"
+        },
+        {
+          "id": "d",
+          "text": "Фильтр отключает DataFusion полностью — используется только свой код"
+        }
+      ],
+      "correctAnswer": "a",
+      "explanation": "DataFusion на уровне debug/info логирует каждый шаг: парсинг, каждое правило оптимизатора, создание физических операторов. В production это шум — гигабайты логов. Фильтр datafusion=warn оставляет только предупреждения (deprecated API, потенциальные проблемы). Для диагностики конкретного запроса временно включите datafusion=debug.",
+      "bloomLevel": "applied",
+      "studyHint": "datafusion=warn в production (подавляет шум). datafusion=debug для диагностики."
+    },
+    {
+      "id": "df-m13-04-q3",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE программно собирает статистику через ExecutionPlanVisitor после выполнения запроса. Можно ли вызывать его для каждого production-запроса?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да — overhead минимален, DataFusion собирает метрики автоматически"
+        },
+        {
+          "id": "b",
+          "text": "Нет — EXPLAIN ANALYZE реально выполняет запрос, удваивая нагрузку. Используйте только для диагностики: по флагу (?analyze=true) или автоматически для запросов, превышающих порог latency"
+        },
+        {
+          "id": "c",
+          "text": "Да, если включить sampling — анализировать каждый 100-й запрос"
+        },
+        {
+          "id": "d",
+          "text": "Нет — EXPLAIN ANALYZE блокирует все другие запросы"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "EXPLAIN ANALYZE выполняет запрос реально, собирая метрики каждого физического оператора (output_rows, elapsed_compute, spill_count). Это удваивает нагрузку. В production используйте по требованию (флаг в API) или автоматически для медленных запросов (duration > threshold). Для каждого запроса достаточно обычных Prometheus-метрик.",
+      "bloomLevel": "analytical",
+      "studyHint": "EXPLAIN ANALYZE = реальное выполнение + сбор stats. Только для диагностики, не для каждого запроса."
+    },
+    {
+      "id": "df-m13-04-q4",
+      "type": "multiple-choice",
+      "question": "Для Prometheus-мониторинга DataFusion-сервиса нужен histogram латентности запросов. Какие bucket-границы оптимальны?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Линейные: 1s, 2s, 3s, 4s, 5s — простые и понятные"
+        },
+        {
+          "id": "b",
+          "text": "Экспоненциальные от 10ms до 300s: [0.01, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0] — покрывают и быстрые lookup, и тяжёлую аналитику"
+        },
+        {
+          "id": "c",
+          "text": "Один bucket: 1s — всё что быстрее — хорошо, медленнее — плохо"
+        },
+        {
+          "id": "d",
+          "text": "Bucket-ы не нужны — summary с quantiles лучше"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Аналитический сервис обрабатывает запросы от 10ms (lookup) до 300s (тяжёлая аналитика). Экспоненциальные bucket-ы покрывают весь диапазон с разумной гранулярностью: точные percentiles для быстрых запросов (0.01-1s) и обнаружение аномалий для медленных (10-300s). Линейные bucket-ы теряют детали на краях. Summary не агрегируются между инстансами.",
+      "bloomLevel": "applied",
+      "studyHint": "Экспоненциальные buckets от 10ms до 300s. Покрывают lookup и heavy analytics."
+    },
+    {
+      "id": "df-m13-04-q5",
+      "type": "multiple-choice",
+      "question": "Production DataFusion-сервис показывает рост rate(datafusion_spill_operations_total[5m]) > 10. Что это означает и какое действие предпринять?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Spill — нормальная операция, игнорировать"
+        },
+        {
+          "id": "b",
+          "text": "Buffering-операторы (Sort, HashJoin, Aggregate) сбрасывают данные на диск, потому что MemoryPool лимит недостаточен для текущей нагрузки. Действие: увеличить memory_pool лимит или оптимизировать запросы (добавить partition pruning, уменьшить scan scope)"
+        },
+        {
+          "id": "c",
+          "text": "Ошибка DiskManager — нужно перезапустить сервис"
+        },
+        {
+          "id": "d",
+          "text": "Атака: кто-то намеренно генерирует тяжёлые запросы"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Высокий spill rate означает, что buffering-операторы часто превышают свою fair-share в MemoryPool и сбрасывают промежуточные данные на диск. Spill работает корректно (данные не теряются), но снижает производительность на порядки. Действия: (1) увеличить memory_pool лимит, (2) оптимизировать запросы (partition pruning, предикаты для уменьшения scan), (3) проверить, не появились ли новые тяжёлые запросы.",
+      "bloomLevel": "analytical",
+      "studyHint": "Высокий spill rate = мало памяти для нагрузки. Увеличить pool или оптимизировать запросы."
+    }
+  ]
+}

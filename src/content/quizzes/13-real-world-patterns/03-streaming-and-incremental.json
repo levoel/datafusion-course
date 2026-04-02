@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "13-real-world-patterns/03-streaming-and-incremental",
+  "moduleId": "13-real-world-patterns",
+  "_meta": {
+    "idPrefix": "df-m13-03"
+  },
+  "questions": [
+    {
+      "id": "df-m13-03-q1",
+      "type": "multiple-choice",
+      "question": "DataFusion — это прежде всего batch engine. Через какой trait он поддерживает streaming-источники?",
+      "options": [
+        {
+          "id": "a",
+          "text": "StreamConsumer — trait для подключения к Kafka и другим message brokers"
+        },
+        {
+          "id": "b",
+          "text": "StreamingTable (реализация TableProvider) + PartitionStream — регистрирует unbounded источники, позволяя запросам работать с бесконечным потоком RecordBatch"
+        },
+        {
+          "id": "c",
+          "text": "AsyncTableProvider — асинхронная версия TableProvider для streaming"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion не поддерживает streaming — только batch-запросы"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "StreamingTable — реализация TableProvider, которая сообщает DataFusion, что источник бесконечен. Она принимает вектор PartitionStream (каждый partition стримится независимо). Запрос к StreamingTable не завершается — он стримит RecordBatch по мере поступления данных. Оптимизатор учитывает unbounded nature при планировании.",
+      "bloomLevel": "conceptual",
+      "studyHint": "StreamingTable = TableProvider + unbounded. PartitionStream = один partition потока."
+    },
+    {
+      "id": "df-m13-03-q2",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT * FROM live_metrics ORDER BY timestamp выполняется на StreamingTable. Что произойдёт?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataFusion отсортирует по мере поступления — каждый batch будет отсортирован"
+        },
+        {
+          "id": "b",
+          "text": "Физический план не будет сгенерирован — SortExec требует конечного входа, а StreamingTable unbounded"
+        },
+        {
+          "id": "c",
+          "text": "DataFusion автоматически добавит оконную сортировку"
+        },
+        {
+          "id": "d",
+          "text": "Запрос выполнится, но никогда не вернёт результат — Sort ждёт конца данных"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DataFusion обнаруживает конфликт на этапе физического планирования: SortExec — buffering-оператор, который ждёт все данные перед выдачей результата. С unbounded источником это невозможно. Оптимизатор отклоняет план. Для streaming используйте только streaming-совместимые операторы: Filter, Projection, partial Aggregate.",
+      "bloomLevel": "analytical",
+      "studyHint": "Sort + unbounded = ошибка при планировании. Нельзя отсортировать бесконечность."
+    },
+    {
+      "id": "df-m13-03-q3",
+      "type": "multiple-choice",
+      "question": "Нужна агрегация по 5-минутным окнам с полным SQL (JOIN, ORDER BY), но данные поступают непрерывно. Какой подход оптимален для DataFusion?",
+      "options": [
+        {
+          "id": "a",
+          "text": "StreamingTable с GROUP BY + оконной функцией — DataFusion поддерживает tumbling windows"
+        },
+        {
+          "id": "b",
+          "text": "Micro-batch: каждые 5 минут читать новые данные, регистрировать как MemTable, выполнять полный batch-запрос с любыми SQL-операторами, очищать временную таблицу"
+        },
+        {
+          "id": "c",
+          "text": "Continuous query с approximate aggregation — HyperLogLog для COUNT DISTINCT"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно — DataFusion не может обрабатывать streaming-данные"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Micro-batch — прагматичный подход: каждый interval читаем новые данные, регистрируем как in-memory MemTable, выполняем полный batch SQL (JOIN, ORDER BY, оконные функции — всё работает, потому что данные конечны). Задержка равна batch_interval (5 минут). Для большинства аналитических задач это допустимо и значительно проще, чем реализация windowing в streaming.",
+      "bloomLevel": "applied",
+      "studyHint": "Micro-batch: read → MemTable → full SQL → emit → cleanup. Полный SQL за счёт задержки."
+    },
+    {
+      "id": "df-m13-03-q4",
+      "type": "multiple-choice",
+      "question": "DataFusion не имеет встроенной поддержки watermark. Как реализовать отслеживание event time в streaming-сценарии?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Использовать SET datafusion.execution.watermark_interval"
+        },
+        {
+          "id": "b",
+          "text": "Реализовать watermark в PartitionStream или обёртке SendableRecordBatchStream: отслеживать max event_time в каждом batch через AtomicI64"
+        },
+        {
+          "id": "c",
+          "text": "Подключить Flink как co-processor для watermark tracking"
+        },
+        {
+          "id": "d",
+          "text": "Watermark не нужен — DataFusion обрабатывает данные в порядке поступления"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Watermark — ответственность вашего кода. Оборачиваете SendableRecordBatchStream, в poll_next вычисляете max event_time через compute::max() для timestamp-колонки, обновляете AtomicI64. Внешний код читает watermark для определения, какие окна можно закрыть. Это даёт полный контроль, но требует ручной реализации.",
+      "bloomLevel": "applied",
+      "studyHint": "Watermark = ваш код. Обёртка Stream, poll_next → max(event_time) → AtomicI64."
+    },
+    {
+      "id": "df-m13-03-q5",
+      "type": "multiple-choice",
+      "question": "Для Kafka-источника в DataFusion PartitionStream, какой mapping между Kafka partitions и DataFusion partitions оптимален?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Все Kafka partitions → один PartitionStream — проще реализовать"
+        },
+        {
+          "id": "b",
+          "text": "Каждый Kafka partition → отдельный PartitionStream — параллельное чтение без координации"
+        },
+        {
+          "id": "c",
+          "text": "Один PartitionStream на topic, без учёта Kafka partitions"
+        },
+        {
+          "id": "d",
+          "text": "DataFusion автоматически определяет количество Kafka partitions"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "StreamingTable принимает Vec<Arc<dyn PartitionStream>> — каждый PartitionStream стримится независимо. Mapping 1:1 между Kafka partition и DataFusion PartitionStream обеспечивает параллельное чтение без координации: каждый consumer читает свой partition, DataFusion параллельно обрабатывает все потоки через target_partitions.",
+      "bloomLevel": "conceptual",
+      "studyHint": "1 Kafka partition = 1 PartitionStream. Параллельное чтение без координации."
+    }
+  ]
+}

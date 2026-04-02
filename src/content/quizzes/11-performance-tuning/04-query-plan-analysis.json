@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "11-performance-tuning/04-query-plan-analysis",
+  "moduleId": "11-performance-tuning",
+  "_meta": {
+    "idPrefix": "df-m11-04"
+  },
+  "questions": [
+    {
+      "id": "df-m11-04-q1",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает: SortExec elapsed_compute=12000ms, AggregateExec elapsed_compute=200ms, DataSourceExec elapsed_compute=300ms. Какой оператор является bottleneck и какой первый шаг оптимизации?",
+      "options": [
+        {
+          "id": "a",
+          "text": "DataSourceExec — всё начинается с чтения данных, нужно оптимизировать файлы"
+        },
+        {
+          "id": "b",
+          "text": "SortExec (96% времени). Первый шаг: проверить, есть ли LIMIT — DataFusion использует TopK для ORDER BY ... LIMIT N, что O(N log K) вместо O(N log N)"
+        },
+        {
+          "id": "c",
+          "text": "AggregateExec — агрегации всегда самое узкое место"
+        },
+        {
+          "id": "d",
+          "text": "Нельзя определить bottleneck по elapsed_compute — нужен CPU profiler"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Bottleneck = оператор с максимальным elapsed_compute. SortExec: 12000ms из 12500ms общего времени — 96%. Первая оптимизация: добавить LIMIT если возможно — DataFusion автоматически переключает SortExec на TopK (fetch=N), который поддерживает heap размера K и обрабатывает данные за один проход. Для ORDER BY amount DESC LIMIT 10 на 10M строк: TopK ~100ms вместо полной сортировки ~12s.",
+      "bloomLevel": "applied",
+      "studyHint": "max(elapsed_compute) = bottleneck. Sort без LIMIT → TopK с LIMIT. TopK: O(N log K) вместо O(N log N)."
+    },
+    {
+      "id": "df-m11-04-q2",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает HashJoinExec с build_mem_used=2_000_000_000 (2 GB) и memory_limit=4 GB. Какой подход уменьшит потребление памяти на build-сторону JOIN?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить memory_limit до 8 GB — JOIN поместится в память"
+        },
+        {
+          "id": "b",
+          "text": "Добавить pre-filter на build-сторону (WHERE clause, уменьшающий количество строк) или переключить на SortMergeJoin: SET datafusion.optimizer.prefer_hash_join = false"
+        },
+        {
+          "id": "c",
+          "text": "Уменьшить batch_size — это уменьшит потребление build-стороны"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно — HashJoin всегда буферизирует всю build-сторону"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Два подхода: (1) Pre-filter: добавить WHERE или CTE, уменьшающий build-сторону до JOIN — DataFusion может pushdown фильтр, но при сложных выражениях явный CTE надёжнее; (2) SortMergeJoin через prefer_hash_join = false — не буферизирует всю сторону, потребляет меньше памяти при стоимости сортировки. Вариант (c) не поможет — batch_size не влияет на размер hash table. Вариант (a) — не оптимизация, а увеличение ресурсов.",
+      "bloomLevel": "applied",
+      "studyHint": "build_mem слишком большой → pre-filter (CTE с WHERE) или SortMergeJoin (prefer_hash_join = false)."
+    },
+    {
+      "id": "df-m11-04-q3",
+      "type": "multiple-choice",
+      "question": "EXPLAIN ANALYZE показывает AggregateExec с spill_count=47 и spilled_bytes=890_000_000. Запрос работает, но медленно. Какая комбинация изменений наиболее эффективно уменьшит spill?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Увеличить batch_size — больше данных обработается за раз"
+        },
+        {
+          "id": "b",
+          "text": "Уменьшить target_partitions (больше памяти на партицию) + включить spill_compression = zstd (меньше I/O при spill)"
+        },
+        {
+          "id": "c",
+          "text": "Отключить DiskManager — без spill запрос не будет замедляться"
+        },
+        {
+          "id": "d",
+          "text": "Использовать GreedyMemoryPool вместо FairSpillPool — он не ограничивает память"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Уменьшение target_partitions: при 8→4 партициях каждая получает вдвое больше памяти — меньше вероятность spill. spill_compression = zstd: при spill_count=47 и 890 MB сброшенных данных, Zstd (~3:1 ratio) уменьшает I/O до ~300 MB — значительное ускорение. Отключение DiskManager (c) превратит spill в ResourcesExhausted — запрос упадёт. GreedyMemoryPool (d) без лимита рискует OOM.",
+      "bloomLevel": "analytical",
+      "studyHint": "spill = недостаток памяти. Уменьшить партиции → больше памяти. Сжатие spill → меньше I/O."
+    },
+    {
+      "id": "df-m11-04-q4",
+      "type": "multiple-choice",
+      "question": "Запрос SELECT COUNT(DISTINCT user_id) FROM events на таблице с 500M строк вызывает spill и выполняется 45 секунд. Для дашборда достаточно приблизительного результата. Какую функцию использовать?",
+      "options": [
+        {
+          "id": "a",
+          "text": "COUNT(user_id) — без DISTINCT быстрее"
+        },
+        {
+          "id": "b",
+          "text": "approx_distinct(user_id) — использует HyperLogLog с ошибкой < 2% и O(1) памяти, без spill"
+        },
+        {
+          "id": "c",
+          "text": "COUNT(DISTINCT user_id) с увеличенным memory_limit — spill исчезнет"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно — для exact count нет приближённой альтернативы в DataFusion"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "approx_distinct() использует HyperLogLog — вероятностная структура данных, потребляющая O(1) памяти (несколько KB) вне зависимости от количества уникальных значений. Гарантирует ошибку < 2% для большинства распределений. На 500M строках: точный COUNT(DISTINCT) требует hash set на ~500M ключей (десятки GB), approx_distinct — ~16 KB. Для дашбордов ошибка < 2% приемлема.",
+      "bloomLevel": "applied",
+      "studyHint": "approx_distinct = HyperLogLog, O(1) память, ошибка < 2%. Для дашбордов — всегда предпочтительнее."
+    },
+    {
+      "id": "df-m11-04-q5",
+      "type": "multiple-choice",
+      "question": "Инженер одновременно изменил target_partitions с 8 на 4 и batch_size с 8192 на 2048. Запрос ускорился на 40%. Можно ли определить, какое изменение помогло?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да — target_partitions всегда влияет больше, чем batch_size"
+        },
+        {
+          "id": "b",
+          "text": "Нет — два одновременных изменения не позволяют атрибутировать результат. Нужно откатить одно изменение и замерить повторно"
+        },
+        {
+          "id": "c",
+          "text": "Да — EXPLAIN ANALYZE покажет, какое изменение повлияло"
+        },
+        {
+          "id": "d",
+          "text": "Да — если spill уменьшился, помогло target_partitions, если нет — batch_size"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "Два одновременных изменения нарушают принцип «меняй одно за раз». Уменьшение target_partitions увеличивает память на партицию (уменьшает spill), а уменьшение batch_size уменьшает пиковое потребление (тоже уменьшает spill). Оба влияют на одну метрику — невозможно разделить эффекты. Правильный подход: откатить batch_size к 8192, замерить → если 40% сохраняется, помогло target_partitions. Если нет — помогла комбинация.",
+      "bloomLevel": "analytical",
+      "studyHint": "Одно изменение за раз → измерение → следующее изменение. Иначе невозможно атрибутировать результат."
+    }
+  ]
+}

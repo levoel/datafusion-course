@@ -188,6 +188,10 @@ let square_udf = create_udf(
 );
 ```
 
+<Callout type="warning">
+Функция `create_udf` считается устаревшей начиная с DataFusion 42.x. Для новых проектов используйте `ScalarUDF::new_from_impl(impl ScalarUDFImpl)` — он даёт полный контроль над сигнатурой, типизацией и поведением оптимизатора. `create_udf` сохранена только для обратной совместимости.
+</Callout>
+
 ### Способ 2: ScalarUDF::new_from_impl (полный контроль)
 
 Для production-функций используйте trait `ScalarUDFImpl`:

@@ -1,0 +1,144 @@
+{
+  "lessonSlug": "12-lakehouse-integration/02-delta-lake",
+  "moduleId": "12-lakehouse-integration",
+  "_meta": {
+    "idPrefix": "df-m12-02"
+  },
+  "questions": [
+    {
+      "id": "df-m12-02-q1",
+      "type": "multiple-choice",
+      "question": "Как подключить Delta-таблицу к DataFusion в Python?",
+      "options": [
+        {
+          "id": "a",
+          "text": "ctx.register_parquet('t', './delta_table/') — DataFusion автоматически распознаёт Delta-формат по наличию _delta_log"
+        },
+        {
+          "id": "b",
+          "text": "from deltalake import DeltaTable; ctx.register_table_provider('t', DeltaTable('./path')) — DeltaTable реализует TableProvider"
+        },
+        {
+          "id": "c",
+          "text": "ctx.sql(\"CREATE EXTERNAL TABLE t STORED AS DELTA LOCATION './path'\") — через SQL DDL"
+        },
+        {
+          "id": "d",
+          "text": "ctx.register_delta('t', './path') — встроенный метод DataFusion для Delta"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "DeltaTable из пакета deltalake (Python-binding delta-rs) реализует протокол TableProvider. Метод register_table_provider() принимает любой TableProvider. DataFusion не имеет встроенной поддержки Delta — интеграция через внешнюю библиотеку.",
+      "bloomLevel": "applied",
+      "studyHint": "DeltaTable(path) → ctx.register_table_provider(name, delta). Универсальный метод для любого TableProvider."
+    },
+    {
+      "id": "df-m12-02-q2",
+      "type": "multiple-choice",
+      "question": "ETL-job записал дубликаты в Delta-таблицу на версии 15. Как откатить данные к версии 14?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Удалить файлы из _delta_log/ начиная с версии 15"
+        },
+        {
+          "id": "b",
+          "text": "DeltaTable(path, version=14) → зарегистрировать в DataFusion и перечитать данные в новую таблицу"
+        },
+        {
+          "id": "c",
+          "text": "Time travel невозможен — данные версии 14 уже перезаписаны"
+        },
+        {
+          "id": "d",
+          "text": "dt.restore(14) или dt.load_as_of(timestamp) — Delta протокол позволяет откатить состояние таблицы к предыдущей версии"
+        }
+      ],
+      "correctAnswer": "d",
+      "explanation": "Delta Lake хранит историю всех commits в _delta_log/. Метод restore(version) создаёт новый commit, который восстанавливает состояние таблицы до указанной версии. Файлы данных не удаляются (пока не запущен VACUUM), поэтому откат безопасен. Вариант (b) позволяет читать старые данные, но не меняет текущее состояние таблицы.",
+      "bloomLevel": "applied",
+      "studyHint": "restore(version) — создаёт новый commit с состоянием старой версии. VACUUM удаляет старые файлы."
+    },
+    {
+      "id": "df-m12-02-q3",
+      "type": "multiple-choice",
+      "question": "Delta-таблица содержит 5000 файлов (средний размер 2 MB), записанных частыми append-операциями. Какая операция решит проблему производительности?",
+      "options": [
+        {
+          "id": "a",
+          "text": "VACUUM — удалить старые версии файлов"
+        },
+        {
+          "id": "b",
+          "text": "OPTIMIZE compact — объединить мелкие файлы в оптимальные (128-256 MB), уменьшив количество файлов с 5000 до ~50"
+        },
+        {
+          "id": "c",
+          "text": "Увеличить batch_size в DataFusion — читать больше строк за раз"
+        },
+        {
+          "id": "d",
+          "text": "Перейти на Iceberg — он лучше работает с мелкими файлами"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "5000 файлов по 2 MB — типичный результат частых append (streaming или микро-batch ETL). OPTIMIZE compact объединяет файлы в целевой размер (128-256 MB), сокращая количество файлов в ~100 раз. Это уменьшает: (1) metadata в transaction log, (2) количество I/O-запросов к object store, (3) overhead планирования в DataFusion.",
+      "bloomLevel": "applied",
+      "studyHint": "Много мелких файлов → OPTIMIZE compact. Z-ORDER — для улучшения metadata skipping по нескольким колонкам."
+    },
+    {
+      "id": "df-m12-02-q4",
+      "type": "multiple-choice",
+      "question": "Запрос WHERE amount > 1000 к Delta-таблице с 500 файлами. Файлы содержат случайные диапазоны amount (min=0.01, max=99999 в каждом файле). Даст ли metadata skipping ускорение?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Да — Delta всегда пропускает файлы по min/max statistics"
+        },
+        {
+          "id": "b",
+          "text": "Нет — min=0.01 и max=99999 в каждом файле, поэтому каждый файл потенциально содержит amount > 1000. Все 500 файлов будут прочитаны"
+        },
+        {
+          "id": "c",
+          "text": "Частично — Delta пропустит примерно 50% файлов"
+        },
+        {
+          "id": "d",
+          "text": "Metadata skipping работает только для строковых колонок, не для числовых"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "File-level metadata skipping основан на min/max statistics. Если каждый файл содержит значения от 0.01 до 99999, то min <= 1000 <= max для всех файлов — ни один не будет пропущен. Для эффективного skipping данные должны быть отсортированы по колонке фильтрации (или использован Z-ORDER), чтобы min/max в каждом файле были узкими.",
+      "bloomLevel": "analytical",
+      "studyHint": "Metadata skipping эффективен только когда min/max диапазоны в файлах не перекрываются. Сортировка данных — ключ."
+    },
+    {
+      "id": "df-m12-02-q5",
+      "type": "multiple-choice",
+      "question": "Три ETL-job-а одновременно выполняют append в одну Delta-таблицу. Один из них получает ConflictError. Какой isolation level Delta Lake нужно настроить, чтобы concurrent appends не конфликтовали?",
+      "options": [
+        {
+          "id": "a",
+          "text": "Serializable — он автоматически разрешает все конфликты"
+        },
+        {
+          "id": "b",
+          "text": "WriteSerializable — допускает concurrent appends без конфликтов, так как append-операции добавляют новые файлы и не пересекаются"
+        },
+        {
+          "id": "c",
+          "text": "ReadCommitted — минимальная изоляция, но без конфликтов"
+        },
+        {
+          "id": "d",
+          "text": "Невозможно — Delta Lake не поддерживает concurrent writers"
+        }
+      ],
+      "correctAnswer": "b",
+      "explanation": "В режиме Serializable (default) Delta проверяет, что файлы, прочитанные одним writer, не были изменены другим — это может давать ложные конфликты при concurrent append. WriteSerializable ослабляет проверку: pure appends (добавление новых файлов без чтения существующих) не конфликтуют друг с другом.",
+      "bloomLevel": "analytical",
+      "studyHint": "Serializable → конфликты при concurrent append. WriteSerializable → appends не конфликтуют."
+    }
+  ]
+}

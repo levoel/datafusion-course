@@ -1,12 +1,12 @@
 {
-  "lessonSlug": "10-capstone/03-course-review",
-  "moduleId": "10-capstone",
+  "lessonSlug": "14-capstone/03-course-review",
+  "moduleId": "14-capstone",
   "_meta": {
-    "idPrefix": "df-m10-03"
+    "idPrefix": "df-m14-03"
   },
   "questions": [
     {
-      "id": "df-m10-03-q1",
+      "id": "df-m14-03-q1",
       "type": "multiple-choice",
       "question": "Курс описывает три траектории после обучения: Rust (ядро), Comet (Spark-экосистема), Python (data science). Какая комбинация модулей составляет базу для Rust-траектории?",
       "options": [
@@ -24,7 +24,7 @@
         },
         {
           "id": "d",
-          "text": "M04 + M10 — Python-биндинги покрывают весь Rust API"
+          "text": "M04 + M14 — Python-биндинги покрывают весь Rust API"
         }
       ],
       "correctAnswer": "b",
@@ -33,7 +33,7 @@
       "studyHint": "Rust-путь: M02 (как устроено) + M05 (как расширять) + M06 (как оптимизировать). Три слоя для контрибьюции в ядро."
     },
     {
-      "id": "df-m10-03-q2",
+      "id": "df-m14-03-q2",
       "type": "multiple-choice",
       "question": "За 11 модулей курса знания строились послойно: Arrow (данные) → архитектура (движок) → API → расширяемость → оптимизация → экосистема. Почему Arrow Foundation идёт первым, до архитектуры DataFusion?",
       "options": [
@@ -60,7 +60,7 @@
       "studyHint": "Arrow = фундамент. RecordBatch → executor. Parquet → storage. IPC → transfer. Columnar layout → vectorized execution + predicate pushdown."
     },
     {
-      "id": "df-m10-03-q3",
+      "id": "df-m14-03-q3",
       "type": "multiple-choice",
       "question": "DataFusion используется в двух ролях: как конечный инструмент (DataFusion Python для ETL) и как встроенная библиотека (InfluxDB, Comet, Arroyo). Какое свойство архитектуры делает обе роли возможными?",
       "options": [
@@ -87,7 +87,7 @@
       "studyHint": "Trait-based модульность = ключ к двойной роли. Конечный инструмент: всё из коробки. Библиотека: замена компонентов через traits."
     },
     {
-      "id": "df-m10-03-q4",
+      "id": "df-m14-03-q4",
       "type": "multiple-choice",
       "question": "Курс упоминает, что DataFusion выпускает мажорные версии каждые 1–2 месяца. Какое практическое следствие такого темпа для проектов экосистемы?",
       "options": [
@@ -114,7 +114,7 @@
       "studyHint": "Быстрые релизы: автоулучшения через cargo update + обязанность адаптировать trait API. Регулярные обновления < накопление долга."
     },
     {
-      "id": "df-m10-03-q5",
+      "id": "df-m14-03-q5",
       "type": "multiple-choice",
       "question": "Для карьерной траектории 'стартапы' курс указывает DataFusion как библиотеку для специализированных движков (time-series, observability, semantic layer). Какое преимущество перед созданием движка с нуля?",
       "options": [
