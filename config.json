@@ -71,6 +71,13 @@
     "rust",
     "analytics"
   ],
+  "prerequisites": {
+    "courses": [
+      {"slug": "python-course", "level": "required"},
+      {"slug": "storage-formats", "level": "recommended"}
+    ],
+    "external": ["Rust базовый уровень опционально (для UDF и расширений)"]
+  },
   "estimatedHours": 40,
   "pricing": {
     "type": "free"
