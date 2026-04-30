@@ -440,3 +440,24 @@ result.show()
 <Callout type="tip">
 Для углублённого изучения внутренней архитектуры Iceberg (трёхуровневые метаданные, manifest files, partition evolution, schema evolution) см. курс [Storage Formats Deep-Dive](/storage-formats/12-iceberg/01-catalog-architecture-metadata/).
 </Callout>
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="12-iceberg/01-catalog-architecture-metadata"
+  label="Iceberg: catalog и metadata layer"
+  preview="Manifest list, manifest files, REST catalog (Polaris/Lakekeeper/Unity Catalog OSS) — детальное устройство metadata-tier Iceberg."
+/>
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="12-iceberg/06-maintenance-ecosystem-versions"
+  label="Iceberg maintenance + ecosystem"
+  preview="Compaction, snapshot expiration, orphan files; экосистема engine'ов, читающих Iceberg — Spark, Trino, Flink, DataFusion (iceberg-rust)."
+/>
+
+<CrossCourseRef
+  courseId="sd-data-engineer"
+  lessonSlug="06-lakehouse/01-lakehouse-architecture"
+  label="Lakehouse architecture: system design"
+  preview="Как Iceberg/Delta вписываются в архитектуру современной data-platform — bronze/silver/gold, catalog choices, governance trade-offs."
+/>

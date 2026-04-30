@@ -188,3 +188,10 @@ assert_eq!(batch.num_columns(), 3);
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> NULL -- свойство позиции (bitmap), не значение в data buffer
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> RecordBatch = схема + набор колонок одинаковой длины
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> DataFusion обрабатывает данные как поток RecordBatch (~8192 строк на batch)
+
+<CrossCourseRef
+  courseId="storage-formats"
+  lessonSlug="07-arrow/01-memory-layout"
+  label="Arrow memory layout: bit-level"
+  preview="Те же концепции validity bitmap / offsets / data buffer на уровне формата — как Arrow C-Data Interface фиксирует layout для всех языков."
+/>

@@ -282,3 +282,17 @@ DataFusion 53.x содержит более 30 логических правил
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> `CommonSubexprEliminate` — вычисляет повторяющиеся подвыражения один раз
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> `EliminateLimit` / `EliminateFilter` / `PropagateEmptyRelation` — удаляют бессмысленные операции
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Правила работают в цепочке: каждое создаёт возможности для следующих через multi-pass
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="02-catalyst-tungsten/02-logical-plan-analysis"
+  label="Spark Catalyst: те же правила в JVM"
+  preview="Как Spark Catalyst применяет predicate pushdown, projection pushdown и constant folding — параллельный набор правил в JVM-движке."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="06-query-engine/07-new-analyzer"
+  label="ClickHouse: New Analyzer"
+  preview="Полностью переписанный SQL-аналитор ClickHouse — как он строит и оптимизирует план, сходства и отличия с DataFusion Optimizer."
+/>

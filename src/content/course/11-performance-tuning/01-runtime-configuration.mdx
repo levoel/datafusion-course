@@ -335,3 +335,17 @@ df.show().await?;
 - **target_partitions** должен соответствовать количеству ядер — больше не значит быстрее
 - **FairSpillPool + DiskManager + spill_compression** — обязательная комбинация для production
 - Следующий урок: [партиционирование и параллелизм](/course/11-performance-tuning/02-partition-and-parallelism) — как DataFusion распараллеливает работу
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="12-performance-tuning/05-memory-tuning"
+  label="ClickHouse: memory tuning"
+  preview="Как ClickHouse управляет памятью при запросах — max_memory_usage, group_by_two_level_threshold, spill — параллель к MemoryPool в DataFusion."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="12-performance-tuning/07-key-settings"
+  label="ClickHouse: ключевые настройки производительности"
+  preview="max_threads, max_block_size, использование RAM — карта производительных настроек, во многом аналогичная target_partitions/batch_size в DataFusion."
+/>

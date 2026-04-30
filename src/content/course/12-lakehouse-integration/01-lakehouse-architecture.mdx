@@ -372,3 +372,10 @@ write_deltalake(
 3. **Delta Lake** — простой transaction log (JSON), хорошая интеграция с DataFusion через delta-rs
 4. **Apache Iceberg** — сложнее, но гибче (hidden partitioning, partition evolution), интегрируется через iceberg-rust
 5. **File pruning** — главное преимущество формата таблиц: движок читает только нужные файлы, пропуская остальные по метаданным
+
+<CrossCourseRef
+  courseId="sd-data-engineer"
+  lessonSlug="13-realtime-analytics/01-realtime-analytics"
+  label="Real-time analytics в data-platform"
+  preview="Где single-node DataFusion / Iceberg-зернистая аналитика встаёт в архитектуру real-time analytics поверх lakehouse."
+/>

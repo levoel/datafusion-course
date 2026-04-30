@@ -208,3 +208,17 @@ DataFusion позволяет встраиваться в pipeline на любо
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Оптимизатор применяет цепочку правил: pushdown, folding, simplification
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Физический планировщик выбирает конкретные алгоритмы (HashJoin vs SortMergeJoin)
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Потоковая pull-модель: ленивое выполнение с back-pressure и параллелизмом
+
+<CrossCourseRef
+  courseId="spark-course"
+  lessonSlug="02-catalyst-tungsten/01-catalyst-overview"
+  label="Spark Catalyst: тот же pipeline в JVM"
+  preview="Catalyst Optimizer в Spark — параллельный взгляд на ту же 6-фазную модель (parsed → analyzed → optimized → physical) в JVM-мире."
+/>
+
+<CrossCourseRef
+  courseId="clickhouse-course"
+  lessonSlug="06-query-engine/01-vectorized-execution"
+  label="ClickHouse: vectorized execution"
+  preview="Как ClickHouse организует pipeline исполнения через chunks of columns — третий промышленный пример той же векторной модели."
+/>
