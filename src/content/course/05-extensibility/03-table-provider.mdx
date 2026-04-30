@@ -209,7 +209,7 @@ impl ExecutionPlan for HttpSourceExec {
 ```
 
 <Callout type="warning">
-`PlanProperties` — обязательная часть `ExecutionPlan` в DataFusion 52.x. Он описывает ordering (сортировку), partitioning (параллелизм) и execution mode (bounded/unbounded). Оптимизатор использует эти свойства для placement операторов Sort и Repartition.
+`PlanProperties` — обязательная часть `ExecutionPlan` в DataFusion 53.x (релиз 53.0.0 от 2026-04-02). Он описывает ordering (сортировку), partitioning (параллелизм) и execution mode (bounded/unbounded). Оптимизатор использует эти свойства для placement операторов Sort и Repartition.
 </Callout>
 
 ## Filter Pushdown

@@ -186,17 +186,17 @@ pub struct MemorySchemaProvider { ... }      // In-memory схема
 
 ```toml
 [dependencies]
-datafusion = "52.3"  # Meta-crate: включает всё
+datafusion = "53.0"  # Meta-crate: включает всё
 ```
 
 ### Только логический уровень
 
 ```toml
 [dependencies]
-datafusion-common = "52.3"
-datafusion-expr = "52.3"
-datafusion-sql = "52.3"
-datafusion-optimizer = "52.3"
+datafusion-common = "53.0"
+datafusion-expr = "53.0"
+datafusion-sql = "53.0"
+datafusion-optimizer = "53.0"
 # Нет datafusion-physical-plan — своя реализация выполнения
 ```
 
@@ -206,9 +206,9 @@ datafusion-optimizer = "52.3"
 
 ```toml
 [dependencies]
-datafusion-common = "52.3"
-datafusion-physical-plan = "52.3"
-datafusion-execution = "52.3"
+datafusion-common = "53.0"
+datafusion-physical-plan = "53.0"
+datafusion-execution = "53.0"
 # Нет datafusion-sql — план строится программно
 ```
 
@@ -233,7 +233,7 @@ datafusion-execution = "52.3"
 
 ## Версионирование
 
-Все crate DataFusion выпускаются синхронно с одним номером версии. `datafusion = "52.3"` означает, что `datafusion-common`, `datafusion-expr` и все остальные — тоже 52.3.x. Это упрощает управление зависимостями: не нужно подбирать совместимые версии.
+Все crate DataFusion выпускаются синхронно с одним номером версии. `datafusion = "53.0"` (релиз 2026-04-02) означает, что `datafusion-common`, `datafusion-expr` и все остальные — тоже 53.0.x. Это упрощает управление зависимостями: не нужно подбирать совместимые версии.
 
 Релизы выходят ежемесячно. Breaking changes возможны между minor-версиями (DataFusion пока не обещает semver-совместимость на уровне API).
 

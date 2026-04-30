@@ -92,7 +92,7 @@ impl ScalarUDFImpl for SquareUdf {
 ```
 
 <Callout type="warning">
-Метод `invoke()` устарел в DataFusion 52.x. Используйте `invoke_with_args(ScalarFunctionArgs)`, который предоставляет расширенный контекст: аргументы, количество строк и информацию о типах возвращаемого значения.
+Метод `invoke()` устарел в DataFusion 52.x и в актуальной 53.0.0 (релиз 2026-04-02). Используйте `invoke_with_args(ScalarFunctionArgs)`, который предоставляет расширенный контекст: аргументы, количество строк и информацию о типах возвращаемого значения.
 </Callout>
 
 ## Signature: система сигнатур

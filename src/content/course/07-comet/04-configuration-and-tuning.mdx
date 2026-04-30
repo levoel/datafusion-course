@@ -240,7 +240,7 @@ spark.sql.ansi.enabled=true
 #   Legacy: -2147483648 (silent overflow)
 ```
 
-Comet 0.13.0 поддерживает ANSI mode — нативные операторы корректно выбрасывают исключения при overflow вместо silent wrap. Это важно для корректности при миграции на Spark 4.0.
+Comet 0.14.0 (релиз 2026-03-18) поддерживает ANSI mode — нативные операторы корректно выбрасывают исключения при overflow вместо silent wrap, и теперь сообщения об ошибках точно соответствуют ожидаемому Spark output. Это важно для корректности при миграции на Spark 4.0.
 
 ## Рекомендации по конфигурации
 
@@ -287,4 +287,4 @@ spark.comet.expression.allowIncompatible=true
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> `DiskManager` сбрасывает данные в Arrow IPC при превышении off-heap лимита
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> `spark.comet.explain.verbose.enabled` — ключевой инструмент диагностики fallback
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Iceberg: два режима — стандартный connector + Comet scan (рекомендуется) и нативный iceberg-rust (экспериментальный)
-- <Icon name="check" className="text-emerald-400" size="1.2em" /> ANSI mode поддерживается в Comet 0.13.0 — корректное поведение при overflow для Spark 4.0
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> ANSI mode поддерживается в Comet 0.14.0 — корректное поведение при overflow для Spark 4.0

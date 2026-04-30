@@ -106,10 +106,10 @@ Auron — проект, ускоряющий существующие Spark и F
 
 <DiagramContainer title="Auron vs Comet" className="my-6">
   <Grid columns={2} className="gap-4 text-sm">
-    <DataBox label="Comet" tooltip="Spark-плагин от Apple — columnar-to-native выполнение, production-ориентирован (v0.13)" className="border-amber-500/30">
+    <DataBox label="Comet" tooltip="Spark-плагин от Apple — columnar-to-native выполнение, production-ориентирован (v0.14)" className="border-amber-500/30">
       <div className="text-xs"><b>Целевая платформа:</b> Apache Spark</div>
       <div className="text-xs mt-1"><b>Интеграция:</b> Spark plugin (columnar → native execution)</div>
-      <div className="text-xs mt-1"><b>Зрелость:</b> 0.13.0, production-ориентирован</div>
+      <div className="text-xs mt-1"><b>Зрелость:</b> 0.14.0, production-ориентирован</div>
       <div className="text-xs mt-1"><b>Поддержка:</b> Apple (основной контрибьютор)</div>
       <div className="text-xs mt-1 text-gray-400">Подробно: модуль 7</div>
     </DataBox>
@@ -125,7 +125,7 @@ Auron — проект, ускоряющий существующие Spark и F
 Auron расширяет идею Comet на Flink — платформу, для которой нативных DataFusion-ускорителей раньше не было. Подробное сравнение Comet с другими стратегиями распределения — в [уроке по выбору стратегии](/course/08-distributed-execution/05-choosing-strategy).
 
 <Callout type="warning">
-Auron — более ранний проект, чем Comet. Для production-использования с Spark рекомендуется Comet (0.13.0). Auron интересен как эксперимент по ускорению Flink через DataFusion.
+Auron — более ранний проект, чем Comet. Для production-использования с Spark рекомендуется Comet (0.14.0). Auron интересен как эксперимент по ускорению Flink через DataFusion.
 </Callout>
 
 ## Substrait: кросс-системный обмен планами
@@ -244,8 +244,28 @@ WASM-компиляция DataFusion пока на стадии активной
 | `apache/datafusion-sqlparser-rs` | SQL-парсер, используемый DataFusion (и PostgreSQL-совместимые проекты) |
 | `apache/datafusion-substrait` | Substrait producer/consumer (описан выше) |
 | `datafusion-contrib/datafusion-objectstore-*` | Интеграция с S3, GCS, Azure Blob |
-| `datafusion-contrib/datafusion-table-providers` | Готовые TableProvider для PostgreSQL, MySQL, SQLite |
+| `datafusion-contrib/datafusion-table-providers` | Готовые TableProvider для PostgreSQL, MySQL, SQLite, DuckDB, ClickHouse, ODBC, FlightSQL |
+| `datafusion-contrib/datafusion-federation` | Cross-engine query federation с pushdown SQL/Substrait во внешние движки |
 | `datafusion-contrib/datafusion-functions-json` | JSON-функции (jsonb_extract, json_array и др.) |
+
+#### datafusion-table-providers — готовые провайдеры данных
+
+[`datafusion-contrib/datafusion-table-providers`](https://github.com/datafusion-contrib/datafusion-table-providers) — отдельный субпроект, реализующий `TableProvider` для популярных систем хранения. Вместо того чтобы писать свой `TableProvider` (как в [модуле 5](/course/05-extensibility/03-table-provider)), можно подключить готовые: PostgreSQL, MySQL, SQLite, DuckDB, ClickHouse, FlightSQL, ODBC. Большинство этих провайдеров изначально были донатированы Spice AI и теперь поддерживаются сообществом. Каждый провайдер реализует scan + filter pushdown в нативный SQL-диалект соответствующей СУБД.
+
+```rust
+// Пример: PostgreSQL TableProvider
+use datafusion_table_providers::postgres::PostgresTableFactory;
+
+let factory = PostgresTableFactory::new(connection_pool);
+let provider = factory.table_provider("my_table".into()).await?;
+ctx.register_table("orders", provider)?;
+```
+
+#### datafusion-federation — cross-engine federation
+
+[`datafusion-contrib/datafusion-federation`](https://github.com/datafusion-contrib/datafusion-federation) — отдельный crate, дополняющий `table-providers`. Federation позволяет DataFusion делегировать **часть query plan** удалённому движку (Postgres, MySQL, ClickHouse, ещё одна DataFusion-инстанция) и склеивать результаты локально. Каждый `FederationProvider` определяет собственное оптимизаторное правило, которое анализирует, какой sub-plan можно «протолкнуть» вниз — push down целиком JOIN между таблицами одной СУБД, оставив верхние агрегации DataFusion. Поддерживается передача SQL и Substrait. Это де-факто стандартный путь к multi-source SQL в DataFusion 2026.
+
+Связка `table-providers` + `federation` — рекомендуемый стек для построения federated query layer без написания собственного planner-а.
 
 Contrib-экосистема даёт возможность переиспользовать готовые компоненты вместо написания с нуля. Если вы строите систему на DataFusion — проверьте contrib-репозитории перед тем, как реализовывать свой TableProvider или UDF.
 
@@ -274,8 +294,4 @@ Contrib-экосистема даёт возможность переиспол�
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Substrait: стандарт обмена query plans между системами, DataFusion поддерживает produce/consume
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> WASM: DataFusion компилируется в WebAssembly для браузера и Edge-функций (в разработке)
 - <Icon name="check" className="text-emerald-400" size="1.2em" /> Contrib-экосистема: готовые TableProvider, UDF, object store integration для переиспользования
-ьзования
-�ия
-
-ия
-
+- <Icon name="check" className="text-emerald-400" size="1.2em" /> datafusion-table-providers + datafusion-federation — отдельные субпроекты для multi-source SQL и cross-engine pushdown

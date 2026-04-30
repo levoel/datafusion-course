@@ -266,15 +266,15 @@ DataFusion развивается быстро — мажорные релизы
 ```toml
 # Cargo.toml — фиксируйте patch-версию
 [dependencies]
-datafusion = "52.3"
+datafusion = "53.0"
 arrow = "54.1"
 
 # НЕ используйте:
-# datafusion = "52"  — может получить breaking changes в 52.x
+# datafusion = "53"  — может получить breaking changes в 53.x
 ```
 
 <Callout type="warning">
-DataFusion до версии 1.0 не гарантирует стабильность API между мажорными версиями. При обновлении с 51.x на 52.x проверяйте CHANGELOG и Migration Guide. Основные точки разрыва: сигнатуры trait-методов (`invoke` → `invoke_with_args`), конструкторы (`SessionState::new` → `SessionStateBuilder`), и `PlanProperties` API.
+DataFusion до версии 1.0 не гарантирует стабильность API между мажорными версиями. При обновлении с 52.x на 53.x проверяйте CHANGELOG и Migration Guide. Основные точки разрыва: сигнатуры trait-методов (`invoke` → `invoke_with_args`), конструкторы (`SessionState::new` → `SessionStateBuilder`), и `PlanProperties` API.
 </Callout>
 
 ### Паттерн: абстракция над DataFusion API

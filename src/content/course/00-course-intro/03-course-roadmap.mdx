@@ -1,6 +1,6 @@
 ---
 title: "Дорожная карта курса"
-description: "Обзор всех 11 модулей курса, пути обучения и рекомендации по прохождению"
+description: "Обзор всех 14 модулей курса, пути обучения и рекомендации по прохождению"
 order: 3
 difficulty: "beginner"
 estimatedTime: 8
@@ -9,6 +9,10 @@ estimatedTime: 8
 # Дорожная карта курса
 
 Курс состоит из **14 модулей** — от введения до capstone-проекта. Модули выстроены последовательно: каждый опирается на знания из предыдущих.
+
+<Callout type="note">
+**О нумерации модулей.** В курсе нет модуля с номером **M10** — нумерация идёт M00–M09, затем M11–M14. Это не ошибка: M10 был зарезервирован под отдельный модуль «Production Operations» (мониторинг, deployment, observability), но содержание было перенесено в **M11 (Performance Tuning)** и **M13 (Real-World Patterns)** для лучшей структурной связности. Capstone-проект — это **M14**, а не M10. Renumbering папок отложен, чтобы не ломать внешние ссылки и закладки.
+</Callout>
 
 ## Обзор модулей
 
@@ -46,11 +50,16 @@ estimatedTime: 8
 | M08 | Распределённое выполнение | Ballista: scheduler/executor, партиционирование, shuffle, deployment |
 | M09 | Экосистема DataFusion | InfluxDB, Dask SQL, custom analytics engines, тренды |
 
-### Практика (M10)
+### Production и практика (M11-M14)
+
+> M10 не используется — см. callout о нумерации выше.
 
 | Модуль | Название | Что вы изучите |
 |--------|----------|----------------|
-| M10 | Capstone Project | Проектирование кастомного аналитического движка на базе DataFusion |
+| M11 | Performance Tuning | Конфигурация, измерение, query plan analysis, file layout |
+| M12 | Lakehouse Integration | Delta Lake, Apache Iceberg, Object Store, multi-format |
+| M13 | Real-World Patterns | Streaming/incremental, observability, runbooks |
+| M14 | Capstone Project | Проектирование кастомного аналитического движка на базе DataFusion |
 
 ## Пути обучения
 
@@ -72,7 +81,7 @@ estimatedTime: 8
 
 **Фокус:** DataFusion в контексте data-платформы
 
-Приоритетные модули: M00 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M02 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M06 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M07 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M08 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M09
+Приоритетные модули: M00 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M02 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M06 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M07 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M08 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M09 <Icon name="arrow-right" className="text-gray-400" size="1em" /> M11
 
 ## Зависимости между модулями
 

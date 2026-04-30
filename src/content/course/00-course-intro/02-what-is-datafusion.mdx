@@ -16,9 +16,9 @@ estimatedTime: 15
 
 | Компонент | Версия | Назначение |
 |-----------|--------|------------|
-| DataFusion Core (Rust) | v52.3.0 | Ядро query engine |
-| DataFusion Python | v52.3.0 | Python-биндинги (`pip install datafusion`) |
-| Apache Comet | v0.12.0 | Ускоритель Apache Spark через DataFusion |
+| DataFusion Core (Rust) | v53.0.0 (релиз 2026-04-02) | Ядро query engine |
+| DataFusion Python | v53.0.0 | Python-биндинги (`pip install datafusion`) |
+| Apache Comet | v0.14.0 (релиз 2026-03-18) | Ускоритель Apache Spark через DataFusion |
 | Ballista | v48.0.0 | Распределённое выполнение запросов |
 
 ## Архитектура в двух словах
@@ -38,10 +38,10 @@ DataFusion принимает SQL-запрос или DataFrame-операцию
 DataFusion используется как фундамент для нескольких production-систем:
 
 - **InfluxDB** — time-series база данных, использует DataFusion как query engine для InfluxDB 3.0
-- **Apache Comet** (v0.12.0) — транслирует планы выполнения Apache Spark в планы DataFusion, ускоряя Spark-задачи без изменения пользовательского кода
+- **Apache Comet** (v0.14.0) — транслирует планы выполнения Apache Spark в планы DataFusion, ускоряя Spark-задачи без изменения пользовательского кода
 - **Ballista** (v48.0.0) — распределённый query engine с архитектурой scheduler/executor, аналог Spark на базе DataFusion
 - **Dask SQL** — SQL-интерфейс для Dask, использующий DataFusion для парсинга и оптимизации запросов
-- **DataFusion Python** (v52.3.0) — полноценные Python-биндинги для аналитики и прототипирования
+- **DataFusion Python** (v53.0.0) — полноценные Python-биндинги для аналитики и прототипирования
 
 ## Сравнение с аналогами
 

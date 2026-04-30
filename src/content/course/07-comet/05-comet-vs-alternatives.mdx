@@ -90,6 +90,41 @@ Photon — проприетарный нативный execution engine, вст�
 
 Если ваша инфраструктура уже на Databricks — Photon включается одним параметром (`spark.databricks.photon.enabled=true`). Нет причин использовать Comet или Gluten в Databricks-окружении.
 
+## LakeSail Sail: drop-in Spark replacement
+
+[Sail](https://github.com/lakehq/sail) (LakeSail) — главный 2026 drop-in Spark replacement, написанный на Rust и построенный поверх DataFusion. В отличие от Comet, который встраивается в JVM-процесс Spark как plugin, Sail — **самостоятельная распределённая система**, реализующая Spark Connect-протокол и PySpark API целиком на Rust. По публичным замерам LakeSail заявляет 4–8x throughput vs Spark и сокращение инфраструктурных затрат до 94%.
+
+### Архитектурное различие: Comet vs Sail
+
+| Аспект | Comet (Spark JNI bridge) | Sail (independent Spark API rewrite) |
+|---|---|---|
+| **Подход** | Plugin внутри Spark JVM | Самостоятельный Rust-сервис |
+| **Spark JVM** | Обязателен | Не нужен совсем |
+| **Протокол клиента** | Стандартный Spark | Spark Connect (gRPC) |
+| **PySpark API** | Через JVM Spark | Нативно (UDF/UDAF/UDWF/UDTF в Rust/Python) |
+| **DataFusion интеграция** | Через JNI + protobuf | Прямые logical/physical planning APIs |
+| **Распределённое выполнение** | Через Spark scheduler | Собственный Rust-кластер worker-ов |
+| **Migration path** | Drop-in plugin (1 час) | Drop-in replacement (Spark Connect клиенты) |
+| **JVM dependency** | Da, нужен Spark runtime | Нет, только Rust binary |
+
+### Когда выбрать Comet
+
+- Уже есть production Spark cluster, миграция на новый runtime неприемлема
+- Нужна полная совместимость с существующим Spark-стеком (UDF на Scala/Java, custom Spark plugins)
+- Команда готова поддерживать JVM и Rust одновременно
+- Acceleration важнее, чем избавление от JVM
+
+### Когда выбрать Sail
+
+- Можно перейти на Spark Connect-клиенты (PySpark, Spark SQL через gRPC)
+- Цель — полный отказ от JVM (operational simplicity, memory safety, нет GC pauses)
+- Греинфилд-проект или готовность к серьёзной миграции
+- Spark API нужен, но Spark JVM-инфраструктура — нет
+
+<Callout type="note">
+Comet не конкурирует с Sail напрямую: Comet ускоряет существующий Spark, Sail заменяет его. В долгосрочной перспективе Sail ставит сложный вопрос будущему Ballista/Spark-acceleration в DataFusion-экосистеме — об этом подробнее в [модуле 8 (выбор стратегии)](/courses/datafusion-course/08-distributed-execution/05-choosing-strategy).
+</Callout>
+
 ## Критерии выбора
 
 | Критерий | Comet | Gluten + Velox | Photon |
@@ -97,7 +132,7 @@ Photon — проприетарный нативный execution engine, вст�
 | **Open source** | Apache 2.0 | Apache 2.0 | Нет |
 | **Деплой** | Единый JAR | C++ зависимости, сложнее собрать | Встроен в Databricks |
 | **DataFusion экосистема** | Нативная интеграция | Нет связи | Нет связи |
-| **Зрелость** | Растущая (0.13.0, 8 релизов/год) | Более зрелая (Meta production) | Production с 2021 |
+| **Зрелость** | Растущая (0.14.0, 8+ релизов/год) | Более зрелая (Meta production) | Production с 2021 |
 | **Spark совместимость** | 97% тестов | ~95% тестов | ~99% (с Delta) |
 | **Iceberg** | Нативный scan (0.12.0+) | Через Substrait | Через Unity Catalog |
 | **Community** | Apache DataFusion community | Apache Incubator + Meta | Databricks |
