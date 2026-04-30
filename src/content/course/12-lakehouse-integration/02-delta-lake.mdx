@@ -388,3 +388,7 @@ previous = ctx_old.sql("""
 4. **File-level metadata skipping** — ~2x ускорение для селективных запросов за счёт min/max stats в transaction log
 5. **OPTIMIZE + Z-ORDER** — улучшение файловой раскладки для лучшего pruning
 6. **Change Data Feed** — отслеживание изменений между версиями для incremental ETL
+
+<Callout type="tip">
+Для углублённого изучения внутренней архитектуры Delta Lake (transaction log, checkpoints, ACID-гарантии, data skipping) см. курс [Storage Formats Deep-Dive](/storage-formats/11-delta-lake/01-transaction-log-architecture/).
+</Callout>

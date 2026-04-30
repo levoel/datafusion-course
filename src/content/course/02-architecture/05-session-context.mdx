@@ -218,18 +218,28 @@ UDF регистрируются в `SessionState` и доступны во вс
 
 ## Жизненный цикл запроса через SessionContext
 
-```
-ctx.sql("SELECT ...")
-    │
-    ├── SessionState::sql_to_statement()   → AST
-    ├── SessionState::statement_to_plan()  → LogicalPlan
-    ├── SessionState::optimize()           → Optimized LogicalPlan
-    └── → DataFrame (lazy)
-            │
-            └── .collect()
-                ├── SessionState::create_physical_plan()  → ExecutionPlan
-                └── ExecutionPlan::execute()               → RecordBatch stream
-```
+<DiagramContainer title="Pipeline: SQL → DataFrame → RecordBatch" className="my-6">
+  <FlowColumn className="p-4 gap-2">
+    <FlowNode variant="input" tooltip="Точка входа: SQL текст. SessionContext.sql() ничего не исполняет — лишь стартует ленивый pipeline.">ctx.sql("SELECT …")</FlowNode>
+    <Arrow direction="down" />
+    <DataBox label="SessionState — построение плана" tooltip="Lazy фаза: парсинг → логический план → оптимизация. Никаких I/O." className="w-80 mx-auto">
+      <div className="text-xs space-y-1">
+        <div>sql_to_statement() → AST</div>
+        <div>statement_to_plan() → LogicalPlan</div>
+        <div>optimize() → Optimized LogicalPlan</div>
+      </div>
+    </DataBox>
+    <Arrow direction="down" />
+    <FlowNode variant="process" tooltip="DataFrame обёртывает Optimized LogicalPlan. Терминальная операция (collect/show/write_parquet) запускает следующую стадию.">DataFrame (lazy)</FlowNode>
+    <Arrow direction="down" />
+    <DataBox label=".collect() — физическое исполнение" tooltip="Eager фаза: физический план + исполнение. Здесь происходят все I/O и вычисления." className="w-80 mx-auto">
+      <div className="text-xs space-y-1">
+        <div>create_physical_plan() → ExecutionPlan</div>
+        <div>ExecutionPlan::execute() → RecordBatch stream</div>
+      </div>
+    </DataBox>
+  </FlowColumn>
+</DiagramContainer>
 
 Каждый метод `SessionContext` (`sql()`, `read_parquet()`, `read_csv()`) проходит первые три стадии pipeline и возвращает `DataFrame`. Выполнение запускается только при вызове terminal-операции: `collect()`, `show()`, `write_parquet()`.
 

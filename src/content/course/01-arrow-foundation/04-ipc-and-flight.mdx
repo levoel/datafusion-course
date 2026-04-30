@@ -170,17 +170,21 @@ GetFlightInfo("table_x") → [
 - `CommandPreparedStatementQuery` -- prepared statements с биндингами
 - `CommandGetCatalogs` / `CommandGetSchemas` / `CommandGetTables` -- metadata API
 
-```
-Клиент                                  Сервер
-  │                                       │
-  │─── GetFlightInfo(SQL: "SELECT...")────>│
-  │<── FlightInfo(schema, endpoints) ─────│
-  │                                       │
-  │─── DoGet(ticket) ────────────────────>│
-  │<── RecordBatch stream ───────────────│
-  │<── RecordBatch stream ───────────────│
-  │<── EOS ──────────────────────────────│
-```
+<DiagramContainer title="Flight SQL: жизненный цикл запроса" className="my-6">
+  <SequenceDiagram
+    actors={[
+      { id: 'client', label: 'Клиент', variant: 'input', tooltip: 'Приложение, выполняющее SQL-запрос через Flight SQL' },
+      { id: 'server', label: 'Сервер', variant: 'output', tooltip: 'Flight SQL сервер: парсит SQL, возвращает результат как Arrow stream' },
+    ]}
+    messages={[
+      { id: 'm1', from: 'client', to: 'server', label: 'GetFlightInfo(SQL: "SELECT…")', variant: 'sync', tooltip: 'Клиент отправляет SQL-запрос; сервер отвечает метаданными до выполнения чтения.' },
+      { id: 'm2', from: 'server', to: 'client', label: 'FlightInfo(schema, endpoints)', variant: 'return', tooltip: 'Серверная сторона возвращает Arrow-схему результата и список endpoint-ов с тикетами для параллельного чтения.' },
+      { id: 'm3', from: 'client', to: 'server', label: 'DoGet(ticket)', variant: 'sync', tooltip: 'Клиент инициирует поток чтения по тикету конкретного endpoint-а.' },
+      { id: 'm4', from: 'server', to: 'client', label: 'RecordBatch stream', variant: 'async', tooltip: 'Сервер потоково отправляет Arrow RecordBatch — без сериализации Protobuf.' },
+      { id: 'm5', from: 'server', to: 'client', label: 'RecordBatch stream', variant: 'async' },
+      { id: 'm6', from: 'server', to: 'client', label: 'EOS', variant: 'return', tooltip: 'End-of-stream: сервер закрывает gRPC stream, клиент знает, что данных больше не будет.' },
+    ]}
+  /></DiagramContainer>
 
 Flight SQL -- это альтернатива JDBC/ODBC с нативной Arrow-передачей данных. Вместо конвертации результатов в JDBC ResultSet (Java объекты) или ODBC буферы (C-структуры), клиент получает Arrow RecordBatch напрямую.
 

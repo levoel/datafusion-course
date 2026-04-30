@@ -436,3 +436,7 @@ result.show()
 4. **Partition evolution** — изменение схемы партиционирования без перезаписи данных, уникальное преимущество Iceberg
 5. **Schema evolution** по column ID — безопасные rename и drop без перезаписи файлов
 6. **iceberg-rust** интегрируется с DataFusion через `TableProvider`, аналогично delta-rs
+
+<Callout type="tip">
+Для углублённого изучения внутренней архитектуры Iceberg (трёхуровневые метаданные, manifest files, partition evolution, schema evolution) см. курс [Storage Formats Deep-Dive](/storage-formats/12-iceberg/01-catalog-architecture-metadata/).
+</Callout>
