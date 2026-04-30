@@ -125,6 +125,37 @@ Photon — проприетарный нативный execution engine, вст�
 Comet не конкурирует с Sail напрямую: Comet ускоряет существующий Spark, Sail заменяет его. В долгосрочной перспективе Sail ставит сложный вопрос будущему Ballista/Spark-acceleration в DataFusion-экосистеме — об этом подробнее в [модуле 8 (выбор стратегии)](/courses/datafusion-course/08-distributed-execution/05-choosing-strategy).
 </Callout>
 
+### Полное side-by-side сравнение Comet vs Sail
+
+| Критерий | Comet | Sail |
+|---|---|---|
+| **Архитектура** | JNI bridge внутри Spark JVM (plugin) | Independent Rust сервис (no JVM) |
+| **Spark JVM** | Требуется | Не нужен |
+| **Установка** | Drop-in JAR + 3 параметра в `spark-defaults.conf` | Replace Spark cluster полностью; deploy Sail binary |
+| **Migration effort** | Минимальный (1 час) | Средний (Spark Connect клиенты обязательны) |
+| **API parity** | 97% Spark SQL coverage (через JVM Spark) | Спарк Connect API (DataFrame/SQL) — растущее покрытие |
+| **PySpark UDF** | Через JVM (Python ↔ JVM ↔ Rust) | Native Rust integration (без JVM hop) |
+| **Plan format** | Protobuf (Comet expr.proto) | Прямой DataFusion logical plan |
+| **Data format** | Arrow RecordBatch (через JNI) | Arrow native end-to-end |
+| **Shuffle** | Columnar Arrow IPC | Native Rust shuffle |
+| **Distributed scheduling** | Spark scheduler (DAGScheduler/TaskScheduler) | Собственный Rust scheduler |
+| **Cluster manager** | YARN/K8s/Standalone (Spark) | K8s (Sail-native) или standalone Rust workers |
+| **Memory model** | JVM heap + native off-heap (Comet pool) | Pure Rust (DataFusion MemoryPool) — нет GC pauses |
+| **Iceberg** | Native scan через `native_iceberg_compat` (0.12+) | Через DataFusion ObjectStore + Iceberg crate |
+| **Delta Lake** | Через JVM Spark + delta-rs | Native Rust delta-rs |
+| **Hive Metastore** | Полная JVM-side интеграция | Через Rust metastore client (растущая) |
+| **Performance benchmark** | 2–3× vs vanilla Spark (TPC-H) | LakeSail заявляет 4–8× vs vanilla Spark |
+| **Operational simplicity** | Нужен JVM tuning + Comet tuning | Только Rust binary (один процесс типа) |
+| **Memory safety** | Безопасность Rust только в native слое | End-to-end Rust memory safety |
+| **GC pauses** | Да (JVM heap) | Нет (no GC) |
+| **Лицензия** | Apache 2.0 | Apache 2.0 (open core) |
+| **Зрелость** | Apache project, 0.14+ (2025-2026) | Production deployments LakeSail clients |
+| **Когда выбрать** | Существующий Spark, минимум миграции | Greenfield или готовность к Spark Connect миграции |
+
+<Callout type="tip">
+**Decision rule:** Если можете перевести клиентов на Spark Connect — Sail даёт более радикальный выигрыш (no JVM, end-to-end Rust, faster). Если миграция на Connect неприемлема — Comet даёт ускорение без архитектурных изменений. Для команд, инвестирующих в DataFusion ecosystem долгосрочно, Sail — более интересный путь, но операционно зрелее Comet.
+</Callout>
+
 ## Критерии выбора
 
 | Критерий | Comet | Gluten + Velox | Photon |

@@ -4,7 +4,7 @@ description: "Трёхфазный конвейер оптимизации DataF
 order: 1
 difficulty: "advanced"
 estimatedTime: 18
-topics: ["Optimizer", "AnalyzerRule", "OptimizerRule", "PhysicalOptimizerRule", "Transformed", "OptimizerConfig", "Observer"]
+topics: ["Optimizer", "AnalyzerRule", "OptimizerRule", "PhysicalOptimizerRule", "Transformed", "OptimizerConfig", "Observer", "Substrait", "datafusion-substrait", "plan portability", "cross-engine"]
 ---
 
 # Архитектура оптимизатора
@@ -238,6 +238,113 @@ let ctx = SessionContext::new_with_state(state);
 <Callout type="note">
 `SessionStateBuilder` заменяет устаревшие паттерны `SessionState::new()` и `SessionConfig::with_*`. Он позволяет полностью контролировать набор правил для каждой фазы конвейера.
 </Callout>
+
+## Substrait — сериализованный план для cross-engine portability
+
+[Substrait](https://substrait.io/) — открытая спецификация для сериализации логических и физических query-планов между разными engine. Идея: план, построенный одним engine (DataFusion), может быть выполнен другим engine (Spark, Trino, Velox), при условии что оба понимают Substrait.
+
+### Зачем нужен Substrait
+
+DataFusion имеет свой in-memory `LogicalPlan` (Rust struct) — он непереносим: нельзя сериализовать и отправить план в Spark JVM или в Trino. Substrait вводит **универсальный язык** для планов на основе protobuf:
+
+```
+Producer (DataFusion) → LogicalPlan → Substrait protobuf bytes
+                                            ↓
+                                 (передача по сети / диск)
+                                            ↓
+Consumer (Spark / Trino / Velox) ← Substrait protobuf bytes → их native план
+```
+
+### Use cases
+
+1. **Plan portability** — сохранить план, выполнить на другом engine без переписывания SQL.
+2. **Compute pushdown через границы systems** — DataFusion-driver отправляет Substrait-план в исполнитель (Velox, ClickHouse).
+3. **Plan caching** — закэшировать оптимизированный план как Substrait protobuf, переиспользовать без re-парсинга SQL.
+4. **Multi-engine federation** — координирующий engine (DataFusion) делегирует подпланы другим engine (Substrait как протокол).
+
+### datafusion-substrait crate
+
+DataFusion поддерживает Substrait через [`datafusion-substrait`](https://crates.io/crates/datafusion-substrait) crate (separate from main datafusion crate).
+
+```rust
+use datafusion::prelude::SessionContext;
+use datafusion_substrait::logical_plan::{producer, consumer};
+use datafusion_substrait::serializer;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = SessionContext::new();
+    ctx.register_csv("orders", "data/orders.csv", Default::default()).await?;
+
+    // 1. Построить LogicalPlan
+    let df = ctx
+        .sql("SELECT region, SUM(amount) FROM orders WHERE status = 'completed' GROUP BY 1")
+        .await?;
+    let logical_plan = df.into_optimized_plan()?;
+
+    // 2. DataFusion LogicalPlan → Substrait protobuf
+    let substrait_plan = producer::to_substrait_plan(&logical_plan, &ctx.state())?;
+
+    // 3. Сериализовать в bytes (для передачи или storage)
+    let bytes = serializer::serialize_bytes(&substrait_plan)?;
+    println!("Substrait plan: {} bytes", bytes.len());
+
+    // 4. Десериализовать в другом процессе / engine
+    let restored = serializer::deserialize_bytes(&bytes)?;
+
+    // 5. Substrait → DataFusion LogicalPlan (тот же или другой ctx)
+    let new_logical_plan = consumer::from_substrait_plan(&ctx.state(), &restored).await?;
+
+    // Выполняем восстановленный план
+    let df2 = DataFrame::new(ctx.state(), new_logical_plan);
+    df2.show().await?;
+    Ok(())
+}
+```
+
+### Cross-engine pipeline
+
+```python
+# Спарк-сторона (Java/Scala/PySpark): выполнить Substrait-план, построенный DataFusion
+from pyspark.sql import SparkSession
+import substrait
+
+spark = SparkSession.builder.getOrCreate()
+
+# Substrait-план получен от DataFusion (через файл, gRPC, etc.)
+with open("plan.substrait", "rb") as f:
+    plan_bytes = f.read()
+
+# Spark Substrait extension (gluten / native-spark) выполняет план
+# (точное API зависит от версии Spark Substrait support)
+result = spark.execute_substrait(plan_bytes)
+result.show()
+```
+
+### Текущее состояние DataFusion Substrait support
+
+| Feature | DataFusion 49+ status |
+|---|---|
+| **Logical plan: Project / Filter / Aggregate / Sort / Limit** | Полная поддержка |
+| **Joins (Inner / Left / Right / Full)** | Полная поддержка |
+| **Window functions** | Поддерживается |
+| **Subqueries (correlated, scalar, EXISTS/IN)** | Частично |
+| **UDF / UDAF** | Через extension functions (требует registration на consumer) |
+| **Set operations (UNION / INTERSECT / EXCEPT)** | Поддерживается |
+| **Common table expressions (WITH)** | Поддерживается |
+| **Physical plans (RelRoot extensions)** | Экспериментальная поддержка |
+
+<Callout type="warning">
+**Substrait coverage не 100%**: некоторые DataFusion-specific operators (custom ExecutionPlan, специфические optimizer rules) не имеют representation в Substrait. Roundtrip `LogicalPlan → Substrait → LogicalPlan` теряет engine-specific детали — это **спецификация-минимум** для portability, не полный snapshot. Для cross-engine workflows закладывайте integration testing на каждый план.
+</Callout>
+
+<Callout type="tip">
+Substrait — относительно молодой стандарт (1.0 в 2023). Он стабилизируется, но ecosystem coverage растёт постепенно: Spark поддержка через Gluten, Velox через Substrait-Velox plugin, Trino — экспериментальная. Для production cross-engine federation сейчас обычно используют либо Substrait для специфичных интеграций, либо raw SQL strings для простоты.
+</Callout>
+
+Cite [substrait.io](https://substrait.io/) + [datafusion-substrait crate](https://crates.io/crates/datafusion-substrait) + [Substrait Specification](https://substrait.io/spec/specification/).
+
+---
 
 ## Итоги
 

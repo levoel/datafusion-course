@@ -4,7 +4,7 @@ description: "SessionConfig (batch_size, target_partitions, memory limits), Runt
 order: 1
 difficulty: "advanced"
 estimatedTime: 14
-topics: ["SessionConfig", "RuntimeEnvBuilder", "batch_size", "target_partitions", "memory_limit", "spill_compression", "configuration"]
+topics: ["SessionConfig", "RuntimeEnvBuilder", "batch_size", "target_partitions", "memory_limit", "spill_compression", "configuration", "cooperative cancellation", "EnsureCooperative", "task budget", "tokio yield"]
 ---
 
 # Конфигурация runtime: SessionConfig, RuntimeEnv и лимиты
@@ -326,6 +326,167 @@ println!("target_partitions: {}", config.target_partitions());
 let df = ctx.sql("SHOW ALL LIKE '%batch%'").await?;
 df.show().await?;
 ```
+
+## Cooperative cancellation — async-aware прерывание запросов (DataFusion 49+)
+
+Long-running queries в production требуют способа надёжно отменить выполнение — по timeout, на запрос пользователя, при перегрузке. До 49.x cancellation в DataFusion работал через `tokio::select!` на верхнем уровне — асинхронные операторы реагировали на abort, но **синхронные tight loops** внутри `RecordBatchStream::poll_next` могли удерживать тред несколько секунд после "отмены".
+
+DataFusion 49+ ввёл **cooperative cancellation** — protocol, при котором операторы периодически проверяют флаг отмены и останавливаются на yield-points.
+
+### Проблема runaway queries
+
+```rust
+// Старый код (упрощённо): tight CPU loop без yield points
+impl Stream for OldOperator {
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<...> {
+        let batch = self.input.next();           // dependency
+        let result = expensive_compute(batch);    // 30 секунд CPU work
+        Poll::Ready(Some(result))
+    }
+}
+```
+
+При cancellation tokio пытается отменить future, но poll_next уже вошёл в `expensive_compute` и не возвращает control. Result — query "висит" на 30 секунд после abort, держит память и CPU.
+
+### EnsureCooperative wrapper
+
+DataFusion 49+ добавил `EnsureCooperativeExec` — physical optimizer rule, которая wrapает операторы с потенциально long-running computations:
+
+```rust
+use datafusion::physical_optimizer::ensure_coop::EnsureCoopExec;
+use datafusion::execution::TaskContext;
+
+// Optimizer вставляет EnsureCoopExec вокруг "тяжёлых" операторов:
+//   AggregateExec / SortExec / WindowExec / HashJoinExec
+//
+// EnsureCoopExec оборачивает каждый poll_next вызов так,
+// что после N strerstdiff'нных rows проверяется TaskBudget
+// и task yields cooperatively.
+```
+
+Поведение:
+
+```
+Original plan:                   Optimized plan:
+HashJoinExec                     EnsureCoopExec
+  └── input                        └── HashJoinExec
+                                         └── input
+```
+
+`EnsureCoopExec` мониторит сколько rows / времени потратил inner оператор и вставляет yield, давая tokio runtime возможность обработать cancellation signal.
+
+### Task budget API
+
+DataFusion вводит **Task Budget** — структура, ограничивающая объём работы, который операция может выполнить без yield:
+
+```rust
+use datafusion::execution::task_budget::TaskBudget;
+
+// Budget настраивается через SessionConfig:
+let config = SessionConfig::new()
+    .with_task_budget_rows(8192)            // yield после 8K rows
+    .with_task_budget_duration_ms(50);      // или после 50ms — что раньше
+
+let ctx = SessionContext::new_with_config(config);
+```
+
+Когда оператор обрабатывает данные:
+
+```rust
+impl AggregateExec {
+    async fn process_batch(&self, batch: RecordBatch, ctx: &TaskContext) -> Result<()> {
+        for row in batch.rows() {
+            self.aggregate(row);
+
+            // Проверка budget — если исчерпан, yield
+            if ctx.task_budget().consume(1).await {
+                tokio::task::yield_now().await;     // дать runtime обработать abort
+            }
+        }
+        Ok(())
+    }
+}
+```
+
+`TaskBudget::consume(rows)` returns `true` когда budget исчерпан — оператор yields, что даёт **runtime** возможность доставить abort signal.
+
+### Cancellation example
+
+```rust
+use datafusion::prelude::SessionContext;
+use tokio::time::{timeout, Duration};
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let ctx = SessionContext::new();
+    ctx.register_parquet("events", "events_huge.parquet", Default::default()).await?;
+
+    // Запустить long-running query с timeout 5 секунд
+    let result = timeout(Duration::from_secs(5), async {
+        let df = ctx.sql("
+            SELECT user_id, COUNT(*), AVG(amount)
+            FROM events
+            GROUP BY user_id
+            ORDER BY 2 DESC
+            LIMIT 100
+        ").await?;
+        df.collect().await
+    }).await;
+
+    match result {
+        Ok(Ok(_)) => println!("Query completed"),
+        Ok(Err(e)) => println!("Query error: {}", e),
+        Err(_) => println!("Query cancelled by timeout"),  // в 49+ — actually cancels быстро
+    }
+    Ok(())
+}
+```
+
+В DataFusion 49+ cancellation отрабатывает обычно в пределах **сотен миллисекунд** — task budget гарантирует regular yield-points. До 49 могло занимать секунды или весь backlog operator.
+
+### Применение для production
+
+| Сценарий | Решение через cooperative cancellation |
+|---|---|
+| Query timeout (SLA) | `tokio::time::timeout` вокруг collect; гарантия abort в пределах task_budget_duration |
+| User-initiated cancel | `CancellationToken` пробрасывается в TaskContext — checked в EnsureCoopExec |
+| Memory pressure abort | MemoryPool возвращает ResourcesExhausted; runaway loop теперь не блокирует cleanup |
+| Service shutdown | Graceful shutdown — runtime отменяет все queries, cooperative ensures fast termination |
+
+### Custom operators — добавление cooperative checks
+
+Если вы пишете кастомный `ExecutionPlan` с tight CPU loop:
+
+```rust
+impl Stream for MyCustomOperator {
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<...> {
+        let mut processed = 0;
+        loop {
+            let row = self.next_row();
+
+            // ... обработка ...
+            processed += 1;
+
+            // Cooperative check — каждые batch_size rows
+            if processed >= self.context.session_config().batch_size() {
+                // Yield: пересоздаём future, runtime может обработать cancellation
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+        }
+    }
+}
+```
+
+Альтернатива — wrap кастомный оператор в `EnsureCoopExec` через physical optimizer rule.
+
+<Callout type="tip">
+Если у вас в production случаются "висящие" queries, которые не реагируют на abort signal — обновитесь до DataFusion 49+ и убедитесь, что `EnsureCooperative` rule включён (по умолчанию). Замерьте latency cancellation через `tokio::time::timeout` — до 49 могла быть секундная latency на абсолютно тяжёлых aggregations, в 49+ — миллисекунды.
+</Callout>
+
+Cite [DataFusion 49 cooperative cancellation issue](https://github.com/apache/datafusion/issues) + [tokio cooperative scheduling](https://docs.rs/tokio/latest/tokio/task/fn.yield_now.html).
+
+---
 
 ## Итоги
 

@@ -165,6 +165,67 @@ result = df.to_arrow_table()
 mean_array = result.column("mean").to_numpy()
 ```
 
+## Arrow PyCapsule Interface — zero-copy DataFrame interchange
+
+Начиная с PyArrow 14+ и DataFusion-Python 40+ для обмена данными между библиотеками используется **Arrow PyCapsule Interface** ([спецификация](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html)) — стандартный Python-протокол на основе `__arrow_c_array__`, `__arrow_c_stream__`, `__arrow_c_schema__`. Любой объект, реализующий эти dunder-методы, обменивается данными zero-copy без знания о конкретном producer/consumer.
+
+### Что такое PyCapsule
+
+`PyCapsule` (CPython C API since 2.7) — typed pointer wrapper, безопасно передающий C-указатели между Python-модулями. Arrow PyCapsule Interface оборачивает структуры C Data Interface (`ArrowArray`, `ArrowSchema`, `ArrowArrayStream`) в PyCapsule с известными именами — consumer извлекает указатели без сериализации.
+
+```python
+# Producer (DataFusion / pandas / Polars / pyarrow) реализует:
+class MyDataFrame:
+    def __arrow_c_stream__(self, requested_schema=None):
+        # Возвращает PyCapsule с указателем на ArrowArrayStream
+        ...
+
+    def __arrow_c_schema__(self):
+        # Возвращает PyCapsule с указателем на ArrowSchema
+        ...
+```
+
+### Универсальный обмен DataFusion ↔ Polars 1.x ↔ pandas 2.x ↔ pyarrow
+
+```python
+import polars as pl
+import pandas as pd
+import pyarrow as pa
+from datafusion import SessionContext
+
+ctx = SessionContext()
+df = ctx.read_parquet("data/events.parquet")
+
+# DataFusion → Polars 1.x (zero-copy через PyCapsule)
+polars_df = pl.DataFrame(df)               # Polars 1.x понимает __arrow_c_stream__ напрямую
+
+# DataFusion → pandas 2.x (zero-copy для Arrow-backed columns; pyarrow.array dtype)
+pandas_df = pd.api.interchange.from_dataframe(df)
+
+# Polars 1.x → DataFusion (zero-copy)
+polars_input = pl.DataFrame({"x": [1, 2, 3], "y": [4.0, 5.0, 6.0]})
+ctx.register_dataframe("polars_data", polars_input)   # читает PyCapsule интерфейс
+df_from_polars = ctx.sql("SELECT * FROM polars_data WHERE x > 1")
+```
+
+<Callout type="note">
+До PyCapsule Interface каждая пара библиотек требовала **explicit knowledge** о конвертации (`pl.from_arrow(df.to_arrow_table())`, `pd.DataFrame.from_records(df.to_pylist())`). Теперь любой Arrow-совместимый объект обменивается через **протокол** — producer не знает consumer'а, consumer не знает producer'а. Это эквивалент Python iterator protocol для табличных данных.
+</Callout>
+
+### Различие `__arrow_c_array__` vs `__arrow_c_stream__`
+
+| Dunder | Семантика | Когда |
+|---|---|---|
+| `__arrow_c_array__` | Один RecordBatch | Маленькие данные, eager |
+| `__arrow_c_stream__` | Поток RecordBatch (lazy) | Большие данные, streaming |
+| `__arrow_c_schema__` | Только схема | Inspection без загрузки данных |
+
+DataFusion DataFrame реализует `__arrow_c_stream__` — потому что DataFrame ленивый, материализация только при collect/iter. Polars 1.x DataFrame — оба (`__arrow_c_array__` для in-memory + `__arrow_c_stream__` для streaming).
+
+<Callout type="warning">
+**PyCapsule vs `to_pandas()` / `to_arrow_table()`** — explicit conversions всё ещё работают и возвращают копию (для pandas) или zero-copy (для pyarrow). PyCapsule Interface — современный путь для библиотек, желающих избежать explicit dependency на конкретный producer. Cite [Arrow PyCapsule Interface spec](https://arrow.apache.org/docs/format/CDataInterface/PyCapsuleInterface.html).
+</Callout>
+
 ## Когда использовать DataFusion в Python
 
 DataFusion занимает определённую нишу среди Python-инструментов для данных:

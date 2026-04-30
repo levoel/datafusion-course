@@ -4,7 +4,7 @@ description: "Полная реализация TableProvider trait: schema, sca
 order: 3
 difficulty: "advanced"
 estimatedTime: 22
-topics: ["TableProvider", "ExecutionPlan", "MemoryStream", "filter pushdown", "projection pushdown", "DataSink", "SendableRecordBatchStream"]
+topics: ["TableProvider", "ExecutionPlan", "MemoryStream", "filter pushdown", "projection pushdown", "DataSink", "SendableRecordBatchStream", "datafusion-table-providers", "Postgres", "MySQL", "SQLite", "DuckDB", "ClickHouse", "FlightSQL", "ODBC", "federated queries"]
 ---
 
 # TableProvider: собственный источник данных
@@ -447,6 +447,111 @@ async fn demo_csv_api() -> Result<()> {
     df.show().await
 }
 ```
+
+## datafusion-table-providers — готовый набор провайдеров
+
+Полная реализация `TableProvider` для production-источника (Postgres / MySQL / ClickHouse) требует значительной работы: connection pooling, type mapping, SQL generation для filter pushdown, async I/O. Apache DataFusion community поддерживает **contrib repository** — [`datafusion-contrib/datafusion-table-providers`](https://github.com/datafusion-contrib/datafusion-table-providers) — готовые `TableProvider` реализации для популярных систем.
+
+### Что в репозитории
+
+| Провайдер | Тип источника | Crate |
+|---|---|---|
+| **Postgres** | PostgreSQL via `tokio-postgres` | `datafusion-table-providers` (feature `postgres`) |
+| **MySQL** | MySQL/MariaDB via `mysql_async` | feature `mysql` |
+| **SQLite** | SQLite via `rusqlite` | feature `sqlite` |
+| **DuckDB** | DuckDB embedded | feature `duckdb` |
+| **ClickHouse** | ClickHouse via HTTP/native | feature `clickhouse` |
+| **ODBC** | Generic ODBC (SQL Server, Oracle, ...) | feature `odbc` |
+| **FlightSQL** | Apache Arrow FlightSQL endpoint | feature `flight-sql` |
+
+### Базовый use case — Postgres provider
+
+```rust
+use datafusion::prelude::SessionContext;
+use datafusion_table_providers::postgres::PostgresTableFactory;
+use datafusion_table_providers::common::DatabaseConnectionPool;
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Connection pool для Postgres
+    let pool = Arc::new(
+        PostgresConnectionPool::new("postgresql://user:pass@localhost/db").await?
+    );
+
+    // Factory создаёт TableProvider по имени таблицы
+    let factory = PostgresTableFactory::new(pool);
+    let table = factory.table_provider(TableReference::bare("orders")).await?;
+
+    // Регистрируем в DataFusion как обычную таблицу
+    let ctx = SessionContext::new();
+    ctx.register_table("orders", table)?;
+
+    // SQL-запросы прозрачно идут в Postgres с filter/projection pushdown
+    let df = ctx
+        .sql("SELECT customer_id, SUM(amount) FROM orders WHERE status = 'completed' GROUP BY 1")
+        .await?;
+    df.show().await?;
+    Ok(())
+}
+```
+
+Под капотом factory:
+1. Получает schema из Postgres `information_schema.columns` для запрошенной таблицы.
+2. Создаёт `TableProvider`, реализующий `scan()` через SQL-запрос к Postgres.
+3. Filter pushdown — переводит DataFusion `Expr` в SQL `WHERE` clause.
+4. Projection pushdown — выбирает только нужные колонки в `SELECT`.
+
+### Federated queries — несколько источников в одной сессии
+
+```rust
+let ctx = SessionContext::new();
+
+// Postgres для orders
+let pg_factory = PostgresTableFactory::new(pg_pool);
+ctx.register_table("orders", pg_factory.table_provider(TableReference::bare("orders")).await?)?;
+
+// ClickHouse для events (analytical large fact table)
+let ch_factory = ClickHouseTableFactory::new(ch_client);
+ctx.register_table("events", ch_factory.table_provider(TableReference::bare("events")).await?)?;
+
+// SQLite для local lookup table
+let sqlite_factory = SqliteTableFactory::new(sqlite_pool);
+ctx.register_table("regions", sqlite_factory.table_provider(TableReference::bare("regions")).await?)?;
+
+// JOIN across heterogeneous sources — DataFusion координирует
+let df = ctx.sql("
+    SELECT e.event_type, r.region_name, COUNT(*)
+    FROM events e
+    JOIN orders o ON e.order_id = o.id
+    JOIN regions r ON o.region_id = r.id
+    GROUP BY 1, 2
+").await?;
+```
+
+DataFusion выполняет federation: каждый `TableProvider` получает свою часть запроса (с pushdown), результаты объединяются в-памяти через Arrow. Это паттерн **"DataFusion as federated query engine"** — аналог Trino / Presto на Rust.
+
+### FlightSQL provider — Arrow-native protocol
+
+```rust
+use datafusion_table_providers::flight::sql::FlightSqlDriver;
+
+// Подключение к любому FlightSQL-совместимому endpoint
+// (DataFusion FlightSQL server, Dremio, InfluxDB IOx, Cloudera Impala 4.4+)
+let driver = FlightSqlDriver::new("grpc://flight-server:50051").await?;
+let table = driver.table_provider("my_table").await?;
+ctx.register_table("my_table", table)?;
+```
+
+FlightSQL — Arrow-native wire protocol — zero-copy чтение RecordBatch без сериализации в JSON/CSV. Производительность критично важна для analytical workloads.
+
+<Callout type="tip">
+Перед написанием собственного `TableProvider` проверьте `datafusion-table-providers` — есть высокая вероятность, что готовая реализация существует. Это экономит сотни строк кода: connection pooling, error mapping, type coercion, async I/O. Для production используйте либо contrib provider напрямую, либо его как референс при создании специализированной версии.
+</Callout>
+
+Cite [datafusion-contrib/datafusion-table-providers](https://github.com/datafusion-contrib/datafusion-table-providers) + [crates.io/crates/datafusion-table-providers](https://crates.io/crates/datafusion-table-providers).
+
+---
 
 ## Итоги
 
